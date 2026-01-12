@@ -49,11 +49,15 @@ class RagService {
     final embeddingTime = stopwatch.elapsed;
 
     // 2. Hybrid Search
-    final results = _vectorStore.hybridSearch(query, queryEmbedding, limit: 3);
+    final searchResults = await _vectorStore.hybridSearch(
+      query,
+      queryEmbedding,
+      limit: 3,
+    );
     final searchTime = stopwatch.elapsed - embeddingTime;
 
     // 3. Build Context
-    final context = _buildContext(results);
+    final context = _buildContext(searchResults);
 
     // 4. Generate Response
     await _ensureInferenceModel();
@@ -62,13 +66,13 @@ class RagService {
 
     return RAGResult(
       response: response,
-      sources: results,
+      sources: searchResults,
       metrics: includeMetrics
           ? RAGMetrics(
               embeddingTime: embeddingTime,
               searchTime: searchTime,
               generationTime: generationTime,
-              chunksRetrieved: results.length,
+              chunksRetrieved: searchResults.length,
             )
           : null,
     );
@@ -140,15 +144,31 @@ Answer based only on the provided context. If the answer is not in the context, 
         .join('\n\n');
   }
 
-  List<String> _splitIntoChunks(String text, int wordsPerChunk) {
+  List<String> _splitIntoChunks(
+    String text,
+    int wordsPerChunk, {
+    int overlap = 50,
+  }) {
     final words = text.split(RegExp(r'\s+'));
     final chunks = <String>[];
 
-    for (var i = 0; i < words.length; i += wordsPerChunk) {
-      final end = (i + wordsPerChunk < words.length)
-          ? i + wordsPerChunk
-          : words.length;
-      chunks.add(words.sublist(i, end).join(' '));
+    if (words.length <= wordsPerChunk) {
+      return [text];
+    }
+
+    var start = 0;
+    while (start < words.length) {
+      var end = start + wordsPerChunk;
+      if (end > words.length) {
+        end = words.length;
+      }
+
+      chunks.add(words.sublist(start, end).join(' '));
+
+      if (end == words.length) break;
+
+      start += wordsPerChunk - overlap;
+      if (start < 0) start = 0; // Safety
     }
 
     return chunks;

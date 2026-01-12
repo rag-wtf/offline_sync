@@ -45,11 +45,9 @@ class ModelManagementService {
 
   Future<void> initialize() async {
     for (final model in _models) {
-      // ignore: avoid_dynamic_calls, FlutterGemma version mismatch
-      final isDownloaded = await (FlutterGemma as dynamic).isModelInstalled(
-        model.type,
-      );
-      if (isDownloaded as bool) {
+      final filename = model.url.split('/').last;
+      final isDownloaded = await FlutterGemma.isModelInstalled(filename);
+      if (isDownloaded) {
         model
           ..status = ModelStatus.downloaded
           ..progress = 1.0;
@@ -71,11 +69,22 @@ class ModelManagementService {
     _notify();
 
     try {
-      // ignore: avoid_dynamic_calls, FlutterGemma version mismatch
-      await (FlutterGemma as dynamic)
-          .installModel(modelType: model.type as dynamic)
-          .fromNetwork(model.url)
-          .install();
+      if (model.type == 'inference') {
+        await FlutterGemma.installModel(
+          modelType: ModelType.gemmaIt,
+        ).fromNetwork(model.url).withProgress((int progress) {
+          model.progress = progress / 100.0;
+          _notify();
+        }).install();
+      } else {
+        await FlutterGemma.installEmbedder()
+            .modelFromNetwork(model.url)
+            .withModelProgress((int progress) {
+              model.progress = progress / 100.0;
+              _notify();
+            })
+            .install();
+      }
 
       model
         ..status = ModelStatus.downloaded

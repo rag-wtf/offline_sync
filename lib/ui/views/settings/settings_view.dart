@@ -44,7 +44,6 @@ class SettingsView extends StackedView<SettingsViewModel> {
 }
 
 class _ModelTile extends StatelessWidget {
-
   const _ModelTile({required this.model, required this.onDownload});
   final ModelInfo model;
   final VoidCallback onDownload;

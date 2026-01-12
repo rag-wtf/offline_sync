@@ -39,7 +39,7 @@ void main() {
         embedding: embedding,
       );
 
-      final results = vectorStore.hybridSearch(
+      final results = await vectorStore.hybridSearch(
         'test',
         [0.1, 0.2, 0.3],
         limit: 1,
@@ -59,7 +59,7 @@ void main() {
         embedding: [0.0, 0.0, 0.0],
       );
 
-      final results = vectorStore.hybridSearch(
+      final results = await vectorStore.hybridSearch(
         'fox jumps',
         [0.0, 0.0, 0.0],
         limit: 1,

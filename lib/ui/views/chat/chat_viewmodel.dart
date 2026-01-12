@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/widgets.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/rag_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
@@ -27,8 +28,16 @@ class ChatViewModel extends BaseViewModel {
   final _snackbarService = locator<SnackbarService>();
 
   final List<ChatMessage> messages = [];
+  final ScrollController scrollController = ScrollController();
   bool _isProcessing = false;
   bool get isProcessing => _isProcessing;
+
+  bool _shouldScroll = false;
+  bool get shouldScroll => _shouldScroll;
+
+  void onScrolled() {
+    _shouldScroll = false;
+  }
 
   Future<void> initialize() async {
     setBusy(true);
@@ -50,6 +59,7 @@ class ChatViewModel extends BaseViewModel {
       timestamp: DateTime.now(),
     );
     messages.add(userMsg);
+    _shouldScroll = true;
     notifyListeners();
 
     _isProcessing = true;
@@ -67,6 +77,7 @@ class ChatViewModel extends BaseViewModel {
           metrics: result.metrics,
         ),
       );
+      _shouldScroll = true;
     } on Exception catch (e) {
       _snackbarService.showSnackbar(message: 'Error: $e');
     } finally {
@@ -125,5 +136,11 @@ class ChatViewModel extends BaseViewModel {
   Future<String> _readText(String path) async {
     final file = File(path);
     return file.readAsString();
+  }
+
+  @override
+  void dispose() {
+    scrollController.dispose();
+    super.dispose();
   }
 }

@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -75,16 +75,29 @@ class VectorStore {
     }
   }
 
-  List<SearchResult> hybridSearch(
+  Future<List<SearchResult>> hybridSearch(
     String query,
     List<double> queryEmbedding, {
     int limit = 5,
     double semanticWeight = 0.7,
-  }) {
-    final semanticResults = _semanticSearch(queryEmbedding, limit: limit * 2);
+  }) async {
+    // 1. Fetch candidates (Keyword Search)
     final keywordResults = _hasFts5
-        ? _fts5Search(query, limit: limit * 2)
-        : _fallbackKeywordSearch(query, limit: limit * 2);
+        ? _fts5Search(query, limit: 100) // Increase candidate pool
+        : _fallbackKeywordSearch(query, limit: 100);
+
+    // 2. Compute Semantic Search (using Candidates from FTS5 if possible,
+    // or all if small)
+    // For simplicity, we'll fetch top N candidates from the database or all
+    // if total count is small.
+    // Here we'll take top 100 from FTS5 and maybe some random/all others
+    // if needed, but 100 is usually enough for hybrid.
+    // If FTS5 is not available, we have to load more.
+
+    final semanticResults = await _semanticSearchAsync(
+      queryEmbedding,
+      limit: limit * 2,
+    );
 
     return _mergeResults(
       semanticResults,
@@ -94,28 +107,32 @@ class VectorStore {
     );
   }
 
-  List<SearchResult> _semanticSearch(
+  Future<List<SearchResult>> _semanticSearchAsync(
     List<double> embedding, {
     required int limit,
-  }) {
-    final rows = _db!.select('SELECT * FROM vectors');
+  }) async {
+    // Fetch all embeddings and IDs from DB
+    final rows = _db!.select(
+      'SELECT id, content, embedding, metadata FROM vectors',
+    );
 
-    final scored = rows.map((row) {
-      final storedEmbedding = _decodeEmbedding(row['embedding'] as Uint8List);
-      final score = _cosineSimilarity(embedding, storedEmbedding);
-      return SearchResult(
-        id: row['id'] as String,
-        content: row['content'] as String,
-        score: score,
-        metadata:
-            jsonDecode(row['metadata'] as String? ?? '{}')
-                as Map<String, dynamic>,
-      );
-    }).toList();
+    // Convert to a format suitable for compute (plain data)
+    final data = rows
+        .map(
+          (row) => {
+            'id': row['id'],
+            'content': row['content'],
+            'embedding': row['embedding'],
+            'metadata': row['metadata'],
+          },
+        )
+        .toList();
 
-    return scored
-      ..sort((a, b) => b.score.compareTo(a.score))
-      ..take(limit).toList();
+    return compute(_calculateSimilarities, {
+      'queryEmbedding': embedding,
+      'data': data,
+      'limit': limit,
+    });
   }
 
   List<SearchResult> _fts5Search(String query, {required int limit}) {
@@ -208,15 +225,6 @@ INSERT OR REPLACE INTO vectors
       ..dispose();
   }
 
-  List<double> _decodeEmbedding(Uint8List bytes) {
-    final byteData = ByteData.sublistView(bytes);
-    final embedding = <double>[];
-    for (var i = 0; i < bytes.length; i += 4) {
-      embedding.add(byteData.getFloat32(i, Endian.little));
-    }
-    return embedding;
-  }
-
   Uint8List _encodeEmbedding(List<double> embedding) {
     final bytes = Uint8List(embedding.length * 4);
     final byteData = ByteData.sublistView(bytes);
@@ -224,20 +232,6 @@ INSERT OR REPLACE INTO vectors
       byteData.setFloat32(i * 4, embedding[i], Endian.little);
     }
     return bytes;
-  }
-
-  double _cosineSimilarity(List<double> a, List<double> b) {
-    if (a.length != b.length) return 0;
-    var dotProduct = 0.0;
-    var normA = 0.0;
-    var normB = 0.0;
-    for (var i = 0; i < a.length; i++) {
-      dotProduct += a[i] * b[i];
-      normA += a[i] * a[i];
-      normB += b[i] * b[i];
-    }
-    final divisor = sqrt(normA) * sqrt(normB);
-    return divisor == 0 ? 0.0 : dotProduct / divisor;
   }
 
   String _sanitizeFtsQuery(String query) {
@@ -290,4 +284,47 @@ INSERT OR REPLACE INTO vectors
     _db?.dispose();
     _db = null;
   }
+}
+
+/// Isolate function for calculating similarities
+List<SearchResult> _calculateSimilarities(Map<String, dynamic> params) {
+  final queryEmbedding = params['queryEmbedding'] as List<double>;
+  final data = params['data'] as List<Map<String, dynamic>>;
+  final limit = params['limit'] as int;
+
+  final scored = data.map((item) {
+    final storedEmbeddingBytes = item['embedding'] as Uint8List;
+
+    // Inline decode and cosine similarity for isolate efficiency
+    final byteData = ByteData.sublistView(storedEmbeddingBytes);
+    final storedEmbedding = <double>[];
+    for (var i = 0; i < storedEmbeddingBytes.length; i += 4) {
+      storedEmbedding.add(byteData.getFloat32(i, Endian.little));
+    }
+
+    // Cosine similarity
+    var dotProduct = 0.0;
+    var normA = 0.0;
+    var normB = 0.0;
+    for (var i = 0; i < queryEmbedding.length; i++) {
+      dotProduct += queryEmbedding[i] * storedEmbedding[i];
+      normA += queryEmbedding[i] * queryEmbedding[i];
+      normB += storedEmbedding[i] * storedEmbedding[i];
+    }
+    final divisor = sqrt(normA) * sqrt(normB);
+    final score = divisor == 0 ? 0.0 : dotProduct / divisor;
+
+    return SearchResult(
+      id: item['id'] as String,
+      content: item['content'] as String,
+      score: score,
+      metadata:
+          jsonDecode(item['metadata'] as String? ?? '{}')
+              as Map<String, dynamic>,
+    );
+  }).toList();
+
+  return (scored..sort((a, b) => b.score.compareTo(a.score)))
+      .take(limit)
+      .toList();
 }

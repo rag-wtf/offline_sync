@@ -7,9 +7,7 @@ class EmbeddingService {
     // Note: getEmbedding might return a List<double> or a proprietary object
     // depending on version. Standardizing to List<double>.
     // Using dynamic to bypass analyzer issues with library types.
-    // ignore: avoid_dynamic_calls, FlutterGemma type mismatch
-    final result =
-        await (embedder as dynamic).getEmbedding(text) as List<double>;
+    final result = await embedder.generateEmbedding(text);
     return result;
   }
 }

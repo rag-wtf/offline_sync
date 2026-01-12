@@ -6,8 +6,26 @@ import 'package:stacked/stacked.dart';
 class ChatView extends StackedView<ChatViewModel> {
   const ChatView({super.key});
 
+  void _scrollToBottom(ChatViewModel viewModel) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (viewModel.scrollController.hasClients) {
+        viewModel.scrollController.animateTo(
+          viewModel.scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
   @override
   Widget builder(BuildContext context, ChatViewModel viewModel, Widget? child) {
+    // Listen for message changes to scroll
+    if (viewModel.shouldScroll) {
+      _scrollToBottom(viewModel);
+      viewModel.onScrolled();
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('RAG Sync Chat'),
@@ -26,6 +44,7 @@ class ChatView extends StackedView<ChatViewModel> {
             child: viewModel.isBusy
                 ? const Center(child: CircularProgressIndicator())
                 : ListView.builder(
+                    controller: viewModel.scrollController,
                     padding: const EdgeInsets.all(16),
                     itemCount: viewModel.messages.length,
                     itemBuilder: (context, index) {
@@ -59,7 +78,6 @@ class ChatView extends StackedView<ChatViewModel> {
 }
 
 class _MessageTile extends StatelessWidget {
-
   const _MessageTile({required this.message});
   final ChatMessage message;
 
@@ -116,7 +134,6 @@ class _MessageTile extends StatelessWidget {
 }
 
 class _ChatInput extends StatefulWidget {
-
   const _ChatInput({
     required this.onSend,
     required this.onAttach,
