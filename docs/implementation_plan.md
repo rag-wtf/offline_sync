@@ -70,18 +70,36 @@ On-device RAG requires two distinct AI operations:
 
 **pubspec.yaml**
 ```yaml
+name: offline_sync
+description: An Offline-first RAG app with data sync
+version: 1.0.0+1
+publish_to: none
+
+environment:
+  sdk: ^3.9.0
+  flutter: ^3.35.0
+
 dependencies:
   flutter:
     sdk: flutter
-  flutter_gemma: ^0.11.0
-  path_provider: ^2.1.0
-  sqflite: ^2.3.0  # For advanced vector store features
+  flutter_gemma: ^0.12.0
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.2
+  stacked: ^3.5.0
+  stacked_services: ^1.6.0
 
 dev_dependencies:
+  build_runner: ^2.7.1
   flutter_test:
     sdk: flutter
-  integration_test:
-    sdk: flutter
+  mocktail: ^1.0.4
+  stacked_generator:
+  very_good_analysis: ^10.0.0
+
+flutter:
+  generate: true
+  uses-material-design: true
 ```
 
 ### 2. Android Configuration
