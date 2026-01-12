@@ -6,16 +6,16 @@
 ## 📋 Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
-2. [Offline Sync Strategy](#offline-sync-strategy)
-3. [Setup & Configuration](#setup--configuration)
-4. [Core Components](#core-components)
-5. [Implementation Guide](#implementation-guide)
-6. [Advanced Features](#advanced-features)
-7. [Performance Optimization](#performance-optimization)
-8. [Security Best Practices](#security-best-practices)
-9. [Testing Strategy](#testing-strategy)
-10. [Troubleshooting](#troubleshooting)
-11. [Production Checklist](#production-checklist)
+2. [Setup & Configuration](#setup--configuration)
+3. [Core Components](#core-components)
+4. [Implementation Guide](#implementation-guide)
+5. [Advanced Features](#advanced-features)
+6. [Performance Optimization](#performance-optimization)
+7. [Security Best Practices](#security-best-practices)
+8. [Testing Strategy](#testing-strategy)
+9. [Troubleshooting](#troubleshooting)
+10. [Production Checklist](#production-checklist)
+11. [Future Enhancements (Phase 2)](#future-enhancements-phase-2)
 
 ---
 
@@ -29,13 +29,14 @@ On-device RAG requires two distinct AI operations:
 
 **Critical Problem**: Loading both simultaneously requires 3-4GB GPU memory, causing crashes on standard devices.
 
-### Embedding Strategy Options
+### Embedding Strategy
 
-| Strategy | Model | Size | Latency | Pros | Cons |
-|----------|-------|------|---------|------|------|
-| **Option A: Lightweight CPU** | MiniLM/Gecko | ~100MB | 50-100ms | No GPU contention | Separate model needed |
-| **Option B: Gemma Embeddings** | Gemma 2B | 1.2GB | 200-300ms | Single model | GPU switching overhead |
-| **Recommended** | MiniLM-L6 | 80MB | ~50ms | Best balance | Requires tflite_flutter |
+This implementation uses **Google's EmbeddingGemma-300M** model:
+- **Model**: [google/embeddinggemma-300m](https://huggingface.co/google/embeddinggemma-300m)
+- **Size**: ~300MB
+- **Latency**: 100-150ms on CPU
+- **Dimension**: 768-dimensional embeddings
+- **Benefits**: Optimized for semantic search, purpose-built by Google for RAG applications
 
 ### Solution Architecture
 
@@ -43,25 +44,16 @@ On-device RAG requires two distinct AI operations:
 ┌─────────────────────────────────────────┐
 │  Model Download Manager                 │
 │  - Progressive download with resume     │
-│  - Version management & delta updates   │
 │  - Integrity verification (SHA-256)     │
 └──────────────┬──────────────────────────┘
                │
                ▼
 ┌─────────────────────────────────────────┐
-│  Lightweight CPU Embedder (MiniLM-L6)   │
-│  - 80MB footprint                       │
-│  - CPU processing: ~50ms                │
+│  CPU Embedder (EmbeddingGemma-300M)     │
+│  - 300MB footprint                      │
+│  - CPU processing: 100-150ms            │
+│  - 768-dimensional vectors              │
 │  - No GPU contention                    │
-└──────────────┬──────────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────────┐
-│  Intelligent Model Switcher             │
-│  - Mutex-based GPU access               │
-│  - Automatic disposal & GC              │
-│  - Lifecycle-aware management           │
-│  - Battery/thermal awareness            │
 └──────────────┬──────────────────────────┘
                │
                ▼
@@ -75,154 +67,12 @@ On-device RAG requires two distinct AI operations:
                │
                ▼
 ┌─────────────────────────────────────────┐
-│  Offline Sync Engine                    │
-│  - Conflict resolution (LWW/CRDT)       │
-│  - Delta sync for large corpora         │
-│  - Retry with exponential backoff       │
-└──────────────┬──────────────────────────┘
-               │
-               ▼
-┌─────────────────────────────────────────┐
 │  Gemma 2B-IT (GPU)                      │
 │  - Temperature: 0.0 (factual)           │
 │  - Context window: 2048 tokens          │
 │  - GPU-accelerated inference            │
+│  - Lifecycle-aware management           │
 └─────────────────────────────────────────┘
-```
-
----
-
-## 🔄 Offline Sync Strategy
-
-### Sync Architecture
-
-```dart
-/// Sync queue entry for offline operations
-class SyncQueueEntry {
-  final String id;
-  final String operation; // 'create', 'update', 'delete'
-  final String entityType;
-  final Map<String, dynamic> data;
-  final DateTime timestamp;
-  final int retryCount;
-  final SyncStatus status;
-  
-  SyncQueueEntry({
-    required this.id,
-    required this.operation,
-    required this.entityType,
-    required this.data,
-    required this.timestamp,
-    this.retryCount = 0,
-    this.status = SyncStatus.pending,
-  });
-}
-
-enum SyncStatus { pending, inProgress, failed, completed }
-```
-
-### Conflict Resolution Strategy
-
-```dart
-/// Last-Write-Wins (LWW) conflict resolution
-class ConflictResolver {
-  static Map<String, dynamic> resolve(
-    Map<String, dynamic> local,
-    Map<String, dynamic> remote,
-  ) {
-    final localTime = DateTime.parse(local['updatedAt'] as String);
-    final remoteTime = DateTime.parse(remote['updatedAt'] as String);
-    
-    // LWW: Most recent write wins
-    if (remoteTime.isAfter(localTime)) {
-      return remote;
-    }
-    return local;
-  }
-  
-  /// Field-level merge for complex documents
-  static Map<String, dynamic> mergeFields(
-    Map<String, dynamic> local,
-    Map<String, dynamic> remote,
-    List<String> serverAuthorityFields,
-  ) {
-    final merged = Map<String, dynamic>.from(local);
-    
-    for (final field in serverAuthorityFields) {
-      if (remote.containsKey(field)) {
-        merged[field] = remote[field];
-      }
-    }
-    
-    return merged;
-  }
-}
-```
-
-### Sync Queue with Retry Logic
-
-```dart
-class SyncEngine {
-  final _queue = <SyncQueueEntry>[];
-  static const _maxRetries = 5;
-  static const _baseDelay = Duration(seconds: 1);
-  
-  Future<void> processQueue() async {
-    final pending = _queue.where((e) => e.status == SyncStatus.pending);
-    
-    for (final entry in pending) {
-      try {
-        await _syncEntry(entry);
-        entry.status = SyncStatus.completed;
-      } catch (e) {
-        entry.retryCount++;
-        
-        if (entry.retryCount >= _maxRetries) {
-          entry.status = SyncStatus.failed;
-          await _notifyFailure(entry);
-        } else {
-          // Exponential backoff
-          final delay = _baseDelay * pow(2, entry.retryCount);
-          await Future.delayed(delay);
-        }
-      }
-    }
-  }
-  
-  Future<void> _syncEntry(SyncQueueEntry entry) async {
-    // Implementation depends on your backend
-  }
-  
-  Future<void> _notifyFailure(SyncQueueEntry entry) async {
-    // Log and notify user of permanent failure
-  }
-}
-```
-
-### Delta Sync for Large Corpora
-
-```dart
-class DeltaSyncManager {
-  Future<void> syncDocuments() async {
-    final lastSyncTime = await _getLastSyncTimestamp();
-    
-    // Fetch only documents modified since last sync
-    final changes = await _fetchChanges(since: lastSyncTime);
-    
-    for (final change in changes) {
-      switch (change.type) {
-        case ChangeType.created:
-        case ChangeType.updated:
-          await _upsertDocument(change.document);
-        case ChangeType.deleted:
-          await _deleteDocument(change.documentId);
-      }
-    }
-    
-    await _updateLastSyncTimestamp(DateTime.now());
-  }
-}
-```
 
 ---
 
@@ -233,7 +83,7 @@ class DeltaSyncManager {
 **pubspec.yaml**
 ```yaml
 name: offline_sync
-description: An Offline-first RAG app with data sync
+description: On-device RAG with Flutter Gemma
 version: 1.0.0+1
 publish_to: none
 
@@ -244,20 +94,17 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # Core AI - verify latest version on pub.dev
+  # Core AI
   flutter_gemma: ^0.12.0
-  # Lightweight embeddings (alternative to Gemma embeddings)
+  # EmbeddingGemma for text embeddings
   tflite_flutter: ^0.11.0
   # Database
   sqflite: ^2.4.1
-  sqflite_sqlcipher: ^3.1.0  # Encrypted DB
   # State management
   get_it: ^8.0.3
   injectable: ^2.5.0
-  # Secure storage
+  # Secure storage for encryption keys
   flutter_secure_storage: ^9.2.4
-  # Connectivity
-  connectivity_plus: ^6.1.3
   # Localization
   flutter_localizations:
     sdk: flutter
@@ -274,6 +121,8 @@ dev_dependencies:
 flutter:
   generate: true
   uses-material-design: true
+  assets:
+    - assets/models/
 ```
 
 ### 2. Android Configuration
@@ -541,7 +390,7 @@ class SecureRAGManager with WidgetsBindingObserver {
   
   final _mutex = Mutex();
   final _vectorStore = VectorStore();
-  final _embedder = LightweightEmbedder();
+  final _embedder = EmbeddingGemmaEmbedder();
   final _queryCache = SmartQueryCache();
   final _auditLog = AuditLogger();
   
@@ -1074,8 +923,6 @@ class ResourceAwareLoader {
 - [ ] Test prompt injection defense
 - [ ] Implement analytics/error reporting
 - [ ] Run all unit and integration tests
-- [ ] Verify offline sync functionality
-- [ ] Test conflict resolution scenarios
 - [ ] Audit security configurations
 
 ### Performance Targets
@@ -1086,8 +933,135 @@ class ResourceAwareLoader {
 | Query Response | <2s | <5s |
 | Ingestion (per 1000 words) | <5s | <10s |
 | Memory Usage (Peak) | <2.5GB | <3.5GB |
-| GPU Switching | <200ms | <500ms |
-| Sync Queue Processing | <1s | <5s |
+| Embedding Generation | <150ms | <300ms |
+
+---
+
+## 🚀 Future Enhancements (Phase 2)
+
+> **Note**: The following features are planned for Phase 2 implementation and are not part of the current release.
+
+### Offline Sync Strategy
+
+#### Overview
+
+Implement multi-device synchronization with conflict resolution for enterprise and collaborative use cases.
+
+#### Key Components
+
+##### 1. Sync Queue Architecture
+
+```dart
+/// Sync queue entry for offline operations
+class SyncQueueEntry {
+  final String id;
+  final String operation; // 'create', 'update', 'delete'
+  final String entityType;
+  final Map<String, dynamic> data;
+  final DateTime timestamp;
+  final int retryCount;
+  final SyncStatus status;
+  
+  SyncQueueEntry({
+    required this.id,
+    required this.operation,
+    required this.entityType,
+    required this.data,
+    required this.timestamp,
+    this.retryCount = 0,
+    this.status = SyncStatus.pending,
+  });
+}
+
+enum SyncStatus { pending, inProgress, failed, completed }
+```
+
+##### 2. Conflict Resolution
+
+**Last-Write-Wins (LWW):**
+```dart
+class ConflictResolver {
+  static Map<String, dynamic> resolve(
+    Map<String, dynamic> local,
+    Map<String, dynamic> remote,
+  ) {
+    final localTime = DateTime.parse(local['updatedAt'] as String);
+    final remoteTime = DateTime.parse(remote['updatedAt'] as String);
+    
+    return remoteTime.isAfter(localTime) ? remote : local;
+  }
+}
+```
+
+**CRDT-based** (for advanced scenarios):
+- Operational transformation for text documents
+- Vector clock for causality tracking
+- Field-level merge strategies
+
+##### 3. Retry Logic with Exponential Backoff
+
+```dart
+class SyncEngine {
+  static const _maxRetries = 5;
+  static const _baseDelay = Duration(seconds: 1);
+  
+  Future<void> processQueue() async {
+    for (final entry in pendingEntries) {
+      try {
+        await _syncEntry(entry);
+      } catch (e) {
+        if (entry.retryCount >= _maxRetries) {
+          await _handlePermanentFailure(entry);
+        } else {
+          final delay = _baseDelay * pow(2, entry.retryCount);
+          await Future.delayed(delay);
+        }
+      }
+    }
+  }
+}
+```
+
+##### 4. Delta Sync for Large Corpora
+
+```dart
+class DeltaSyncManager {
+  Future<void> syncDocuments() async {
+    final lastSyncTime = await _getLastSyncTimestamp();
+    final changes = await _fetchChanges(since: lastSyncTime);
+    
+    for (final change in changes) {
+      switch (change.type) {
+        case ChangeType.created:
+        case ChangeType.updated:
+          await _upsertDocument(change.document);
+        case ChangeType.deleted:
+          await _deleteDocument(change.documentId);
+      }
+    }
+  }
+}
+```
+
+#### Additional Dependencies for Phase 2
+
+```yaml
+dependencies:
+  # Network connectivity monitoring
+  connectivity_plus: ^6.1.3
+  # Encrypted database (optional)
+  sqflite_sqlcipher: ^3.1.0
+  # HTTP client for sync
+  dio: ^5.7.0
+```
+
+#### Implementation Considerations
+
+- **Backend API**: RESTful or GraphQL endpoint for sync operations
+- **Authentication**: OAuth 2.0 / JWT token management
+- **Offline Queue Persistence**: SQLite-based queue storage
+- **Network Monitoring**: Automatic sync trigger on connectivity restoration
+- **Conflict UI**: User-facing conflict resolution dialog
 
 ---
 
