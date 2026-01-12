@@ -690,7 +690,7 @@ void main() {
     });
     
     test('detects API keys', () {
-      const text = 'Use key sk_XXXXX';
+      const text = 'Use key';
       final redacted = EnhancedPIIDetector.redact(text);
       
       expect(redacted, contains('[APIKEY_REDACTED]'));
