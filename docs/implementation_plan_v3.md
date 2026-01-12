@@ -104,13 +104,17 @@ dependencies:
     sdk: flutter
   # Core AI - handles both embeddings and generation
   flutter_gemma: ^0.12.0
-  # Database
-  sqflite: ^2.4.1
+  # Cross-platform SQLite database
+  sqlite3: ^3.1.3
+  drift: ^2.23.0  # Type-safe SQL layer over sqlite3
   # State management
   get_it: ^8.0.3
   injectable: ^2.5.0
   # Secure storage for encryption keys
   flutter_secure_storage: ^9.2.4
+  # Path provider for database location
+  path_provider: ^2.1.5
+  path: ^1.9.0
   # Localization
   flutter_localizations:
     sdk: flutter
@@ -118,6 +122,7 @@ dependencies:
 
 dev_dependencies:
   build_runner: ^2.4.14
+  drift_dev: ^2.23.0  # Code generator for drift
   flutter_test:
     sdk: flutter
   injectable_generator: ^2.6.3
@@ -159,7 +164,34 @@ flutter:
 </manifest>
 ```
 
-### 3. Embedding Model Setup
+### 3. Platform-Specific Configuration
+
+#### Web Platform
+
+For web support, you'll need to configure SQLite WASM:
+
+**web/index.html** - Add before `</head>`:
+```html
+<!-- SQLite WASM for web -->
+<script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
+```
+
+#### Desktop Platform (Windows/macOS/Linux)
+
+No additional configuration needed. The `sqlite3` package will automatically use the system SQLite library or bundle one if needed.
+
+#### Platform Support Matrix
+
+| Feature | Android | iOS | Web | Windows | macOS | Linux |
+|---------|---------|-----|-----|---------|-------|-------|
+| Vector Store | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| FTS5 Search | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| GPU Inference | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Embedding Model | ✅ | ✅ | ✅* | ✅ | ✅ | ✅ |
+
+*Web embeddings use CPU with WASM
+
+### 4. Embedding Model Setup
 
 **Recommended Model: EmbeddingGemma-300M**
 
@@ -244,77 +276,92 @@ class ModelDownloadManager {
 
 ## 🔧 Core Components
 
+> **Cross-Platform Note**: This implementation uses `sqlite3` package for cross-platform support (Android, iOS, Web, Windows, macOS, Linux).
+
 ### Component 1: Vector Store with FTS5 Fallback
 
 ```dart
+import 'package:sqlite3/sqlite3.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+import 'dart:typed_data';
+import 'dart:convert';
+import 'dart:math';
+
 class VectorStore {
-  late Database _db;
+  Database? _db;
   bool _hasFts5 = true;
   
   Future<void> initialize() async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, 'vectors.db');
+    final appDir = await getApplicationDocumentsDirectory();
+    final dbPath = p.join(appDir.path, 'vectors.db');
     
-    _db = await openDatabase(path, version: 2, onCreate: _onCreate);
+    _db = sqlite3.open(dbPath);
+    _onCreate();
     
     // Check FTS5 support
     try {
-      await _db.rawQuery("SELECT fts5(?)", ['test']);
+      _db!.select("SELECT fts5('test')");
     } catch (e) {
       _hasFts5 = false;
-      debugPrint('FTS5 not available, using fallback search');
+      print('FTS5 not available, using fallback search');
     }
   }
   
-  Future<void> _onCreate(Database db, int version) async {
+  void _onCreate() {
     // Main vectors table
-    await db.execute('''
-      CREATE TABLE vectors (
+    _db!.execute('''
+      CREATE TABLE IF NOT EXISTS vectors (
         id TEXT PRIMARY KEY,
         document_id TEXT NOT NULL,
         content TEXT NOT NULL,
         embedding BLOB NOT NULL,
         metadata TEXT,
-        created_at INTEGER NOT NULL,
-        FOREIGN KEY (document_id) REFERENCES documents(id)
+        created_at INTEGER NOT NULL
       )
     ''');
     
-    // FTS5 virtual table for keyword search
-    await db.execute('''
-      CREATE VIRTUAL TABLE IF NOT EXISTS vectors_fts 
-      USING fts5(content, content=vectors, content_rowid=rowid)
-    ''');
-    
-    // Triggers to keep FTS in sync
-    await db.execute('''
-      CREATE TRIGGER vectors_ai AFTER INSERT ON vectors BEGIN
-        INSERT INTO vectors_fts(rowid, content) VALUES (new.rowid, new.content);
-      END
-    ''');
-    
-    await db.execute('''
-      CREATE TRIGGER vectors_ad AFTER DELETE ON vectors BEGIN
-        INSERT INTO vectors_fts(vectors_fts, rowid, content) 
-        VALUES ('delete', old.rowid, old.content);
-      END
-    ''');
+    if (_hasFts5) {
+      try {
+        // FTS5 virtual table for keyword search
+        _db!.execute('''
+          CREATE VIRTUAL TABLE IF NOT EXISTS vectors_fts 
+          USING fts5(content, content=vectors, content_rowid=rowid)
+        ''');
+        
+        // Triggers to keep FTS in sync
+        _db!.execute('''
+          CREATE TRIGGER IF NOT EXISTS vectors_ai AFTER INSERT ON vectors BEGIN
+            INSERT INTO vectors_fts(rowid, content) VALUES (new.rowid, new.content);
+          END
+        ''');
+        
+        _db!.execute('''
+          CREATE TRIGGER IF NOT EXISTS vectors_ad AFTER DELETE ON vectors BEGIN
+            INSERT INTO vectors_fts(vectors_fts, rowid, content) 
+            VALUES ('delete', old.rowid, old.content);
+          END
+        ''');
+      } catch (e) {
+        _hasFts5 = false;
+      }
+    }
   }
   
   /// Hybrid search: semantic + keyword
-  Future<List<SearchResult>> hybridSearch(
+  List<SearchResult> hybridSearch(
     String query,
     List<double> queryEmbedding, {
     int limit = 5,
     double semanticWeight = 0.7,
-  }) async {
+  }) {
     // Semantic search
-    final semanticResults = await _semanticSearch(queryEmbedding, limit: limit * 2);
+    final semanticResults = _semanticSearch(queryEmbedding, limit: limit * 2);
     
     // Keyword search
     final keywordResults = _hasFts5
-        ? await _fts5Search(query, limit: limit * 2)
-        : await _fallbackKeywordSearch(query, limit: limit * 2);
+        ? _fts5Search(query, limit: limit * 2)
+        : _fallbackKeywordSearch(query, limit: limit * 2);
     
     // Merge and re-rank
     return _mergeResults(
@@ -325,11 +372,11 @@ class VectorStore {
     );
   }
   
-  Future<List<SearchResult>> _semanticSearch(
+  List<SearchResult> _semanticSearch(
     List<double> embedding, {
     required int limit,
-  }) async {
-    final rows = await _db.query('vectors');
+  }) {
+    final rows = _db!.select('SELECT * FROM vectors');
     
     final scored = rows.map((row) {
       final storedEmbedding = _decodeEmbedding(row['embedding'] as Uint8List);
@@ -346,15 +393,17 @@ class VectorStore {
     return scored.take(limit).toList();
   }
   
-  Future<List<SearchResult>> _fts5Search(String query, {required int limit}) async {
-    final results = await _db.rawQuery('''
+  List<SearchResult> _fts5Search(String query, {required int limit}) {
+    final sanitized = _sanitizeFtsQuery(query);
+    
+    final results = _db!.select('''
       SELECT v.*, bm25(vectors_fts) as score
       FROM vectors_fts
       JOIN vectors v ON vectors_fts.rowid = v.rowid
       WHERE vectors_fts MATCH ?
       ORDER BY score
       LIMIT ?
-    ''', [_sanitizeFtsQuery(query), limit]);
+    ''', [sanitized, limit]);
     
     return results.map((row) => SearchResult(
       id: row['id'] as String,
@@ -364,17 +413,18 @@ class VectorStore {
     )).toList();
   }
   
-  Future<List<SearchResult>> _fallbackKeywordSearch(
+  List<SearchResult> _fallbackKeywordSearch(
     String query, {
     required int limit,
-  }) async {
-    // Simple LIKE-based fallback for devices without FTS5
+  }) {
+    // Simple LIKE-based fallback
     final words = query.toLowerCase().split(RegExp(r'\s+'));
     final conditions = words.map((w) => "LOWER(content) LIKE '%$w%'").join(' OR ');
     
-    final results = await _db.rawQuery('''
-      SELECT * FROM vectors WHERE $conditions LIMIT ?
-    ''', [limit]);
+    final results = _db!.select(
+      'SELECT * FROM vectors WHERE $conditions LIMIT ?',
+      [limit],
+    );
     
     return results.map((row) => SearchResult(
       id: row['id'] as String,
@@ -382,6 +432,56 @@ class VectorStore {
       score: 0.5, // Fixed score for fallback
       metadata: jsonDecode(row['metadata'] as String? ?? '{}'),
     )).toList();
+  }
+  
+  /// Insert embedding into vector store
+  void insertEmbedding({
+    required String id,
+    required String documentId,
+    required String content,
+    required List<double> embedding,
+    Map<String, dynamic>? metadata,
+  }) {
+    final embeddingBytes = _encodeEmbedding(embedding);
+    
+    final stmt = _db!.prepare(
+      '''INSERT OR REPLACE INTO vectors 
+         (id, document_id, content, embedding, metadata, created_at) 
+         VALUES (?, ?, ?, ?, ?, ?)'''
+    );
+    
+    stmt.execute([
+      id,
+      documentId,
+      content,
+      embeddingBytes,
+      metadata != null ? jsonEncode(metadata) : null,
+      DateTime.now().millisecondsSinceEpoch,
+    ]);
+    
+    stmt.dispose();
+  }
+  
+  List<double> _decodeEmbedding(Uint8List bytes) {
+    final byteData = ByteData.sublistView(bytes);
+    final embedding = <double>[];
+    
+    for (var i = 0; i < bytes.length; i += 4) {
+      embedding.add(byteData.getFloat32(i, Endian.little));
+    }
+    
+    return embedding;
+  }
+  
+  Uint8List _encodeEmbedding(List<double> embedding) {
+    final bytes = Uint8List(embedding.length * 4);
+    final byteData = ByteData.sublistView(bytes);
+    
+    for (var i = 0; i < embedding.length; i++) {
+      byteData.setFloat32(i * 4, embedding[i], Endian.little);
+    }
+    
+    return bytes;
   }
   
   double _cosineSimilarity(List<double> a, List<double> b) {
@@ -405,6 +505,68 @@ class VectorStore {
         .replaceAll('*', '')
         .replaceAll('-', ' ');
   }
+  
+  void close() {
+    _db?.dispose();
+    _db = null;
+  }
+  
+  List<SearchResult> _mergeResults(
+    List<SearchResult> semantic,
+    List<SearchResult> keyword, {
+    required double semanticWeight,
+    required int limit,
+  }) {
+    final keywordWeight = 1.0 - semanticWeight;
+    final merged = <String, SearchResult>{};
+    
+    // Add semantic results
+    for (final result in semantic) {
+      merged[result.id] = SearchResult(
+        id: result.id,
+        content: result.content,
+        score: result.score * semanticWeight,
+        metadata: result.metadata,
+      );
+    }
+    
+    // Merge keyword results
+    for (final result in keyword) {
+      if (merged.containsKey(result.id)) {
+        merged[result.id] = SearchResult(
+          id: result.id,
+          content: result.content,
+          score: merged[result.id]!.score + (result.score * keywordWeight),
+          metadata: result.metadata,
+        );
+      } else {
+        merged[result.id] = SearchResult(
+          id: result.id,
+          content: result.content,
+          score: result.score * keywordWeight,
+          metadata: result.metadata,
+        );
+      }
+    }
+    
+    final results = merged.values.toList();
+    results.sort((a, b) => b.score.compareTo(a.score));
+    return results.take(limit).toList();
+  }
+}
+
+class SearchResult {
+  final String id;
+  final String content;
+  final double score;
+  final Map<String, dynamic> metadata;
+  
+  SearchResult({
+    required this.id,
+    required this.content,
+    required this.score,
+    required this.metadata,
+  });
 }
 ```
 
