@@ -31,12 +31,20 @@ On-device RAG requires two distinct AI operations:
 
 ### Embedding Strategy
 
-This implementation uses **Google's EmbeddingGemma-300M** model:
-- **Model**: [google/embeddinggemma-300m](https://huggingface.co/google/embeddinggemma-300m)
-- **Size**: ~300MB
-- **Latency**: 100-150ms on CPU
-- **Dimension**: 768-dimensional embeddings
-- **Benefits**: Optimized for semantic search, purpose-built by Google for RAG applications
+This implementation uses **flutter_gemma's built-in embedding capabilities**:
+- **Package**: `flutter_gemma` includes dedicated embedding model support
+- **Models**: 
+  - **EmbeddingGemma-300M**: 300M parameters, 768D embeddings, supports 256-2048 token sequences
+  - **Gecko-110M**: 110M parameters, 768D embeddings, supports 64-512 token sequences
+- **API**: Uses `FlutterGemma.installEmbedder()` and `FlutterGemma.getActiveEmbedder()`
+- **Benefits**: 
+  - Single package dependency
+  - Dedicated embedding models optimized for RAG
+  - CPU or GPU backend support
+  - Native MediaPipe integration
+  - Batch embedding generation
+
+> **Note**: Embedding models are separate from generation models. You'll install both: one for embeddings (EmbeddingGemma/Gecko) and one for text generation (Gemma 2B-IT).
 
 ### Solution Architecture
 
@@ -49,11 +57,11 @@ This implementation uses **Google's EmbeddingGemma-300M** model:
                │
                ▼
 ┌─────────────────────────────────────────┐
-│  CPU Embedder (EmbeddingGemma-300M)     │
-│  - 300MB footprint                      │
-│  - CPU processing: 100-150ms            │
-│  - 768-dimensional vectors              │
-│  - No GPU contention                    │
+│  Flutter Gemma Embedder                 │
+│  - EmbeddingGemma-300M or Gecko-110M    │
+│  - CPU/GPU backend support              │
+│  - generateEmbedding() API              │
+│  - 768-dimensional output               │
 └──────────────┬──────────────────────────┘
                │
                ▼
@@ -94,10 +102,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # Core AI
+  # Core AI - handles both embeddings and generation
   flutter_gemma: ^0.12.0
-  # EmbeddingGemma for text embeddings
-  tflite_flutter: ^0.11.0
   # Database
   sqflite: ^2.4.1
   # State management
@@ -153,7 +159,28 @@ flutter:
 </manifest>
 ```
 
-### 3. Model Download Manager
+### 3. Embedding Model Setup
+
+**Recommended Model: EmbeddingGemma-300M**
+
+Download the required files:
+- **Model**: [embeddinggemma-300M_seq1024_mixed-precision.tflite](https://huggingface.co/litert-community/embeddinggemma-300m/resolve/main/embeddinggemma-300M_seq1024_mixed-precision.tflite) (~300MB)
+- **Tokenizer**: [sentencepiece.model](https://huggingface.co/litert-community/embeddinggemma-300m/resolve/main/sentencepiece.model)
+
+Alternative: **Gecko-110M** (lighter but less performant):
+- **Model**: [gecko-embeddings-110m-fp32.tflite](https://huggingface.co/psuggate/gecko-embeddings/resolve/main/gecko-embeddings-110m-fp32.tflite) (~110MB)
+- **Tokenizer**: Same sentencepiece.model
+
+Place files in:
+```
+assets/
+├── models/
+│   ├── embeddinggemma-300m.tflite         # Embedding model
+│   ├── sentencepiece.model                # Tokenizer (shared)
+│   └── gemma-2b-it-gpu-int4.bin          # Generation model
+```
+
+### 4. Model Download Manager
 
 ```dart
 class ModelDownloadManager {
@@ -390,18 +417,26 @@ class SecureRAGManager with WidgetsBindingObserver {
   
   final _mutex = Mutex();
   final _vectorStore = VectorStore();
-  final _embedder = EmbeddingGemmaEmbedder();
+  EmbeddingModel? _embeddingModel;
+  InferenceModel? _generationModel;
   final _queryCache = SmartQueryCache();
   final _auditLog = AuditLogger();
-  
-  InferenceModel? _generationModel;
   RAGState _state = RAGState.uninitialized;
   
   Future<void> initialize() async {
     WidgetsBinding.instance.addObserver(this);
     
     await _vectorStore.initialize();
-    await _embedder.initialize();
+    
+    // Initialize embedding model
+    await FlutterGemma.installEmbedder()
+      .modelFromAsset('assets/models/embeddinggemma-300m.tflite')
+      .tokenizerFromAsset('assets/models/sentencepiece.model')
+      .install();
+    
+    _embeddingModel = await FlutterGemma.getActiveEmbedder(
+      preferredBackend: PreferredBackend.cpu, // Use CPU to avoid GPU contention
+    );
     
     _state = RAGState.ready;
   }
@@ -425,8 +460,8 @@ class SecureRAGManager with WidgetsBindingObserver {
     
     final stopwatch = Stopwatch()..start();
     
-    // Generate embedding
-    final embedding = await _embedder.embed(sanitizedQuery);
+    // Generate embedding using flutter_gemma
+    final embedding = await _generateEmbedding(sanitizedQuery);
     final embeddingTime = stopwatch.elapsed;
     
     // Search
@@ -461,6 +496,17 @@ class SecureRAGManager with WidgetsBindingObserver {
     
     _queryCache.set(sanitizedQuery, result);
     return result;
+  }
+  
+  /// Generate embedding using flutter_gemma's EmbeddingModel
+  Future<List<double>> _generateEmbedding(String text) async {
+    if (_embeddingModel == null) {
+      throw RAGException('Embedding model not initialized');
+    }
+    
+    // Use the generateEmbedding method from EmbeddingModel
+    final embedding = await _embeddingModel!.generateEmbedding(text);
+    return embedding;
   }
   
   String _sanitizeInput(String input) {
