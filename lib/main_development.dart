@@ -1,6 +1,9 @@
-import 'package:offline_sync/app/app.dart';
-import 'package:offline_sync/bootstrap.dart';
+import 'package:flutter/material.dart';
+import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/app/main_app.dart';
 
-Future<void> main() async {
-  await bootstrap(() => const App());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await setupLocator();
+  runApp(const MainApp());
 }
