@@ -104,17 +104,25 @@ dependencies:
     sdk: flutter
   # Core AI - handles both embeddings and generation
   flutter_gemma: ^0.12.0
+  
+  # State Management & Architecture (Stacked Framework)
+  stacked: ^3.5.0
+  stacked_services: ^1.6.0
+  
   # Cross-platform SQLite database
   sqlite3: ^3.1.3
   drift: ^2.23.0  # Type-safe SQL layer over sqlite3
-  # State management
+  
+  # Dependency Injection
   get_it: ^8.0.3
   injectable: ^2.5.0
+  
   # Secure storage for encryption keys
   flutter_secure_storage: ^9.2.4
   # Path provider for database location
   path_provider: ^2.1.5
   path: ^1.9.0
+  
   # Localization
   flutter_localizations:
     sdk: flutter
@@ -123,6 +131,7 @@ dependencies:
 dev_dependencies:
   build_runner: ^2.4.14
   drift_dev: ^2.23.0  # Code generator for drift
+  stacked_generator: ^1.6.0  # Code generator for stacked
   flutter_test:
     sdk: flutter
   injectable_generator: ^2.6.3
@@ -136,7 +145,80 @@ flutter:
     - assets/models/
 ```
 
-### 2. Android Configuration
+### 2. Stacked Architecture Overview
+
+This project uses the **Stacked architecture pattern** for state management and app structure.
+
+#### Key Concepts
+
+**Stacked** is an MVVM (Model-View-ViewModel) architecture framework that provides:
+- **Separation of Concerns**: Business logic in ViewModels, UI in Views
+- **Reactive State Management**: Automatic UI updates via `notifyListeners()`
+- **Dependency Injection**: Integration with `get_it` for service locator pattern
+- **Navigation & Dialogs**: Built-in services for navigation and UI interactions
+
+#### Project Structure
+
+```
+lib/
+├── app/
+│   ├── app.dart                    # App setup with Stacked
+│   └── app.locator.dart            # Generated service locator
+├── services/
+│   ├── rag_service.dart            # RAG business logic
+│   ├── vector_store_service.dart   # Vector store operations
+│   └── embedding_service.dart      # Embedding generation
+├── ui/
+│   ├── views/
+│   │   └── chat/
+│   │       ├── chat_view.dart      # UI (extends StackedView)
+│   │       └── chat_viewmodel.dart # Logic (extends BaseViewModel)
+│   └── widgets/
+│       └── message_card.dart       # Reusable widgets
+└── models/
+    └── message.dart                # Data models
+```
+
+#### Service Locator Setup
+
+Create `lib/app/app.dart`:
+```dart
+import 'package:stacked/stacked_annotations.dart';
+import 'package:stacked_services/stacked_services.dart';
+import 'package:offline_sync/services/rag_service.dart';
+import 'package:offline_sync/services/vector_store_service.dart';
+import 'package:offline_sync/services/embedding_service.dart';
+import 'package:offline_sync/ui/views/chat/chat_view.dart';
+
+@StackedApp(
+  routes: [
+    MaterialRoute(page: ChatView, initial: true),
+  ],
+  dependencies: [
+    // Stacked Services
+    LazySingleton(classType: NavigationService),
+    LazySingleton(classType: DialogService),
+    LazySingleton(classType: SnackbarService),
+    
+    // App Services
+    LazySingleton(classType: VectorStoreService),
+    LazySingleton(classType: EmbeddingService),
+    LazySingleton(classType: RagService),
+  ],
+)
+class App {}
+```
+
+Run code generation:
+```bash
+flutter pub run build_runner build --delete-conflicting-outputs
+```
+
+This generates:
+- `app.locator.dart` - Service locator setup
+- `app.router.dart` - Navigation routes
+
+### 3. Android Configuration
 
 **android/app/src/main/AndroidManifest.xml**
 ```xml
@@ -570,7 +652,421 @@ class SearchResult {
 }
 ```
 
-### Component 2: Secure RAG Manager
+### Component 2: RAG Service (Stacked Architecture)
+
+```dart
+import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/services/vector_store_service.dart';
+import 'package:offline_sync/services/embedding_service.dart';
+
+/// RAG Service - manages retrieval augmented generation
+/// Used as a singleton service in Stacked architecture
+class RagService {
+  final _vectorStore = locator<VectorStoreService>();
+  final _embeddingService = locator<EmbeddingService>();
+  final _queryCache = <String, RAGResult>{};
+  
+  InferenceModel? _generationModel;
+  bool _isInitialized = false;
+  
+  Future<void> initialize() async {
+    if (_isInitialized) return;
+    
+    // Vector store and embedding service initialize themselves
+    // Just need to prepare generation model reference
+    _isInitialized = true;
+  }
+  
+  Future<RAGResult> askWithRAG(
+    String query, {
+    bool includeMetrics = false,
+    bool bypassCache = false,
+  }) async {
+    if (!_isInitialized) {
+      throw Exception('RAG Service not initialized');
+    }
+    
+    // Input validation & prompt injection defense
+    final sanitizedQuery = _sanitizeInput(query);
+    if (!_isValidQuery(sanitizedQuery)) {
+      throw Exception('Invalid query detected');
+    }
+    
+    // Check cache
+    if (!bypassCache && _queryCache.containsKey(sanitizedQuery)) {
+      return _queryCache[sanitizedQuery]!;
+    }
+    
+    final stopwatch = Stopwatch()..start();
+    
+    // Generate embedding
+    final embedding = await _embeddingService.generateEmbedding(sanitizedQuery);
+    final embeddingTime = stopwatch.elapsed;
+    
+    // Search
+    final results = _vectorStore.hybridSearch(
+      sanitizedQuery,
+      embedding,
+      limit: 3,
+    );
+    final searchTime = stopwatch.elapsed - embeddingTime;
+    
+    // Build context
+    final context = _buildContext(results);
+    
+    // Generate response
+    await _ensureGenerationModel();
+    final response = await _generate(sanitizedQuery, context);
+    final generationTime = stopwatch.elapsed - searchTime - embeddingTime;
+    
+    final result = RAGResult(
+      response: response,
+      sources: results,
+      metrics: includeMetrics
+          ? RAGMetrics(
+              embeddingTime: embeddingTime,
+              searchTime: searchTime,
+              generationTime: generationTime,
+              chunksRetrieved: results.length,
+            )
+          : null,
+    );
+    
+    _queryCache[sanitizedQuery] = result;
+    return result;
+  }
+  
+  Future<void> ingestDocument(
+    String documentId,
+    String content, {
+    bool sanitizePII = false,
+  }) async {
+    if (sanitizePII) {
+      content = EnhancedPIIDetector.redact(content);
+    }
+    
+    final chunks = ContentChunker.split(content, chunkSize: 300);
+    
+    for (var i = 0; i < chunks.length; i++) {
+      final embedding = await _embeddingService.generateEmbedding(chunks[i]);
+      await _vectorStore.insertEmbedding(
+        id: '${documentId}_chunk_$i',
+        documentId: documentId,
+        content: chunks[i],
+        embedding: embedding,
+      );
+    }
+  }
+  
+  Future<void> _ensureGenerationModel() async {
+    if (_generationModel != null) return;
+    
+    _generationModel = await FlutterGemma.installModel(
+      modelAssetPath: 'assets/models/gemma-2b-it-gpu-int4.bin',
+      useGpu: true,
+    );
+  }
+  
+  Future<String> _generate(String query, String context) async {
+    final prompt = '''<start_of_turn>user
+Context:
+$context
+
+Question: $query
+
+Answer based only on the context above.
+<end_of_turn>
+<start_of_turn>model
+''';
+    
+    final chat = await _generationModel!.createChat(temperature: 0.0);
+    final response = StringBuffer();
+    
+    await for (final token in chat.sendMessageStream(prompt)) {
+      response.write(token.token);
+    }
+    
+    return response.toString();
+  }
+  
+  String _buildContext(List<SearchResult> results) {
+    return results
+        .map((r) => '[Source ${results.indexOf(r) + 1}]: ${r.content}')
+        .join('\n\n');
+  }
+  
+  String _sanitizeInput(String input) {
+    var sanitized = input;
+    final injectionPatterns = [
+      RegExp(r'<\s*start_of_turn\s*>', caseSensitive: false),
+      RegExp(r'<\s*end_of_turn\s*>', caseSensitive: false),
+      RegExp(r'ignore\s+previous\s+instructions?', caseSensitive: false),
+      RegExp(r'system\s*:', caseSensitive: false),
+    ];
+    
+    for (final pattern in injectionPatterns) {
+      sanitized = sanitized.replaceAll(pattern, '');
+    }
+    
+    return sanitized.trim();
+  }
+  
+  bool _isValidQuery(String query) {
+    if (query.isEmpty || query.length > 2000) return false;
+    if (query.split(RegExp(r'\s+')).length > 200) return false;
+    return true;
+  }
+  
+  void dispose() {
+    _generationModel?.close();
+    _generationModel = null;
+  }
+}
+
+class RAGResult {
+  final String response;
+  final List<SearchResult> sources;
+  final RAGMetrics? metrics;
+  
+  RAGResult({
+    required this.response,
+    required this.sources,
+    this.metrics,
+  });
+}
+
+class RAGMetrics {
+  final Duration embeddingTime;
+  final Duration searchTime;
+  final Duration generationTime;
+  final int chunksRetrieved;
+  
+  RAGMetrics({
+    required this.embeddingTime,
+    required this.searchTime,
+    required this.generationTime,
+    required this.chunksRetrieved,
+  });
+}
+```
+
+###  Component 3: Chat ViewModel Example
+
+```dart
+import 'package:stacked/stacked.dart';
+import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/services/rag_service.dart';
+import 'package:stacked_services/stacked_services.dart';
+
+class ChatViewModel extends BaseViewModel {
+  final _ragService = locator<RagService>();
+  final _snackbarService = locator<SnackbarService>();
+  
+  final List<ChatMessage> messages = [];
+  bool _isProcessing = false;
+  bool get isProcessing => _isProcessing;
+  
+  Future<void> initialize() async {
+    setBusy(true);
+    try {
+      await _ragService.initialize();
+    } catch (e) {
+      _snackbarService.showSnackbar(
+        message: 'Failed to initialize: $e',
+        duration: Duration(seconds: 3),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+  
+  Future<void> sendMessage(String content) async {
+    if (content.trim().isEmpty || _isProcessing) return;
+    
+    // Add user message
+    messages.add(ChatMessage(
+      content: content,
+      isUser: true,
+      timestamp: DateTime.now(),
+    ));
+    notifyListeners();
+    
+    _isProcessing = true;
+    notifyListeners();
+    
+    try {
+      // Get RAG response
+      final result = await _ragService.askWithRAG(
+        content,
+        includeMetrics: true,
+      );
+      
+      // Add AI response
+      messages.add(ChatMessage(
+        content: result.response,
+        isUser: false,
+        timestamp: DateTime.now(),
+        sources: result.sources,
+        metrics: result.metrics,
+      ));
+    } catch (e) {
+      _snackbarService.showSnackbar(
+        message: 'Error: $e',
+        duration: Duration(seconds: 3),
+      );
+    } finally {
+      _isProcessing = false;
+      notifyListeners();
+    }
+  }
+  
+  Future<void> ingestDocument(String documentId, String content) async {
+    setBusy(true);
+    try {
+      await _ragService.ingestDocument(
+        documentId,
+        content,
+        sanitizePII: true,
+      );
+      _snackbarService.showSnackbar(
+        message: 'Document ingested successfully',
+        duration: Duration(seconds: 2),
+      );
+    } catch (e) {
+      _snackbarService.showSnackbar(
+        message: 'Failed to ingest document: $e',
+        duration: Duration(seconds: 3),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+}
+
+class ChatMessage {
+  final String content;
+  final bool isUser;
+  final DateTime timestamp;
+  final List<SearchResult>? sources;
+  final RAGMetrics? metrics;
+  
+  ChatMessage({
+    required this.content,
+    required this.isUser,
+    required this.timestamp,
+    this.sources,
+    this.metrics,
+  });
+}
+```
+
+### Component 4: Chat View Example
+
+```dart
+import 'package:flutter/material.dart';
+import 'package:stacked/stacked.dart';
+import 'package:offline_sync/ui/views/chat/chat_viewmodel.dart';
+
+class ChatView extends StackedView<ChatViewModel> {
+  const ChatView({Key? key}) : super(key: key);
+  
+  @override
+  Widget builder(
+    BuildContext context,
+    ChatViewModel viewModel,
+    Widget? child,
+  ) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('RAG Chat'),
+      ),
+      body: Column(
+        children: [
+          // Messages list
+          Expanded(
+            child: viewModel.isBusy
+                ? Center(child: CircularProgressIndicator())
+                : ListView.builder(
+                    itemCount: viewModel.messages.length,
+                    itemBuilder: (context, index) {
+                      final message = viewModel.messages[index];
+                      return MessageCard(message: message);
+                    },
+                  ),
+          ),
+          // Input field
+          _buildMessageInput(viewModel),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildMessageInput(ChatViewModel viewModel) {
+    final controller = TextEditingController();
+    
+    return Padding(
+      padding: EdgeInsets.all(8.0),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                hintText: 'Ask a question...',
+                border: OutlineInputBorder(),
+              ),
+              enabled: !viewModel.isProcessing,
+            ),
+          ),
+          SizedBox(width: 8),
+          IconButton(
+            icon: Icon(Icons.send),
+            onPressed: viewModel.isProcessing
+                ? null
+                : () {
+                    viewModel.sendMessage(controller.text);
+                    controller.clear();
+                  },
+          ),
+        ],
+      ),
+    );
+  }
+  
+  @override
+  ChatViewModel viewModelBuilder(BuildContext context) => ChatViewModel();
+  
+  @override
+  void onViewModelReady(ChatViewModel viewModel) => viewModel.initialize();
+}
+
+class MessageCard extends StatelessWidget {
+  final ChatMessage message;
+  
+  const MessageCard({required this.message, Key? key}) : super(key: key);
+  
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: message.isUser ? Colors.blue : Colors.grey[300],
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text(
+          message.content,
+          style: TextStyle(
+            color: message.isUser ? Colors.white : Colors.black,
+          ),
+        ),
+      ),
+    );
+  }
+}
+```
 
 ```dart
 class SecureRAGManager with WidgetsBindingObserver {
