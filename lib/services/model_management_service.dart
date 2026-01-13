@@ -195,6 +195,6 @@ class ModelManagementService {
   }
 
   void dispose() {
-    _statusController.close();
+    unawaited(_statusController.close());
   }
 }

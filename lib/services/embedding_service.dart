@@ -7,7 +7,7 @@ import 'package:stacked_services/stacked_services.dart';
 
 class EmbeddingService {
   bool _isInitialized = false;
-  final _navigationService = locator<NavigationService>();
+  final NavigationService _navigationService = locator<NavigationService>();
 
   Future<void> _ensureInitialized() async {
     if (_isInitialized) return;

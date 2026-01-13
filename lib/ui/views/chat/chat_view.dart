@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:offline_sync/ui/views/chat/chat_viewmodel.dart';
@@ -9,10 +10,12 @@ class ChatView extends StackedView<ChatViewModel> {
   void _scrollToBottom(ChatViewModel viewModel) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (viewModel.scrollController.hasClients) {
-        viewModel.scrollController.animateTo(
-          viewModel.scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
+        unawaited(
+          viewModel.scrollController.animateTo(
+            viewModel.scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          ),
         );
       }
     });
@@ -73,7 +76,7 @@ class ChatView extends StackedView<ChatViewModel> {
 
   @override
   void onViewModelReady(ChatViewModel viewModel) {
-    viewModel.initialize();
+    unawaited(viewModel.initialize());
   }
 }
 

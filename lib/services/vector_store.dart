@@ -10,7 +10,6 @@ import 'package:sqlite3/common.dart';
 // Import platform-specific sqlite3
 // On native: global 'sqlite3' available directly
 // On web: global 'sqlite3' getter exported from bootstrap_web
-// ignore: uri_does_not_exist
 import 'package:sqlite3/sqlite3.dart'
     if (dart.library.html) 'package:offline_sync/bootstrap_web.dart';
 

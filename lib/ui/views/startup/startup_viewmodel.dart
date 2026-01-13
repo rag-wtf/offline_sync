@@ -6,8 +6,9 @@ import 'package:stacked/stacked.dart';
 import 'package:stacked_services/stacked_services.dart';
 
 class StartupViewModel extends BaseViewModel {
-  final _navigationService = locator<NavigationService>();
-  final _modelService = locator<ModelManagementService>();
+  final NavigationService _navigationService = locator<NavigationService>();
+  final ModelManagementService _modelService =
+      locator<ModelManagementService>();
 
   String? _statusMessage;
   String? get statusMessage => _statusMessage;

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
@@ -69,8 +70,10 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
                   ),
                   recognizer: TapGestureRecognizer()
                     ..onTap = () {
-                      launchUrl(
-                        Uri.parse('https://huggingface.co/settings/tokens'),
+                      unawaited(
+                        launchUrl(
+                          Uri.parse('https://huggingface.co/settings/tokens'),
+                        ),
                       );
                     },
                 ),

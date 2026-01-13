@@ -136,7 +136,7 @@ Answer based only on the provided context. If the answer is not in the context, 
     final chat = await _inferenceModel!.createChat(temperature: 0.1);
 
     // Using dynamic to bypass analyzer issues with library types
-    // ignore: avoid_dynamic_calls, FlutterGemma type mismatch
+    // ignore: FlutterGemma type mismatch
     final stream = (chat as dynamic).getChatStream(prompt: prompt) as Stream;
     await for (final token in stream) {
       // ignore: avoid_dynamic_calls, FlutterGemma type mismatch

@@ -24,8 +24,8 @@ class ChatMessage {
 }
 
 class ChatViewModel extends BaseViewModel {
-  final _ragService = locator<RagService>();
-  final _snackbarService = locator<SnackbarService>();
+  final RagService _ragService = locator<RagService>();
+  final SnackbarService _snackbarService = locator<SnackbarService>();
 
   final List<ChatMessage> messages = [];
   final ScrollController scrollController = ScrollController();
