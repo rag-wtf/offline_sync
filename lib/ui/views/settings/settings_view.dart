@@ -62,9 +62,16 @@ class _ModelTile extends StatelessWidget {
               LinearProgressIndicator(value: model.progress),
           ],
         ),
-        trailing: model.status == ModelStatus.notDownloaded
+        trailing:
+            model.status == ModelStatus.notDownloaded ||
+                model.status == ModelStatus.error
             ? IconButton(
-                icon: const Icon(Icons.download),
+                icon: Icon(
+                  model.status == ModelStatus.error
+                      ? Icons.refresh
+                      : Icons.download,
+                  color: model.status == ModelStatus.error ? Colors.red : null,
+                ),
                 onPressed: onDownload,
               )
             : model.status == ModelStatus.downloaded

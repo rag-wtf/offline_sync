@@ -98,10 +98,21 @@ class RagService {
 
   Future<void> _ensureInferenceModel() async {
     if (_inferenceModel != null) return;
-    _inferenceModel = await FlutterGemma.getActiveModel();
+
+    try {
+      _inferenceModel = await FlutterGemma.getActiveModel();
+    } catch (e) {
+      throw Exception(
+        'Failed to get active inference model: $e. '
+        'The model may still be downloading. Please wait and try again.',
+      );
+    }
+
     if (_inferenceModel == null) {
       throw Exception(
-        'Inference model not loaded. Please download/activate one.',
+        'No active inference model found. '
+        'The model may still be downloading. Please wait and try again, '
+        'or check the Settings screen to manually download a model.',
       );
     }
   }
