@@ -4,7 +4,14 @@ import 'package:flutter/foundation.dart';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:sqlite3/sqlite3.dart';
+import 'package:sqlite3/common.dart';
+
+// Import platform-specific sqlite3
+// On native: global 'sqlite3' available directly
+// On web: global 'sqlite3' getter exported from bootstrap_web
+// ignore: uri_does_not_exist
+import 'package:sqlite3/sqlite3.dart'
+    if (dart.library.html) 'package:offline_sync/bootstrap_web.dart';
 
 class SearchResult {
   SearchResult({
@@ -20,7 +27,7 @@ class SearchResult {
 }
 
 class VectorStore {
-  Database? _db;
+  CommonDatabase? _db;
   bool _hasFts5 = true;
 
   Future<void> initialize() async {
@@ -119,7 +126,7 @@ class VectorStore {
     // Convert to a format suitable for compute (plain data)
     final data = rows
         .map(
-          (row) => {
+          (Row row) => {
             'id': row['id'],
             'content': row['content'],
             'embedding': row['embedding'],
@@ -153,7 +160,7 @@ class VectorStore {
 
       return results
           .map(
-            (row) => SearchResult(
+            (Row row) => SearchResult(
               id: row['id'] as String,
               content: row['content'] as String,
               score: -(row['score'] as double),
@@ -188,7 +195,7 @@ class VectorStore {
 
     return results
         .map(
-          (row) => SearchResult(
+          (Row row) => SearchResult(
             id: row['id'] as String,
             content: row['content'] as String,
             score: 0.5,
@@ -213,16 +220,17 @@ class VectorStore {
     _db!.prepare('''
 INSERT OR REPLACE INTO vectors 
          (id, document_id, content, embedding, metadata, created_at) 
-         VALUES (?, ?, ?, ?, ?, ?)''')
-      ..execute([
-        id,
-        documentId,
-        content,
-        embeddingBytes,
-        if (metadata != null) jsonEncode(metadata) else null,
-        DateTime.now().millisecondsSinceEpoch,
-      ])
-      ..dispose();
+         VALUES (?, ?, ?, ?, ?, ?)
+''')
+    ..execute([
+      id,
+      documentId,
+      content,
+      embeddingBytes,
+      if (metadata != null) jsonEncode(metadata) else null,
+      DateTime.now().millisecondsSinceEpoch,
+    ])
+    ..close();
   }
 
   Uint8List _encodeEmbedding(List<double> embedding) {
@@ -281,7 +289,7 @@ INSERT OR REPLACE INTO vectors
   }
 
   void close() {
-    _db?.dispose();
+    _db?.close();
     _db = null;
   }
 }

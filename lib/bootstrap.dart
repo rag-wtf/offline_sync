@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:developer';
-import 'dart:ffi';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
-import 'package:sqlite3/open.dart';
+
+// Conditional imports for SQLite initialization
+import 'package:offline_sync/bootstrap_mobile.dart'
+    if (dart.library.html) 'package:offline_sync/bootstrap_web.dart'
+    as platform;
 
 Future<void> bootstrap(FutureOr<Widget> Function() builder) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,9 +19,8 @@ Future<void> bootstrap(FutureOr<Widget> Function() builder) async {
     log(details.exceptionAsString(), stackTrace: details.stack);
   };
 
-  open.overrideFor(OperatingSystem.linux, () {
-    return DynamicLibrary.open('libsqlite3.so.0');
-  });
+  // Platform-specific SQLite initialization
+  await platform.initializeSqlite();
 
   await setupLocator();
 

@@ -1,8 +1,6 @@
-import 'dart:ffi';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/services/vector_store.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
-import 'package:sqlite3/open.dart';
 
 class MockPathProviderPlatform extends PathProviderPlatform {
   @override
@@ -10,10 +8,7 @@ class MockPathProviderPlatform extends PathProviderPlatform {
 }
 
 void main() {
-  open.overrideFor(
-    OperatingSystem.linux,
-    () => DynamicLibrary.open('libsqlite3.so.0'),
-  );
+  // No need for open.overrideFor in sqlite3 v3 - uses automatic build hooks
   TestWidgetsFlutterBinding.ensureInitialized();
   late VectorStore vectorStore;
 
