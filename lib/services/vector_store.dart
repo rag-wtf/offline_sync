@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'dart:math';
-import 'package:flutter/foundation.dart';
 
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
+import 'package:offline_sync/services/vector_store_path_stub.dart'
+    if (dart.library.io) 'package:offline_sync/services/vector_store_path_native.dart'
+    as path_helper;
 import 'package:sqlite3/common.dart';
 
 // Import platform-specific sqlite3
@@ -31,8 +32,10 @@ class VectorStore {
   bool _hasFts5 = true;
 
   Future<void> initialize() async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final dbPath = p.join(appDir.path, 'vectors.db');
+    // On web: use in-memory mode
+    // (IndexedDB via bootstrap_web handles persistence)
+    // On native: use file-based database
+    final dbPath = await path_helper.getDatabasePath('vectors.db');
 
     _db = sqlite3.open(dbPath);
     _onCreate();
@@ -222,15 +225,15 @@ INSERT OR REPLACE INTO vectors
          (id, document_id, content, embedding, metadata, created_at) 
          VALUES (?, ?, ?, ?, ?, ?)
 ''')
-    ..execute([
-      id,
-      documentId,
-      content,
-      embeddingBytes,
-      if (metadata != null) jsonEncode(metadata) else null,
-      DateTime.now().millisecondsSinceEpoch,
-    ])
-    ..close();
+      ..execute([
+        id,
+        documentId,
+        content,
+        embeddingBytes,
+        if (metadata != null) jsonEncode(metadata) else null,
+        DateTime.now().millisecondsSinceEpoch,
+      ])
+      ..close();
   }
 
   Uint8List _encodeEmbedding(List<double> embedding) {
