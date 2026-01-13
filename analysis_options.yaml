@@ -9,7 +9,8 @@ analyzer:
     - "**/*.logger.dart"
     - "**/*.dialogs.dart"
     - "**/*.bottomsheets.dart"
-
+    - "edge_ai/**"
+    
 linter:
   rules:
     public_member_api_docs: false

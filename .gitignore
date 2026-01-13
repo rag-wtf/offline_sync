@@ -116,3 +116,6 @@ lib/l10n/gen/
 
 # Vector store
 vectors.db
+
+# Edge AI
+edge_ai
