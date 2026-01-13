@@ -5,19 +5,20 @@ class AuthTokenService {
   // Private constructor to prevent instantiation
   AuthTokenService._();
 
-  static const String _authTokenKey = 'huggingface_auth_token';
+  static const String _authTokenKey = 'auth_token';
 
   /// Load the stored HuggingFace authentication token.
   ///
   /// Returns the token string if found, or null if no token is saved.
-  /// Priority: 1) SharedPreferences, 2) Environment Variable (HF_TOKEN)
+  /// Priority: 1) SharedPreferences,
+  ///           2) Environment Variable (HUGGINGFACE_TOKEN)
   static Future<String?> loadToken() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(_authTokenKey);
 
     // Fallback to environment variable if not in SharedPreferences
     if (token == null || token.isEmpty) {
-      const envToken = String.fromEnvironment('HF_TOKEN');
+      const envToken = String.fromEnvironment('HUGGINGFACE_TOKEN');
       if (envToken.isNotEmpty) {
         // Auto-save environment token for persistence
         await prefs.setString(_authTokenKey, envToken);

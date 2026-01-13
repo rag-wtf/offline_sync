@@ -135,24 +135,25 @@ class ModelManagementService {
 
     try {
       final token = await AuthTokenService.loadToken();
-      var downloadUrl = model.url;
+
+      // Use clean URL without appended token
+      final downloadUrl = model.url;
+
       if (token != null && token.isNotEmpty) {
-        final separator = downloadUrl.contains('?') ? '&' : '?';
-        downloadUrl = '$downloadUrl${separator}token=$token';
         log('Using authentication token for download');
       }
 
       if (model.type == 'inference') {
         await FlutterGemma.installModel(
           modelType: ModelType.gemmaIt,
-        ).fromNetwork(downloadUrl).withProgress((int progress) {
+        ).fromNetwork(downloadUrl, token: token).withProgress((int progress) {
           log('Download progress for $modelId: $progress%');
           model.progress = progress / 100.0;
           _notify();
         }).install();
       } else {
         await FlutterGemma.installEmbedder()
-            .modelFromNetwork(downloadUrl)
+            .modelFromNetwork(downloadUrl, token: token)
             .withModelProgress((int progress) {
               log('Download progress for $modelId: $progress%');
               model.progress = progress / 100.0;
