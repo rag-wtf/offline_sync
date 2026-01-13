@@ -51,9 +51,30 @@ class ModelManagementService {
         model
           ..status = ModelStatus.downloaded
           ..progress = 1.0;
+
+        if (model.type == 'embedding') {
+          await _activateEmbeddingModel(model);
+        }
+      } else {
+        // Auto-download embedding model if missing
+        if (model.type == 'embedding') {
+          await downloadModel(model.id);
+        }
       }
     }
     _notify();
+  }
+
+  Future<void> _activateEmbeddingModel(ModelInfo model) async {
+    try {
+      // Just install/load without progress tracking since it's local
+      await FlutterGemma.installEmbedder()
+          .modelFromNetwork(model.url)
+          .install();
+    } on Exception catch (e) {
+      model.status = ModelStatus.error;
+      _statusController.addError('Activation error: $e');
+    }
   }
 
   Future<void> downloadModel(String modelId) async {
