@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
@@ -12,6 +13,8 @@ class StartupViewModel extends BaseViewModel {
   final ModelManagementService _modelService =
       locator<ModelManagementService>();
 
+  StreamSubscription<List<ModelInfo>>? _subscription;
+
   String? _statusMessage;
   String? get statusMessage => _statusMessage;
 
@@ -22,7 +25,7 @@ class StartupViewModel extends BaseViewModel {
     log('DEBUG: runStartupLogic called');
     log('runStartupLogic called', name: 'StartupViewModel');
 
-    _modelService.modelStatusStream.listen(
+    _subscription = _modelService.modelStatusStream.listen(
       (models) {
         final downloading = models.where(
           (m) => m.status == ModelStatus.downloading,
@@ -157,5 +160,11 @@ class StartupViewModel extends BaseViewModel {
       transitionStyle: Transition.fade,
     );
     await retry();
+  }
+
+  @override
+  void dispose() {
+    unawaited(_subscription?.cancel());
+    super.dispose();
   }
 }

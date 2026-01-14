@@ -122,8 +122,8 @@ class ChatViewModel extends BaseViewModel {
       allowedExtensions: [
         'txt',
         'md',
-        'pdf',
-      ], // PDF requires extra parsing, focusing on text for now
+        // PDF parsing not yet implemented
+      ],
     );
 
     if (result == null || result.files.isEmpty) return;

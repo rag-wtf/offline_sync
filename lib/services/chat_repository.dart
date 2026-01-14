@@ -11,29 +11,31 @@ class ChatRepository {
 
   final VectorStore _vectorStore = locator<VectorStore>();
 
-  CommonDatabase get db => _vectorStore.db!;
+  CommonDatabase get db {
+    final database = _vectorStore.db;
+    if (database == null) {
+      throw StateError(
+        'Database not initialized. Call VectorStore.initialize() first.',
+      );
+    }
+    return database;
+  }
 
-  /// Initialize the chat_messages table
+  /// Initialize the repository
+  /// Note: The chat_messages table is created by VectorStore._onCreate()
   void initialize() {
-    db.execute('''
-      CREATE TABLE IF NOT EXISTS chat_messages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        content TEXT NOT NULL,
-        is_user INTEGER NOT NULL,
-        timestamp INTEGER NOT NULL,
-        sources TEXT,
-        metrics TEXT
-      )
-    ''');
+    // Table creation is handled by VectorStore
+    // This method is kept for future initialization needs
   }
 
   /// Save a chat message
   Future<void> saveMessage(ChatMessage message) async {
-    db.prepare('''
+    final stmt = db.prepare('''
       INSERT INTO chat_messages (content, is_user, timestamp, sources, metrics)
       VALUES (?, ?, ?, ?, ?)
-    ''')
-      ..execute([
+    ''');
+    try {
+      stmt.execute([
         message.content,
         if (message.isUser) 1 else 0,
         message.timestamp.millisecondsSinceEpoch,
@@ -61,8 +63,10 @@ class ChatRepository {
           })
         else
           null,
-      ])
-      ..close();
+      ]);
+    } finally {
+      stmt.close();
+    }
   }
 
   /// Load recent messages (default: last 50)

@@ -78,6 +78,11 @@ class VectorStore {
       )
     ''');
 
+    // Create index on document_id for efficient document-based queries
+    _db!.execute('''
+      CREATE INDEX IF NOT EXISTS idx_vectors_doc_id ON vectors(document_id)
+    ''');
+
     // Chat messages table for persistence
     _db!.execute('''
       CREATE TABLE IF NOT EXISTS chat_messages (
@@ -88,6 +93,11 @@ class VectorStore {
         sources TEXT,
         metrics TEXT
       )
+    ''');
+
+    // Create index on timestamp for efficient chronological queries
+    _db!.execute('''
+      CREATE INDEX IF NOT EXISTS idx_chat_timestamp ON chat_messages(timestamp)
     ''');
 
     if (_hasFts5) {
@@ -218,12 +228,21 @@ class VectorStore {
         .where((w) => w.length > 2);
     if (words.isEmpty) return [];
 
-    final conditions = words
+    // Sanitize and limit search terms to prevent SQL injection
+    final sanitizedWords = words
+        .take(10) // Limit to 10 search terms max
+        .map((w) => w.replaceAll(RegExp('[%_]'), '')) // Remove LIKE wildcards
+        .where((w) => w.isNotEmpty)
+        .toList();
+
+    if (sanitizedWords.isEmpty) return [];
+
+    final conditions = sanitizedWords
         .map((w) => "LOWER(content) LIKE '%' || ? || '%'")
         .join(' OR ');
     final results = _db!.select(
       'SELECT * FROM vectors WHERE $conditions LIMIT ?',
-      [...words, limit],
+      [...sanitizedWords, limit],
     );
 
     return results
@@ -296,7 +315,15 @@ INSERT OR REPLACE INTO vectors
   }
 
   String _sanitizeFtsQuery(String query) {
-    return query.replaceAll('"', '""').replaceAll('*', '').replaceAll('-', ' ');
+    // Remove FTS5 special characters and operators to prevent injection
+    return query
+        // Remove special characters used in FTS5 syntax
+        .replaceAll(RegExp(r'["\*\-\(\)\^\:]'), ' ')
+        // Remove FTS5 boolean operators (case-insensitive)
+        .replaceAll(RegExp(r'\b(OR|AND|NOT|NEAR)\b', caseSensitive: false), ' ')
+        // Collapse multiple spaces
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
   }
 
   /// Merge results using Reciprocal Rank Fusion (RRF)

@@ -84,7 +84,13 @@ class _MessageTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = message.isUser ? Colors.blue.shade100 : Colors.grey.shade200;
+    final theme = Theme.of(context);
+    final color = message.isUser
+        ? theme.colorScheme.primaryContainer
+        : theme.colorScheme.surfaceContainerHighest;
+    final textColor = message.isUser
+        ? theme.colorScheme.onPrimaryContainer
+        : theme.colorScheme.onSurface;
     final align = message.isUser
         ? CrossAxisAlignment.end
         : CrossAxisAlignment.start;
@@ -106,11 +112,17 @@ class _MessageTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(message.content),
+                Text(
+                  message.content,
+                  style: TextStyle(color: textColor),
+                ),
                 const SizedBox(height: 4),
                 Text(
                   DateFormat('HH:mm').format(message.timestamp),
-                  style: const TextStyle(fontSize: 10, color: Colors.black54),
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: textColor.withValues(alpha: 0.6),
+                  ),
                 ),
               ],
             ),
@@ -155,6 +167,12 @@ class _ChatInputState extends State<_ChatInput> {
     if (_controller.text.isEmpty) return;
     widget.onSend(_controller.text);
     _controller.clear();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 
   @override
