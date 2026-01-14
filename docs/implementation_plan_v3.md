@@ -386,7 +386,7 @@ class VectorStore {
       _db!.select("SELECT fts5('test')");
     } catch (e) {
       _hasFts5 = false;
-      print('FTS5 not available, using fallback search');
+      log('FTS5 not available, using fallback search');
     }
   }
   
@@ -1363,7 +1363,7 @@ void main() {
 Some text before.
 ```dart
 void main() {
-  print('Hello');
+  log('Hello');
 }
 ```
 Some text after.
@@ -1372,7 +1372,7 @@ Some text after.
       
       // Code block should not be split
       final codeChunk = chunks.firstWhere((c) => c.contains('```dart'));
-      expect(codeChunk, contains("print('Hello')"));
+      expect(codeChunk, contains("log('Hello')"));
     });
     
     test('handles empty input', () {
