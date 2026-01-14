@@ -161,12 +161,18 @@ Answer based only on the provided context. If the answer is not in the context, 
     final response = StringBuffer();
     final chat = await _inferenceModel!.createChat(temperature: 0.1);
 
-    // Using dynamic to bypass analyzer issues with library types
-    // ignore: FlutterGemma type mismatch
-    final stream = (chat as dynamic).getChatStream(prompt: prompt) as Stream;
-    await for (final token in stream) {
-      // ignore: avoid_dynamic_calls, FlutterGemma type mismatch
-      response.write(token?.text ?? '');
+    // Initialize the chat session
+    await chat.initSession();
+
+    // Add the prompt as a query
+    await chat.addQuery(Message(text: prompt, isUser: true));
+
+    // Get the streaming response
+    final stream = chat.generateChatResponseAsync();
+    await for (final modelResponse in stream) {
+      if (modelResponse is TextResponse) {
+        response.write(modelResponse.token);
+      }
     }
 
     return response.toString();
