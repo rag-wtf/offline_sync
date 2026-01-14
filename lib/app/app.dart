@@ -19,10 +19,7 @@ import 'package:stacked_services/stacked_services.dart';
     LazySingleton<NavigationService>(classType: NavigationService),
     LazySingleton<SnackbarService>(classType: SnackbarService),
     LazySingleton<VectorStore>(classType: VectorStore),
-    LazySingleton<ChatRepository>(
-      classType: ChatRepository,
-      resolveUsing: ChatRepository.fromVectorStore,
-    ),
+    LazySingleton<ChatRepository>(classType: ChatRepository),
     LazySingleton<ModelManagementService>(classType: ModelManagementService),
     LazySingleton<EmbeddingService>(classType: EmbeddingService),
     LazySingleton<RagService>(classType: RagService),

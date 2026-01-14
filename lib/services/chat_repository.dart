@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/rag_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
 import 'package:offline_sync/ui/views/chat/chat_viewmodel.dart';
@@ -6,14 +7,11 @@ import 'package:sqlite3/common.dart';
 
 /// Repository for persisting chat messages to SQLite
 class ChatRepository {
-  ChatRepository(this.db);
+  ChatRepository();
 
-  /// Factory method for service locator integration
-  factory ChatRepository.fromVectorStore(VectorStore vectorStore) {
-    return ChatRepository(vectorStore.db!);
-  }
+  final VectorStore _vectorStore = locator<VectorStore>();
 
-  final CommonDatabase db;
+  CommonDatabase get db => _vectorStore.db!;
 
   /// Initialize the chat_messages table
   void initialize() {

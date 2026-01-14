@@ -33,7 +33,7 @@ Future<void> setupLocator({
   locator.registerLazySingleton(() => NavigationService());
   locator.registerLazySingleton(() => SnackbarService());
   locator.registerLazySingleton(() => VectorStore());
-  locator.registerLazySingleton(() => ChatRepository.fromVectorStore());
+  locator.registerLazySingleton(() => ChatRepository());
   locator.registerLazySingleton(() => ModelManagementService());
   locator.registerLazySingleton(() => EmbeddingService());
   locator.registerLazySingleton(() => RagService());
