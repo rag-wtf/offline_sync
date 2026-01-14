@@ -75,6 +75,18 @@ class VectorStore {
       )
     ''');
 
+    // Chat messages table for persistence
+    _db!.execute('''
+      CREATE TABLE IF NOT EXISTS chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        content TEXT NOT NULL,
+        is_user INTEGER NOT NULL,
+        timestamp INTEGER NOT NULL,
+        sources TEXT,
+        metrics TEXT
+      )
+    ''');
+
     if (_hasFts5) {
       try {
         _db!.execute('''
@@ -296,46 +308,48 @@ INSERT OR REPLACE INTO vectors
     return query.replaceAll('"', '""').replaceAll('*', '').replaceAll('-', ' ');
   }
 
+  /// Merge results using Reciprocal Rank Fusion (RRF)
+  /// RRF is the industry standard for hybrid search as it handles
+  /// incompatible score scales (BM25 vs cosine similarity) correctly
   List<SearchResult> _mergeResults(
     List<SearchResult> semantic,
     List<SearchResult> keyword, {
     required double semanticWeight,
     required int limit,
   }) {
-    final merged = <String, SearchResult>{};
+    const k = 60.0; // RRF constant
+    final scores = <String, double>{};
+    final items = <String, SearchResult>{};
+
+    // Calculate RRF scores based on rank position
+    for (var i = 0; i < semantic.length; i++) {
+      final id = semantic[i].id;
+      scores[id] = (scores[id] ?? 0) + semanticWeight / (k + i + 1);
+      items[id] = semantic[i];
+    }
+
     final keywordWeight = 1.0 - semanticWeight;
-
-    for (final s in semantic) {
-      merged[s.id] = SearchResult(
-        id: s.id,
-        content: s.content,
-        score: s.score * semanticWeight,
-        metadata: s.metadata,
-      );
+    for (var i = 0; i < keyword.length; i++) {
+      final id = keyword[i].id;
+      scores[id] = (scores[id] ?? 0) + keywordWeight / (k + i + 1);
+      items[id] ??= keyword[i];
     }
 
-    for (final k in keyword) {
-      if (merged.containsKey(k.id)) {
-        final existing = merged[k.id]!;
-        merged[k.id] = SearchResult(
-          id: k.id,
-          content: k.content,
-          score: existing.score + (k.score * keywordWeight),
-          metadata: k.metadata,
-        );
-      } else {
-        merged[k.id] = SearchResult(
-          id: k.id,
-          content: k.content,
-          score: k.score * keywordWeight,
-          metadata: k.metadata,
-        );
-      }
-    }
+    // Sort by RRF score and return top results
+    final sorted = scores.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
 
-    final sorted = merged.values.toList()
-      ..sort((a, b) => b.score.compareTo(a.score));
-    return sorted.take(limit).toList();
+    return sorted
+        .take(limit)
+        .map(
+          (e) => SearchResult(
+            id: e.key,
+            content: items[e.key]!.content,
+            score: e.value,
+            metadata: items[e.key]!.metadata,
+          ),
+        )
+        .toList();
   }
 
   void close() {
