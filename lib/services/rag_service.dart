@@ -181,33 +181,61 @@ Answer based only on the provided context. If the answer is not in the context, 
         .join('\n\n');
   }
 
+  /// Split text into chunks using sentence boundaries with overlap
+  /// This provides better semantic coherence than word-based chunking
   List<String> _splitIntoChunks(
     String text,
-    int wordsPerChunk, {
-    int overlap = 50,
-  }) {
-    final words = text.split(RegExp(r'\s+'));
+    int targetWords,
+  ) {
+    // Split into sentences using regex (. ! ?)
+    final sentences = text
+        .split(RegExp(r'(?<=[.!?])\s+'))
+        .where((s) => s.trim().isNotEmpty)
+        .toList();
+
+    if (sentences.isEmpty) return [text];
+    if (sentences.length == 1) return sentences;
+
     final chunks = <String>[];
+    final buffer = <String>[];
+    var wordCount = 0;
 
-    if (words.length <= wordsPerChunk) {
-      return [text];
-    }
+    for (var i = 0; i < sentences.length; i++) {
+      final sentence = sentences[i];
+      final sentenceWords = sentence.split(RegExp(r'\s+')).length;
 
-    var start = 0;
-    while (start < words.length) {
-      var end = start + wordsPerChunk;
-      if (end > words.length) {
-        end = words.length;
+      // Add sentence to buffer
+      buffer.add(sentence);
+      wordCount += sentenceWords;
+
+      // Check if we've reached target size or end of text
+      final isLastSentence = i == sentences.length - 1;
+      if (wordCount >= targetWords || isLastSentence) {
+        chunks.add(buffer.join(' '));
+
+        // Calculate overlap for next chunk (15% of target)
+        if (!isLastSentence) {
+          final overlapWords = (targetWords * 0.15).toInt();
+          var overlapCount = 0;
+          buffer.clear();
+          wordCount = 0;
+
+          // Add sentences from end for overlap
+          for (var j = buffer.length - 1; j >= 0; j--) {
+            final s = sentences[i - j];
+            final w = s.split(RegExp(r'\s+')).length;
+            if (overlapCount + w <= overlapWords) {
+              buffer.insert(0, s);
+              overlapCount += w;
+              wordCount += w;
+            } else {
+              break;
+            }
+          }
+        }
       }
-
-      chunks.add(words.sublist(start, end).join(' '));
-
-      if (end == words.length) break;
-
-      start += wordsPerChunk - overlap;
-      if (start < 0) start = 0; // Safety
     }
 
-    return chunks;
+    return chunks.isEmpty ? [text] : chunks;
   }
 }
