@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/widgets.dart';
 import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/services/chat_repository.dart';
 import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/rag_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
@@ -29,6 +30,7 @@ class ChatViewModel extends BaseViewModel {
   final RagService _ragService = locator<RagService>();
   final SnackbarService _snackbarService = locator<SnackbarService>();
   final NavigationService _navigationService = locator<NavigationService>();
+  final ChatRepository _chatRepository = locator<ChatRepository>();
 
   final List<ChatMessage> messages = [];
   final ScrollController scrollController = ScrollController();
@@ -46,6 +48,12 @@ class ChatViewModel extends BaseViewModel {
     setBusy(true);
     try {
       await _ragService.initialize();
+      // Load previous chat history
+      final history = await _chatRepository.loadMessages();
+      messages.addAll(history);
+      if (messages.isNotEmpty) {
+        _shouldScroll = true;
+      }
     } on Exception catch (e) {
       _snackbarService.showSnackbar(message: 'Initialization error: $e');
     } finally {
@@ -62,6 +70,7 @@ class ChatViewModel extends BaseViewModel {
       timestamp: DateTime.now(),
     );
     messages.add(userMsg);
+    await _chatRepository.saveMessage(userMsg); // Persist user message
     _shouldScroll = true;
     notifyListeners();
 
@@ -71,15 +80,15 @@ class ChatViewModel extends BaseViewModel {
     try {
       final result = await _ragService.askWithRAG(text, includeMetrics: true);
 
-      messages.add(
-        ChatMessage(
-          content: result.response,
-          isUser: false,
-          timestamp: DateTime.now(),
-          sources: result.sources,
-          metrics: result.metrics,
-        ),
+      final aiMsg = ChatMessage(
+        content: result.response,
+        isUser: false,
+        timestamp: DateTime.now(),
+        sources: result.sources,
+        metrics: result.metrics,
       );
+      messages.add(aiMsg);
+      await _chatRepository.saveMessage(aiMsg); // Persist AI response
       _shouldScroll = true;
     } on AuthenticationRequiredException {
       // Show token input dialog

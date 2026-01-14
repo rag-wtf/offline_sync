@@ -1,3 +1,4 @@
+import 'package:offline_sync/services/chat_repository.dart';
 import 'package:offline_sync/services/embedding_service.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/rag_service.dart';
@@ -18,6 +19,10 @@ import 'package:stacked_services/stacked_services.dart';
     LazySingleton<NavigationService>(classType: NavigationService),
     LazySingleton<SnackbarService>(classType: SnackbarService),
     LazySingleton<VectorStore>(classType: VectorStore),
+    LazySingleton<ChatRepository>(
+      classType: ChatRepository,
+      resolveUsing: ChatRepository.fromVectorStore,
+    ),
     LazySingleton<ModelManagementService>(classType: ModelManagementService),
     LazySingleton<EmbeddingService>(classType: EmbeddingService),
     LazySingleton<RagService>(classType: RagService),

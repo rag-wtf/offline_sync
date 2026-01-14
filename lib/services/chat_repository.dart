@@ -8,6 +8,11 @@ import 'package:sqlite3/common.dart';
 class ChatRepository {
   ChatRepository(this.db);
 
+  /// Factory method for service locator integration
+  static ChatRepository fromVectorStore(VectorStore vectorStore) {
+    return ChatRepository(vectorStore.db!);
+  }
+
   final CommonDatabase db;
 
   /// Initialize the chat_messages table

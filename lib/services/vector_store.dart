@@ -46,6 +46,9 @@ class VectorStore {
   CommonDatabase? _db;
   bool _hasFts5 = true;
 
+  /// Expose database for ChatRepository
+  CommonDatabase? get db => _db;
+
   Future<void> initialize() async {
     // On web: use in-memory mode
     // (IndexedDB via bootstrap_web handles persistence)
