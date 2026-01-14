@@ -84,7 +84,8 @@ class RagService {
   }
 
   Future<void> ingestDocument(String documentId, String content) async {
-    // Chunk text to fit embedding model's 256 token limit (254 usable after special tokens)
+    // Chunk text to fit embedding model's 256 token limit
+    // (254 usable after special tokens)
     // Using very conservative 80 words (~100-160 tokens for code/markdown content)
     // Markdown/code can tokenize at 2-3 tokens per word vs 1.3 for regular text
     final chunks = _splitIntoChunks(content, 80);
@@ -190,7 +191,8 @@ Answer based only on the provided context. If the answer is not in the context, 
   }
 
   /// Split text into chunks using character limit with line-based boundaries
-  /// This handles markdown content (bullet points, tables, code) that lacks sentence endings
+  /// This handles markdown content (bullet points, tables, code) that
+  /// lacks sentence endings
   List<String> _splitIntoChunks(
     String text,
     int targetWords, // kept for API compatibility but now uses chars internally
