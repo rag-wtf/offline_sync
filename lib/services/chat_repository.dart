@@ -26,39 +26,40 @@ class ChatRepository {
 
   /// Save a chat message
   Future<void> saveMessage(ChatMessage message) async {
-    final stmt = db.prepare('''
+    db.prepare('''
       INSERT INTO chat_messages (content, is_user, timestamp, sources, metrics)
       VALUES (?, ?, ?, ?, ?)
-    ''');
-
-    stmt.execute([
-      message.content,
-      message.isUser ? 1 : 0,
-      message.timestamp.millisecondsSinceEpoch,
-      message.sources != null
-          ? jsonEncode(
-              message.sources!
-                  .map(
-                    (s) => {
-                      'id': s.id,
-                      'content': s.content,
-                      'score': s.score,
-                      'metadata': s.metadata,
-                    },
-                  )
-                  .toList(),
-            )
-          : null,
-      message.metrics != null
-          ? jsonEncode({
-              'embeddingTime': message.metrics!.embeddingTime.inMicroseconds,
-              'searchTime': message.metrics!.searchTime.inMicroseconds,
-              'generationTime': message.metrics!.generationTime.inMicroseconds,
-              'chunksRetrieved': message.metrics!.chunksRetrieved,
-            })
-          : null,
-    ]);
-    stmt.close();
+    ''')
+      ..execute([
+        message.content,
+        if (message.isUser) 1 else 0,
+        message.timestamp.millisecondsSinceEpoch,
+        if (message.sources != null)
+          jsonEncode(
+            message.sources!
+                .map(
+                  (s) => {
+                    'id': s.id,
+                    'content': s.content,
+                    'score': s.score,
+                    'metadata': s.metadata,
+                  },
+                )
+                .toList(),
+          )
+        else
+          null,
+        if (message.metrics != null)
+          jsonEncode({
+            'embeddingTime': message.metrics!.embeddingTime.inMicroseconds,
+            'searchTime': message.metrics!.searchTime.inMicroseconds,
+            'generationTime': message.metrics!.generationTime.inMicroseconds,
+            'chunksRetrieved': message.metrics!.chunksRetrieved,
+          })
+        else
+          null,
+      ])
+      ..close();
   }
 
   /// Load recent messages (default: last 50)
@@ -77,16 +78,17 @@ class ChatRepository {
           List<SearchResult>? sources;
           if (row['sources'] != null) {
             final sourcesJson = jsonDecode(row['sources'] as String) as List;
-            sources = sourcesJson
-                .map(
-                  (s) => SearchResult(
-                    id: s['id'] as String,
-                    content: s['content'] as String,
-                    score: s['score'] as double,
-                    metadata: s['metadata'] as Map<String, dynamic>,
-                  ),
-                )
-                .toList();
+            sources = sourcesJson.map(
+              (s) {
+                final sourceMap = s as Map<String, dynamic>;
+                return SearchResult(
+                  id: sourceMap['id'] as String,
+                  content: sourceMap['content'] as String,
+                  score: sourceMap['score'] as double,
+                  metadata: sourceMap['metadata'] as Map<String, dynamic>,
+                );
+              },
+            ).toList();
           }
 
           RAGMetrics? metrics;
