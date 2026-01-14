@@ -84,8 +84,10 @@ class RagService {
   }
 
   Future<void> ingestDocument(String documentId, String content) async {
-    // Basic chunking logic
-    final chunks = _splitIntoChunks(content, 500);
+    // Chunk text to fit embedding model's 256 token limit (254 usable after special tokens)
+    // Using very conservative 80 words (~100-160 tokens for code/markdown content)
+    // Markdown/code can tokenize at 2-3 tokens per word vs 1.3 for regular text
+    final chunks = _splitIntoChunks(content, 80);
 
     // Collect all embeddings first
     final embeddingDataList = <EmbeddingData>[];
@@ -187,61 +189,54 @@ Answer based only on the provided context. If the answer is not in the context, 
         .join('\n\n');
   }
 
-  /// Split text into chunks using sentence boundaries with overlap
-  /// This provides better semantic coherence than word-based chunking
+  /// Split text into chunks using character limit with line-based boundaries
+  /// This handles markdown content (bullet points, tables, code) that lacks sentence endings
   List<String> _splitIntoChunks(
     String text,
-    int targetWords,
+    int targetWords, // kept for API compatibility but now uses chars internally
   ) {
-    // Split into sentences using regex (. ! ?)
-    final sentences = text
-        .split(RegExp(r'(?<=[.!?])\s+'))
-        .where((s) => s.trim().isNotEmpty)
-        .toList();
+    // Use character limit: ~500 chars ≈ ~100 tokens for mixed content
+    // This provides a safe margin under the 254 token limit
+    const maxChars = 500;
 
-    if (sentences.isEmpty) return [text];
-    if (sentences.length == 1) return sentences;
+    // Split on newlines to preserve markdown structure
+    final lines = text.split('\n');
+
+    if (text.length <= maxChars) return [text];
 
     final chunks = <String>[];
-    final buffer = <String>[];
-    var wordCount = 0;
+    final buffer = StringBuffer();
 
-    for (var i = 0; i < sentences.length; i++) {
-      final sentence = sentences[i];
-      final sentenceWords = sentence.split(RegExp(r'\s+')).length;
+    for (final line in lines) {
+      // If adding this line would exceed limit, finalize current chunk
+      if (buffer.length + line.length + 1 > maxChars && buffer.isNotEmpty) {
+        chunks.add(buffer.toString().trim());
+        buffer.clear();
+      }
 
-      // Add sentence to buffer
-      buffer.add(sentence);
-      wordCount += sentenceWords;
-
-      // Check if we've reached target size or end of text
-      final isLastSentence = i == sentences.length - 1;
-      if (wordCount >= targetWords || isLastSentence) {
-        chunks.add(buffer.join(' '));
-
-        // Calculate overlap for next chunk (15% of target)
-        if (!isLastSentence) {
-          final overlapWords = (targetWords * 0.15).toInt();
-          var overlapCount = 0;
+      // If a single line exceeds the limit, split it by characters
+      if (line.length > maxChars) {
+        // Finalize current buffer first
+        if (buffer.isNotEmpty) {
+          chunks.add(buffer.toString().trim());
           buffer.clear();
-          wordCount = 0;
-
-          // Add sentences from end for overlap
-          for (var j = buffer.length - 1; j >= 0; j--) {
-            final s = sentences[i - j];
-            final w = s.split(RegExp(r'\s+')).length;
-            if (overlapCount + w <= overlapWords) {
-              buffer.insert(0, s);
-              overlapCount += w;
-              wordCount += w;
-            } else {
-              break;
-            }
-          }
         }
+        // Split long line into fixed-size chunks
+        for (var i = 0; i < line.length; i += maxChars) {
+          final end = (i + maxChars < line.length) ? i + maxChars : line.length;
+          chunks.add(line.substring(i, end));
+        }
+      } else {
+        if (buffer.isNotEmpty) buffer.write('\n');
+        buffer.write(line);
       }
     }
 
-    return chunks.isEmpty ? [text] : chunks;
+    // Add remaining content
+    if (buffer.isNotEmpty) {
+      chunks.add(buffer.toString().trim());
+    }
+
+    return chunks.where((c) => c.isNotEmpty).toList();
   }
 }
