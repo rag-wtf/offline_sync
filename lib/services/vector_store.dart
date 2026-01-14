@@ -26,6 +26,22 @@ class SearchResult {
   final Map<String, dynamic> metadata;
 }
 
+/// Data class for batch embedding insertions
+class EmbeddingData {
+  EmbeddingData({
+    required this.id,
+    required this.documentId,
+    required this.content,
+    required this.embedding,
+    this.metadata,
+  });
+  final String id;
+  final String documentId;
+  final String content;
+  final List<double> embedding;
+  final Map<String, dynamic>? metadata;
+}
+
 class VectorStore {
   CommonDatabase? _db;
   bool _hasFts5 = true;
@@ -233,6 +249,38 @@ INSERT OR REPLACE INTO vectors
         DateTime.now().millisecondsSinceEpoch,
       ])
       ..close();
+  }
+
+  /// Batch insert embeddings within a single transaction for better performance
+  void insertEmbeddingsBatch(List<EmbeddingData> items) {
+    if (items.isEmpty) return;
+
+    _db!.execute('BEGIN TRANSACTION');
+    try {
+      final stmt = _db!.prepare('''
+        INSERT OR REPLACE INTO vectors 
+        (id, document_id, content, embedding, metadata, created_at) 
+        VALUES (?, ?, ?, ?, ?, ?)
+      ''');
+
+      for (final item in items) {
+        final embeddingBytes = _encodeEmbedding(item.embedding);
+        stmt.execute([
+          item.id,
+          item.documentId,
+          item.content,
+          embeddingBytes,
+          if (item.metadata != null) jsonEncode(item.metadata) else null,
+          DateTime.now().millisecondsSinceEpoch,
+        ]);
+      }
+
+      stmt.close();
+      _db!.execute('COMMIT');
+    } catch (e) {
+      _db!.execute('ROLLBACK');
+      rethrow;
+    }
   }
 
   Uint8List _encodeEmbedding(List<double> embedding) {

@@ -3,8 +3,10 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/widgets.dart';
 import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/rag_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
+import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
 import 'package:stacked/stacked.dart';
 import 'package:stacked_services/stacked_services.dart';
 
@@ -26,6 +28,7 @@ class ChatMessage {
 class ChatViewModel extends BaseViewModel {
   final RagService _ragService = locator<RagService>();
   final SnackbarService _snackbarService = locator<SnackbarService>();
+  final NavigationService _navigationService = locator<NavigationService>();
 
   final List<ChatMessage> messages = [];
   final ScrollController scrollController = ScrollController();
@@ -78,6 +81,12 @@ class ChatViewModel extends BaseViewModel {
         ),
       );
       _shouldScroll = true;
+    } on AuthenticationRequiredException {
+      // Show token input dialog
+      await _showTokenDialog();
+      _snackbarService.showSnackbar(
+        message: 'Please provide authentication and try again',
+      );
     } on Exception catch (e) {
       _snackbarService.showSnackbar(message: 'Error: $e');
     } finally {
@@ -114,6 +123,12 @@ class ChatViewModel extends BaseViewModel {
       _snackbarService.showSnackbar(
         message: 'Successfully ingested $ingestedCount file(s)',
       );
+    } on AuthenticationRequiredException {
+      // Show token input dialog
+      await _showTokenDialog();
+      _snackbarService.showSnackbar(
+        message: 'Please provide authentication and try again',
+      );
     } on Exception catch (e) {
       _snackbarService.showSnackbar(message: 'Ingestion error: $e');
     } finally {
@@ -136,6 +151,13 @@ class ChatViewModel extends BaseViewModel {
   Future<String> _readText(String path) async {
     final file = File(path);
     return file.readAsString();
+  }
+
+  Future<void> _showTokenDialog() async {
+    await _navigationService.navigateWithTransition<bool?>(
+      const TokenInputDialog(),
+      transitionStyle: Transition.fade,
+    );
   }
 
   @override

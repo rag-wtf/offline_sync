@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
+import 'package:offline_sync/services/model_config.dart';
 
 enum ModelStatus { notDownloaded, downloading, downloaded, error }
 
@@ -11,6 +12,7 @@ class ModelInfo {
     required this.name,
     required this.url,
     required this.type,
+    this.tokenizerUrl,
     this.fileName,
     this.status = ModelStatus.notDownloaded,
     this.progress = 0.0,
@@ -18,7 +20,8 @@ class ModelInfo {
   final String id;
   final String name;
   final String url;
-  final String type;
+  final AppModelType type;
+  final String? tokenizerUrl;
   final String? fileName;
   ModelStatus status;
   double progress;
@@ -28,24 +31,18 @@ class ModelInfo {
 }
 
 class ModelManagementService {
-  final List<ModelInfo> _models = [
-    ModelInfo(
-      id: 'gemma-2b-it-gpu',
-      name: 'Gemma 2B IT (GPU)',
-      url:
-          'https://huggingface.co/google/gemma-2b-it-tflite/resolve/main/gemma-2b-it-gpu-int4.bin',
-      fileName: 'gemma-2b-it-gpu-int4.bin',
-      type: 'inference',
-    ),
-    ModelInfo(
-      id: 'embedding-gemma',
-      name: 'Embedding Gemma',
-      url:
-          'https://huggingface.co/google/embedding-gemma-7b-tflite/resolve/main/embedding_gemma_v1.bin',
-      fileName: 'embedding_gemma_v1.bin',
-      type: 'embedding',
-    ),
-  ];
+  // Initialize models from ModelConfig
+  final List<ModelInfo> _models = ModelConfig.allModels
+      .map(
+        (config) => ModelInfo(
+          id: config.id,
+          name: config.name,
+          url: config.modelUrl,
+          tokenizerUrl: config.tokenizerUrl,
+          type: config.type,
+        ),
+      )
+      .toList();
 
   final _statusController = StreamController<List<ModelInfo>>.broadcast();
   Stream<List<ModelInfo>> get modelStatusStream => _statusController.stream;
@@ -73,14 +70,15 @@ class ModelManagementService {
           ..status = ModelStatus.downloaded
           ..progress = 1.0;
 
-        if (model.type == 'embedding') {
+        if (model.type == AppModelType.embedding) {
           await _activateEmbeddingModel(model);
-        } else if (model.type == 'inference') {
+        } else if (model.type == AppModelType.inference) {
           await _activateInferenceModel(model);
         }
       } else {
         // Auto-download models if missing
-        if (model.type == 'embedding' || model.type == 'inference') {
+        if (model.type == AppModelType.embedding ||
+            model.type == AppModelType.inference) {
           log('Auto-downloading model ${model.id}');
           await downloadModel(model.id);
         }
@@ -143,7 +141,7 @@ class ModelManagementService {
         log('Using authentication token for download');
       }
 
-      if (model.type == 'inference') {
+      if (model.type == AppModelType.inference) {
         await FlutterGemma.installModel(
           modelType: ModelType.gemmaIt,
         ).fromNetwork(downloadUrl, token: token).withProgress((int progress) {

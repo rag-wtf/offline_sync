@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
-import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
-import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
-import 'package:stacked_services/stacked_services.dart';
+import 'package:offline_sync/services/exceptions.dart';
+import 'package:offline_sync/services/model_config.dart';
 
 class EmbeddingService {
   bool _isInitialized = false;
-  final NavigationService _navigationService = locator<NavigationService>();
 
   Future<void> _ensureInitialized() async {
     if (_isInitialized) return;
@@ -23,19 +21,14 @@ class EmbeddingService {
         '[EmbeddingService] No active embedder found. Initializing default...',
       );
 
-      const modelUrl =
-          'https://huggingface.co/litert-community/embeddinggemma-300m/'
-          'resolve/main/embeddinggemma-300M_seq256_mixed-precision.tflite';
-      const tokenizerUrl =
-          'https://huggingface.co/litert-community/embeddinggemma-300m/'
-          'resolve/main/sentencepiece.model';
+      const config = ModelConfig.embeddingModel;
 
       try {
         final token = await AuthTokenService.loadToken();
 
         await FlutterGemma.installEmbedder()
-            .modelFromNetwork(modelUrl, token: token)
-            .tokenizerFromNetwork(tokenizerUrl, token: token)
+            .modelFromNetwork(config.modelUrl, token: token)
+            .tokenizerFromNetwork(config.tokenizerUrl!, token: token)
             .install();
 
         _isInitialized = true;
@@ -45,22 +38,13 @@ class EmbeddingService {
           '[EmbeddingService] Failed to initialize default embedder: $e',
         );
 
-        // Use the navigation service context to show the dialog.
-        // navigatorKey is used to access current context from service.
-        // ignore: deprecated_member_use
-        final context = _navigationService.navigatorKey?.currentContext;
-        if (context != null && context.mounted) {
-          final result = await showDialog<bool>(
-            context: context,
-            barrierDismissible: false,
-            builder: (context) => const TokenInputDialog(),
+        // Check if it's an authentication error
+        final errorMsg = e.toString();
+        if (errorMsg.contains('401') || errorMsg.contains('Unauthorized')) {
+          throw AuthenticationRequiredException(
+            'Hugging Face authentication required. '
+            'Please provide a valid token.',
           );
-
-          if (result ?? false) {
-            // Token saved, retry initialization
-            debugPrint('[EmbeddingService] Token provided, retrying init...');
-            return _ensureInitialized();
-          }
         }
 
         rethrow;

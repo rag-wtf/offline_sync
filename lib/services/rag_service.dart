@@ -82,18 +82,25 @@ class RagService {
     // Basic chunking logic
     final chunks = _splitIntoChunks(content, 500);
 
+    // Collect all embeddings first
+    final embeddingDataList = <EmbeddingData>[];
     for (var i = 0; i < chunks.length; i++) {
       final chunk = chunks[i];
       final embedding = await _embeddingService.generateEmbedding(chunk);
 
-      _vectorStore.insertEmbedding(
-        id: '${documentId}_$i',
-        documentId: documentId,
-        content: chunk,
-        embedding: embedding,
-        metadata: {'seq': i},
+      embeddingDataList.add(
+        EmbeddingData(
+          id: '${documentId}_$i',
+          documentId: documentId,
+          content: chunk,
+          embedding: embedding,
+          metadata: {'seq': i},
+        ),
       );
     }
+
+    // Batch insert all embeddings in a single transaction
+    _vectorStore.insertEmbeddingsBatch(embeddingDataList);
   }
 
   Future<void> _ensureInferenceModel() async {

@@ -1,5 +1,6 @@
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
+import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
 import 'package:stacked/stacked.dart';
@@ -92,7 +93,9 @@ class StartupViewModel extends BaseViewModel {
 
     if (hasModels) {
       final hasInferenceModel = _modelService.models.any(
-        (m) => m.type == 'inference' && m.status == ModelStatus.downloaded,
+        (m) =>
+            m.type == AppModelType.inference &&
+            m.status == ModelStatus.downloaded,
       );
 
       if (hasInferenceModel) {
