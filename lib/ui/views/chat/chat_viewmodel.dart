@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/widgets.dart';
 import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/services/chat_repository.dart';
 import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/rag_service.dart';
@@ -177,6 +178,10 @@ class ChatViewModel extends BaseViewModel {
       const TokenInputDialog(),
       transitionStyle: Transition.fade,
     );
+  }
+
+  Future<void> navigateToSettings() async {
+    await _navigationService.navigateToSettingsView();
   }
 
   @override

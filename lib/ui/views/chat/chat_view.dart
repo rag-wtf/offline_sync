@@ -35,9 +35,7 @@ class ChatView extends StackedView<ChatViewModel> {
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
-            onPressed: () {
-              // Navigation handled elsewhere
-            },
+            onPressed: viewModel.navigateToSettings,
           ),
         ],
       ),
