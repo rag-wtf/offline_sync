@@ -43,7 +43,8 @@ void main() {
 
       expect(results.length, 1);
       expect(results.first.id, id);
-      expect(results.first.score, greaterThan(0.99));
+      // RRF score for rank 1 with semanticWeight 1.0 is 1.0 / (60 + 1) approx 0.01639
+      expect(results.first.score, closeTo(0.01639, 0.0001));
     });
 
     test('FTS5 search fallback works', () async {

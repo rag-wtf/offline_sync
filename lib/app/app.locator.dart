@@ -13,6 +13,7 @@ import 'package:stacked_shared/stacked_shared.dart';
 
 import '../services/chat_repository.dart';
 import '../services/embedding_service.dart';
+import '../services/environment_service.dart';
 import '../services/model_management_service.dart';
 import '../services/rag_service.dart';
 import '../services/vector_store.dart';
@@ -32,6 +33,7 @@ Future<void> setupLocator({
   // Register dependencies
   locator.registerLazySingleton(() => NavigationService());
   locator.registerLazySingleton(() => SnackbarService());
+  locator.registerLazySingleton(() => EnvironmentService());
   locator.registerLazySingleton(() => VectorStore());
   locator.registerLazySingleton(() => ChatRepository());
   locator.registerLazySingleton(() => ModelManagementService());

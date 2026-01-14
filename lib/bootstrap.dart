@@ -10,7 +10,12 @@ import 'package:offline_sync/bootstrap_mobile.dart'
     if (dart.library.html) 'package:offline_sync/bootstrap_web.dart'
     as platform;
 
-Future<void> bootstrap(FutureOr<Widget> Function() builder) async {
+import 'package:offline_sync/services/environment_service.dart';
+
+Future<void> bootstrap(
+  FutureOr<Widget> Function() builder, {
+  required String flavor,
+}) async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await FlutterGemma.initialize();
@@ -23,6 +28,7 @@ Future<void> bootstrap(FutureOr<Widget> Function() builder) async {
   await platform.initializeSqlite();
 
   await setupLocator();
+  locator<EnvironmentService>().flavor = flavor;
 
   runApp(await builder());
 }

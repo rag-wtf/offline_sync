@@ -1,5 +1,6 @@
 import 'package:offline_sync/services/chat_repository.dart';
 import 'package:offline_sync/services/embedding_service.dart';
+import 'package:offline_sync/services/environment_service.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/rag_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
@@ -18,6 +19,7 @@ import 'package:stacked_services/stacked_services.dart';
   dependencies: [
     LazySingleton<NavigationService>(classType: NavigationService),
     LazySingleton<SnackbarService>(classType: SnackbarService),
+    LazySingleton<EnvironmentService>(classType: EnvironmentService),
     LazySingleton<VectorStore>(classType: VectorStore),
     LazySingleton<ChatRepository>(classType: ChatRepository),
     LazySingleton<ModelManagementService>(classType: ModelManagementService),

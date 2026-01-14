@@ -72,7 +72,7 @@ class VectorStore {
         id TEXT PRIMARY KEY,
         document_id TEXT NOT NULL,
         content TEXT NOT NULL,
-        embedding BLOB NOT NULL,
+        embedding TEXT NOT NULL,
         metadata TEXT,
         created_at INTEGER NOT NULL
       )
@@ -162,7 +162,7 @@ class VectorStore {
           (Row row) => {
             'id': row['id'],
             'content': row['content'],
-            'embedding': row['embedding'],
+            'embedding': row['embedding'] as String,
             'metadata': row['metadata'],
           },
         )
@@ -248,8 +248,6 @@ class VectorStore {
     required List<double> embedding,
     Map<String, dynamic>? metadata,
   }) {
-    final embeddingBytes = _encodeEmbedding(embedding);
-
     _db!.prepare('''
 INSERT OR REPLACE INTO vectors 
          (id, document_id, content, embedding, metadata, created_at) 
@@ -259,7 +257,7 @@ INSERT OR REPLACE INTO vectors
         id,
         documentId,
         content,
-        embeddingBytes,
+        jsonEncode(embedding),
         if (metadata != null) jsonEncode(metadata) else null,
         DateTime.now().millisecondsSinceEpoch,
       ])
@@ -279,12 +277,11 @@ INSERT OR REPLACE INTO vectors
       ''');
 
       for (final item in items) {
-        final embeddingBytes = _encodeEmbedding(item.embedding);
         stmt.execute([
           item.id,
           item.documentId,
           item.content,
-          embeddingBytes,
+          jsonEncode(item.embedding),
           if (item.metadata != null) jsonEncode(item.metadata) else null,
           DateTime.now().millisecondsSinceEpoch,
         ]);
@@ -296,15 +293,6 @@ INSERT OR REPLACE INTO vectors
       _db!.execute('ROLLBACK');
       rethrow;
     }
-  }
-
-  Uint8List _encodeEmbedding(List<double> embedding) {
-    final bytes = Uint8List(embedding.length * 4);
-    final byteData = ByteData.sublistView(bytes);
-    for (var i = 0; i < embedding.length; i++) {
-      byteData.setFloat32(i * 4, embedding[i], Endian.little);
-    }
-    return bytes;
   }
 
   String _sanitizeFtsQuery(String query) {
@@ -368,14 +356,10 @@ List<SearchResult> _calculateSimilarities(Map<String, dynamic> params) {
   final limit = params['limit'] as int;
 
   final scored = data.map((item) {
-    final storedEmbeddingBytes = item['embedding'] as Uint8List;
-
-    // Inline decode and cosine similarity for isolate efficiency
-    final byteData = ByteData.sublistView(storedEmbeddingBytes);
-    final storedEmbedding = <double>[];
-    for (var i = 0; i < storedEmbeddingBytes.length; i += 4) {
-      storedEmbedding.add(byteData.getFloat32(i, Endian.little));
-    }
+    final storedEmbeddingJson = item['embedding'] as String;
+    final storedEmbedding = (jsonDecode(storedEmbeddingJson) as List)
+        .map((e) => (e as num).toDouble())
+        .toList();
 
     // Cosine similarity
     var dotProduct = 0.0;
