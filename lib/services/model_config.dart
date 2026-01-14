@@ -18,8 +18,6 @@ class ModelConfig {
         'https://huggingface.co/litert-community/embeddinggemma-300m/'
         'resolve/main/sentencepiece.model',
     type: AppModelType.embedding,
-    // TODO: Add actual SHA256 checksum from Hugging Face
-    sha256: null,
   );
 
   /// Inference model for text generation
@@ -30,8 +28,6 @@ class ModelConfig {
         'https://huggingface.co/google/gemma-2b-it-tflite/'
         'resolve/main/gemma-2b-it-gpu-int4.bin',
     type: AppModelType.inference,
-    // TODO: Add actual SHA256 checksum from Hugging Face
-    sha256: null,
   );
 
   /// All available models

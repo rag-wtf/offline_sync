@@ -39,6 +39,7 @@ class RagService {
   Future<RAGResult> askWithRAG(
     String query, {
     bool includeMetrics = false,
+    List<String>? conversationHistory,
   }) async {
     if (!_isInitialized) throw Exception('RAG Service not initialized');
 
@@ -59,9 +60,13 @@ class RagService {
     // 3. Build Context
     final context = _buildContext(searchResults);
 
-    // 4. Generate Response
+    // 4. Generate Response with conversation history
     await _ensureInferenceModel();
-    final response = await _generate(query, context);
+    final response = await _generate(
+      query,
+      context,
+      conversationHistory: conversationHistory,
+    );
     final generationTime = stopwatch.elapsed - searchTime - embeddingTime;
 
     return RAGResult(
@@ -124,12 +129,26 @@ class RagService {
     }
   }
 
-  Future<String> _generate(String query, String context) async {
+  Future<String> _generate(
+    String query,
+    String context, {
+    List<String>? conversationHistory,
+  }) async {
+    // Build conversation history section
+    final historySection =
+        conversationHistory != null && conversationHistory.isNotEmpty
+        ? '''
+Previous conversation:
+${conversationHistory.take(5).join('\n')}
+
+'''
+        : '';
+
     final prompt =
         '''
 
 <start_of_turn>user
-Context:
+${historySection}Context:
 $context
 
 Question: $query

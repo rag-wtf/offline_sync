@@ -78,7 +78,17 @@ class ChatViewModel extends BaseViewModel {
     notifyListeners();
 
     try {
-      final result = await _ragService.askWithRAG(text, includeMetrics: true);
+      // Build conversation history from last 5 messages (excluding current)
+      final history = messages
+          .take(messages.length > 10 ? 10 : messages.length)
+          .map((m) => '${m.isUser ? "User" : "AI"}: ${m.content}')
+          .toList();
+
+      final result = await _ragService.askWithRAG(
+        text,
+        includeMetrics: true,
+        conversationHistory: history.isNotEmpty ? history : null,
+      );
 
       final aiMsg = ChatMessage(
         content: result.response,
