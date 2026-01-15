@@ -6,6 +6,7 @@ import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
+import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
 import 'package:stacked/stacked.dart';
 import 'package:stacked_services/stacked_services.dart';
@@ -118,6 +119,11 @@ class StartupViewModel extends BaseViewModel {
       await _modelService.initialize();
       log('DEBUG: _modelService.initialize() completed');
       log('_modelService.initialize() completed', name: 'StartupViewModel');
+
+      // 4.5. Initialize RAG settings service
+      final ragSettings = locator<RagSettingsService>();
+      await ragSettings.initialize();
+      log('RAG settings initialized', name: 'StartupViewModel');
 
       // 5. Download recommended models if not present
       final inferenceModel = _modelService.models.firstWhere(

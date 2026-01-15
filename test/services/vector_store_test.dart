@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 
@@ -14,13 +16,23 @@ void main() {
 
   setUp(() async {
     PathProviderPlatform.instance = MockPathProviderPlatform();
+
+    // Register RagSettingsService for VectorStore dependency
+    // Only setup if not already registered
+    if (!locator.isRegistered<RagSettingsService>()) {
+      await setupLocator();
+    }
+    final ragSettings = locator<RagSettingsService>();
+    await ragSettings.initialize();
+
     vectorStore = VectorStore();
     await vectorStore.initialize();
   });
 
-  tearDown(() {
+  tearDown() async {
     vectorStore.close();
-  });
+    await locator.reset();
+  }
 
   group('VectorStore Tests', () {
     test('insert and retrieve semantic embedding', () async {

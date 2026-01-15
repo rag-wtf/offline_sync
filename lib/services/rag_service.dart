@@ -1,6 +1,11 @@
+import 'dart:math';
+
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/embedding_service.dart';
+import 'package:offline_sync/services/query_expansion_service.dart';
+import 'package:offline_sync/services/rag_settings_service.dart';
+import 'package:offline_sync/services/reranking_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
 
 class RAGResult {
@@ -32,11 +37,17 @@ class RAGMetrics {
     required this.searchTime,
     required this.generationTime,
     required this.chunksRetrieved,
+    this.queryExpansionTime,
+    this.rerankingTime,
+    this.expandedQueryCount,
   });
   final Duration embeddingTime;
   final Duration searchTime;
   final Duration generationTime;
   final int chunksRetrieved;
+  final Duration? queryExpansionTime;
+  final Duration? rerankingTime;
+  final int? expandedQueryCount;
 }
 
 class RagService {
@@ -59,24 +70,63 @@ class RagService {
   }) async {
     if (!_isInitialized) throw Exception('RAG Service not initialized');
 
+    final settings = locator<RagSettingsService>();
     final stopwatch = Stopwatch()..start();
 
-    // 1. Embed Query
+    // 1. Query Expansion (if enabled)
+    Duration? queryExpansionTime;
+    int? expandedQueryCount;
+    var queryVariants = <String>[query];
+
+    if (settings.queryExpansionEnabled) {
+      final expansionService = locator<QueryExpansionService>();
+      final expansionStart = stopwatch.elapsed;
+      queryVariants = await expansionService.expandQuery(query);
+      queryExpansionTime = stopwatch.elapsed - expansionStart;
+      expandedQueryCount = queryVariants.length;
+    }
+
+    // 2. Embed Query
     final queryEmbedding = await _embeddingService.generateEmbedding(query);
     final embeddingTime = stopwatch.elapsed;
 
-    // 2. Hybrid Search
-    final searchResults = await _vectorStore.hybridSearch(
-      query,
-      queryEmbedding,
-      limit: 3,
-    );
+    // 3. Hybrid Search with expanded queries
+    var searchResults = <SearchResult>[];
+    if (settings.queryExpansionEnabled && queryVariants.length > 1) {
+      final expansionService = locator<QueryExpansionService>();
+      searchResults = await expansionService.searchWithExpandedQueries(
+        query,
+        queryVariants,
+        limit: settings.rerankingEnabled ? settings.rerankTopK : 3,
+      );
+    } else {
+      searchResults = await _vectorStore.hybridSearch(
+        query,
+        queryEmbedding,
+        limit: settings.rerankingEnabled ? settings.rerankTopK : 3,
+      );
+    }
     final searchTime = stopwatch.elapsed - embeddingTime;
 
-    // 3. Build Context
+    // 4. Reranking (if enabled)
+    Duration? rerankingTime;
+    if (settings.rerankingEnabled && searchResults.isNotEmpty) {
+      final rerankService = locator<RerankingService>();
+      final rerankStart = stopwatch.elapsed;
+      searchResults = await rerankService.rerank(
+        query,
+        searchResults,
+        topK: settings.rerankTopK,
+      );
+      rerankingTime = stopwatch.elapsed - rerankStart;
+      // Take top 3 for generation
+      searchResults = searchResults.take(3).toList();
+    }
+
+    // 5. Build Context
     final context = _buildContext(searchResults);
 
-    // 4. Generate Response with conversation history
+    // 6. Generate Response with conversation history
     await _ensureInferenceModel();
     final response = await _generate(
       query,
@@ -94,6 +144,9 @@ class RagService {
               searchTime: searchTime,
               generationTime: generationTime,
               chunksRetrieved: searchResults.length,
+              queryExpansionTime: queryExpansionTime,
+              rerankingTime: rerankingTime,
+              expandedQueryCount: expandedQueryCount,
             )
           : null,
     );
@@ -107,21 +160,60 @@ class RagService {
   }) async* {
     if (!_isInitialized) throw Exception('RAG Service not initialized');
 
+    final settings = locator<RagSettingsService>();
     final stopwatch = Stopwatch()..start();
 
-    // 1. Embed Query
+    // 1. Query Expansion (if enabled)
+    Duration? queryExpansionTime;
+    int? expandedQueryCount;
+    var queryVariants = <String>[query];
+
+    if (settings.queryExpansionEnabled) {
+      final expansionService = locator<QueryExpansionService>();
+      final expansionStart = stopwatch.elapsed;
+      queryVariants = await expansionService.expandQuery(query);
+      queryExpansionTime = stopwatch.elapsed - expansionStart;
+      expandedQueryCount = queryVariants.length;
+    }
+
+    // 2. Embed Query
     final queryEmbedding = await _embeddingService.generateEmbedding(query);
     final embeddingTime = stopwatch.elapsed;
 
-    // 2. Hybrid Search
-    final searchResults = await _vectorStore.hybridSearch(
-      query,
-      queryEmbedding,
-      limit: 3,
-    );
+    // 3. Hybrid Search with expanded queries
+    var searchResults = <SearchResult>[];
+    if (settings.queryExpansionEnabled && queryVariants.length > 1) {
+      final expansionService = locator<QueryExpansionService>();
+      searchResults = await expansionService.searchWithExpandedQueries(
+        query,
+        queryVariants,
+        limit: settings.rerankingEnabled ? settings.rerankTopK : 3,
+      );
+    } else {
+      searchResults = await _vectorStore.hybridSearch(
+        query,
+        queryEmbedding,
+        limit: settings.rerankingEnabled ? settings.rerankTopK : 3,
+      );
+    }
     final searchTime = stopwatch.elapsed - embeddingTime;
 
-    // 3. Emit metadata event with sources
+    // 4. Reranking (if enabled)
+    Duration? rerankingTime;
+    if (settings.rerankingEnabled && searchResults.isNotEmpty) {
+      final rerankService = locator<RerankingService>();
+      final rerankStart = stopwatch.elapsed;
+      searchResults = await rerankService.rerank(
+        query,
+        searchResults,
+        topK: settings.rerankTopK,
+      );
+      rerankingTime = stopwatch.elapsed - rerankStart;
+      // Take top 3 for generation
+      searchResults = searchResults.take(3).toList();
+    }
+
+    // 5. Emit metadata event with sources
     yield RAGMetadataEvent(
       sources: searchResults,
       metrics: includeMetrics
@@ -130,14 +222,17 @@ class RagService {
               searchTime: searchTime,
               generationTime: Duration.zero,
               chunksRetrieved: searchResults.length,
+              queryExpansionTime: queryExpansionTime,
+              rerankingTime: rerankingTime,
+              expandedQueryCount: expandedQueryCount,
             )
           : null,
     );
 
-    // 4. Build Context
+    // 6. Build Context
     final context = _buildContext(searchResults);
 
-    // 5. Stream tokens from generation
+    // 7. Stream tokens from generation
     await _ensureInferenceModel();
     await for (final token in _generateStream(
       query,
@@ -147,16 +242,22 @@ class RagService {
       yield RAGTokenEvent(token);
     }
 
-    // 6. Emit completion event
+    // 8. Emit completion event
     yield RAGCompleteEvent();
   }
 
   Future<void> ingestDocument(String documentId, String content) async {
+    final settings = locator<RagSettingsService>();
+
     // Chunk text to fit embedding model's 256 token limit
     // (254 usable after special tokens)
     // Using very conservative 80 words (~100-160 tokens for code/markdown content)
     // Markdown/code can tokenize at 2-3 tokens per word vs 1.3 for regular text
-    final chunks = _splitIntoChunks(content, 80);
+    final chunks = _splitIntoChunks(
+      content,
+      80,
+      overlapPercent: settings.chunkOverlapPercent,
+    );
 
     // Collect all embeddings first
     final embeddingDataList = <EmbeddingData>[];
@@ -307,14 +408,17 @@ Answer based only on the provided context. If the answer is not in the context, 
 
   /// Split text into chunks using character limit with line-based boundaries
   /// This handles markdown content (bullet points, tables, code) that
-  /// lacks sentence endings
+  /// lacks sentence endings. Implements sliding window with configurable
+  /// overlap.
   List<String> _splitIntoChunks(
     String text,
-    int targetWords, // kept for API compatibility but now uses chars internally
-  ) {
+    int targetWords, {
+    double overlapPercent = 0.15,
+  }) {
     // Use character limit: ~500 chars ≈ ~100 tokens for mixed content
     // This provides a safe margin under the 254 token limit
     const maxChars = 500;
+    final overlapChars = (maxChars * overlapPercent).round();
 
     // Split on newlines to preserve markdown structure
     final lines = text.split('\n');
@@ -323,25 +427,58 @@ Answer based only on the provided context. If the answer is not in the context, 
 
     final chunks = <String>[];
     final buffer = StringBuffer();
+    var previousChunkTail = '';
 
     for (final line in lines) {
       // If adding this line would exceed limit, finalize current chunk
       if (buffer.length + line.length + 1 > maxChars && buffer.isNotEmpty) {
-        chunks.add(buffer.toString().trim());
+        final chunk = buffer.toString().trim();
+        chunks.add(chunk);
+
+        // Save the tail for overlap
+        if (overlapChars > 0 && chunk.length > overlapChars) {
+          previousChunkTail = chunk.substring(
+            max(0, chunk.length - overlapChars),
+          );
+        }
+
         buffer.clear();
+
+        // Add overlap from previous chunk to new chunk
+        if (previousChunkTail.isNotEmpty) {
+          buffer
+            ..write(previousChunkTail)
+            ..write('\n');
+        }
       }
 
       // If a single line exceeds the limit, split it by characters
       if (line.length > maxChars) {
         // Finalize current buffer first
         if (buffer.isNotEmpty) {
-          chunks.add(buffer.toString().trim());
+          final chunk = buffer.toString().trim();
+          chunks.add(chunk);
+
+          if (overlapChars > 0 && chunk.length > overlapChars) {
+            previousChunkTail = chunk.substring(
+              max(0, chunk.length - overlapChars),
+            );
+          }
+
           buffer.clear();
         }
-        // Split long line into fixed-size chunks
-        for (var i = 0; i < line.length; i += maxChars) {
+
+        // Split long line into fixed-size chunks with overlap
+        for (var i = 0; i < line.length; i += maxChars - overlapChars) {
           final end = (i + maxChars < line.length) ? i + maxChars : line.length;
-          chunks.add(line.substring(i, end));
+          final lineChunk = line.substring(i, end);
+          chunks.add(lineChunk);
+
+          if (overlapChars > 0 && lineChunk.length > overlapChars) {
+            previousChunkTail = lineChunk.substring(
+              max(0, lineChunk.length - overlapChars),
+            );
+          }
         }
       } else {
         if (buffer.isNotEmpty) buffer.write('\n');

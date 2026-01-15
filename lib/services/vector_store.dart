@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store_path_stub.dart'
     if (dart.library.io) 'package:offline_sync/services/vector_store_path_native.dart'
     as path_helper;
@@ -129,8 +131,12 @@ class VectorStore {
     String query,
     List<double> queryEmbedding, {
     int limit = 5,
-    double semanticWeight = 0.7,
+    double? semanticWeight,
   }) async {
+    // Get semantic weight from settings if not provided
+    final settingsService = locator<RagSettingsService>();
+    final weight = semanticWeight ?? settingsService.semanticWeight;
+
     // 1. Fetch candidates (Keyword Search)
     final keywordResults = _hasFts5
         ? _fts5Search(query, limit: 100) // Increase candidate pool
@@ -152,7 +158,7 @@ class VectorStore {
     return _mergeResults(
       semanticResults,
       keywordResults,
-      semanticWeight: semanticWeight,
+      semanticWeight: weight,
       limit: limit,
     );
   }

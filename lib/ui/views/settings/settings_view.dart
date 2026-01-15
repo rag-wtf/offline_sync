@@ -17,6 +17,7 @@ class SettingsView extends StackedView<SettingsViewModel> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // AI Model Management Section
           const Text(
             'AI Model Management',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -26,6 +27,92 @@ class SettingsView extends StackedView<SettingsViewModel> {
             (model) => _ModelTile(
               model: model,
               onDownload: () => viewModel.downloadModel(model.id),
+            ),
+          ),
+
+          // RAG Quality Settings Section
+          const SizedBox(height: 32),
+          const Text(
+            'RAG Quality Settings',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Improve retrieval accuracy and response quality',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 16),
+
+          // Query Expansion Toggle
+          SwitchListTile(
+            title: const Text('Query Expansion'),
+            subtitle: const Text(
+              'Generate query variants for better recall',
+            ),
+            value: viewModel.queryExpansionEnabled,
+            onChanged: viewModel.toggleQueryExpansion,
+          ),
+
+          // LLM Reranking Toggle
+          SwitchListTile(
+            title: const Text('LLM Reranking'),
+            subtitle: const Text(
+              'Use AI to reorder results by relevance (adds latency)',
+            ),
+            value: viewModel.rerankingEnabled,
+            onChanged: viewModel.toggleReranking,
+          ),
+
+          const SizedBox(height: 16),
+
+          // Chunk Overlap Slider
+          ListTile(
+            title: Text(
+              'Chunk Overlap: '
+              '${viewModel.chunkOverlapPercent.toStringAsFixed(0)}%',
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+                Slider(
+                  value: viewModel.chunkOverlapPercent,
+                  max: 30,
+                  divisions: 6,
+                  label: '${viewModel.chunkOverlapPercent.toStringAsFixed(0)}%',
+                  onChanged: viewModel.setChunkOverlap,
+                ),
+                const Text(
+                  'Overlap between text chunks for better context continuity',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+
+          // Semantic Weight Slider
+          ListTile(
+            title: Text(
+              'Semantic vs Keyword: '
+              '${(viewModel.semanticWeight * 100).toStringAsFixed(0)}%',
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+                Slider(
+                  value: viewModel.semanticWeight,
+                  divisions: 10,
+                  label:
+                      '${(viewModel.semanticWeight * 100).toStringAsFixed(0)}%',
+                  onChanged: viewModel.setSemanticWeight,
+                ),
+                const Text(
+                  'Balance between semantic search (left) and keyword '
+                  'search (right)',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
             ),
           ),
         ],
