@@ -8,9 +8,8 @@ import 'package:path_provider_platform_interface/path_provider_platform_interfac
 
 // Mock PathProvider
 class MockPathProviderPlatform extends PathProviderPlatform {
-  final Directory tempDir;
-
   MockPathProviderPlatform(this.tempDir);
+  final Directory tempDir;
 
   @override
   Future<String?> getApplicationDocumentsPath() async => tempDir.path;
@@ -35,8 +34,7 @@ void main() {
 
       locator.registerSingleton<VectorStore>(vectorStore);
 
-      chatRepository = ChatRepository();
-      chatRepository.initialize();
+      chatRepository = ChatRepository()..initialize();
     });
 
     tearDown(() async {
@@ -67,17 +65,21 @@ void main() {
     });
 
     test('clearHistory removes all messages', () async {
-      await chatRepository.saveMessage(ChatMessage(
-        content: 'Msg 1',
-        isUser: true,
-        timestamp: DateTime.now(),
-      ));
+      await chatRepository.saveMessage(
+        ChatMessage(
+          content: 'Msg 1',
+          isUser: true,
+          timestamp: DateTime.now(),
+        ),
+      );
 
-      await chatRepository.saveMessage(ChatMessage(
-        content: 'Msg 2',
-        isUser: false,
-        timestamp: DateTime.now(),
-      ));
+      await chatRepository.saveMessage(
+        ChatMessage(
+          content: 'Msg 2',
+          isUser: false,
+          timestamp: DateTime.now(),
+        ),
+      );
 
       expect(await chatRepository.getMessageCount(), 2);
 
@@ -87,25 +89,29 @@ void main() {
     });
 
     test('loadMessages returns messages in chronological order', () async {
-       final time1 = DateTime.fromMillisecondsSinceEpoch(1000);
-       final time2 = DateTime.fromMillisecondsSinceEpoch(2000);
+      final time1 = DateTime.fromMillisecondsSinceEpoch(1000);
+      final time2 = DateTime.fromMillisecondsSinceEpoch(2000);
 
-       await chatRepository.saveMessage(ChatMessage(
-         content: 'First',
-         isUser: true,
-         timestamp: time1,
-       ));
+      await chatRepository.saveMessage(
+        ChatMessage(
+          content: 'First',
+          isUser: true,
+          timestamp: time1,
+        ),
+      );
 
-       await chatRepository.saveMessage(ChatMessage(
-         content: 'Second',
-         isUser: false,
-         timestamp: time2,
-       ));
+      await chatRepository.saveMessage(
+        ChatMessage(
+          content: 'Second',
+          isUser: false,
+          timestamp: time2,
+        ),
+      );
 
-       final messages = await chatRepository.loadMessages();
-       expect(messages.length, 2);
-       expect(messages[0].content, 'First');
-       expect(messages[1].content, 'Second');
+      final messages = await chatRepository.loadMessages();
+      expect(messages.length, 2);
+      expect(messages[0].content, 'First');
+      expect(messages[1].content, 'Second');
     });
   });
 }
