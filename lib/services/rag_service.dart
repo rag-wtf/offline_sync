@@ -10,6 +10,22 @@ class RAGResult {
   final RAGMetrics? metrics;
 }
 
+// Stream events for streaming RAG responses
+abstract class RAGStreamEvent {}
+
+class RAGMetadataEvent extends RAGStreamEvent {
+  RAGMetadataEvent({required this.sources, this.metrics});
+  final List<SearchResult> sources;
+  final RAGMetrics? metrics;
+}
+
+class RAGTokenEvent extends RAGStreamEvent {
+  RAGTokenEvent(this.token);
+  final String token;
+}
+
+class RAGCompleteEvent extends RAGStreamEvent {}
+
 class RAGMetrics {
   RAGMetrics({
     required this.embeddingTime,
@@ -81,6 +97,58 @@ class RagService {
             )
           : null,
     );
+  }
+
+  /// Stream-based version of askWithRAG that yields tokens as they arrive
+  Stream<RAGStreamEvent> askWithRAGStream(
+    String query, {
+    bool includeMetrics = false,
+    List<String>? conversationHistory,
+  }) async* {
+    if (!_isInitialized) throw Exception('RAG Service not initialized');
+
+    final stopwatch = Stopwatch()..start();
+
+    // 1. Embed Query
+    final queryEmbedding = await _embeddingService.generateEmbedding(query);
+    final embeddingTime = stopwatch.elapsed;
+
+    // 2. Hybrid Search
+    final searchResults = await _vectorStore.hybridSearch(
+      query,
+      queryEmbedding,
+      limit: 3,
+    );
+    final searchTime = stopwatch.elapsed - embeddingTime;
+
+    // 3. Emit metadata event with sources
+    yield RAGMetadataEvent(
+      sources: searchResults,
+      metrics: includeMetrics
+          ? RAGMetrics(
+              embeddingTime: embeddingTime,
+              searchTime: searchTime,
+              generationTime: Duration.zero,
+              chunksRetrieved: searchResults.length,
+            )
+          : null,
+    );
+
+    // 4. Build Context
+    final context = _buildContext(searchResults);
+
+    // 5. Stream tokens from generation
+    await _ensureInferenceModel();
+    await for (final token in _generateStream(
+      query,
+      context,
+      conversationHistory: conversationHistory,
+    )) {
+      yield RAGTokenEvent(token);
+    }
+
+    // 6. Emit completion event
+    yield RAGCompleteEvent();
   }
 
   Future<void> ingestDocument(String documentId, String content) async {
@@ -179,6 +247,53 @@ Answer based only on the provided context. If the answer is not in the context, 
     }
 
     return response.toString();
+  }
+
+  /// Stream tokens from the model as they're generated
+  Stream<String> _generateStream(
+    String query,
+    String context, {
+    List<String>? conversationHistory,
+  }) async* {
+    // Build conversation history section
+    final historySection =
+        conversationHistory != null && conversationHistory.isNotEmpty
+        ? '''
+Previous conversation:
+${conversationHistory.take(5).join('\n')}
+
+'''
+        : '';
+
+    final prompt =
+        '''
+
+<start_of_turn>user
+${historySection}Context:
+$context
+
+Question: $query
+
+Answer based only on the provided context. If the answer is not in the context, say "I don't have enough information."
+<end_of_turn>
+<start_of_turn>model
+''';
+
+    final chat = await _inferenceModel!.createChat(temperature: 0.1);
+
+    // Initialize the chat session
+    await chat.initSession();
+
+    // Add the prompt as a query
+    await chat.addQuery(Message(text: prompt, isUser: true));
+
+    // Stream tokens as they arrive
+    final stream = chat.generateChatResponseAsync();
+    await for (final modelResponse in stream) {
+      if (modelResponse is TextResponse) {
+        yield modelResponse.token;
+      }
+    }
   }
 
   String _buildContext(List<SearchResult> results) {

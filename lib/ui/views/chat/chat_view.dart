@@ -112,9 +112,19 @@ class _MessageTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  message.content,
-                  style: TextStyle(color: textColor),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        message.content,
+                        style: TextStyle(color: textColor),
+                      ),
+                    ),
+                    // Show blinking cursor for empty or streaming AI messages
+                    if (!message.isUser && message.content.isEmpty)
+                      _BlinkingCursor(color: textColor),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -141,6 +151,48 @@ class _MessageTile extends StatelessWidget {
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _BlinkingCursor extends StatefulWidget {
+  const _BlinkingCursor({required this.color});
+  final Color color;
+
+  @override
+  State<_BlinkingCursor> createState() => _BlinkingCursorState();
+}
+
+class _BlinkingCursorState extends State<_BlinkingCursor>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(milliseconds: 530),
+      vsync: this,
+    );
+    unawaited(_controller.repeat(reverse: true));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _controller,
+      child: Container(
+        width: 2,
+        height: 16,
+        margin: const EdgeInsets.only(left: 2),
+        color: widget.color,
       ),
     );
   }

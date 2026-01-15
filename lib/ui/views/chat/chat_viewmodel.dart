@@ -78,36 +78,64 @@ class ChatViewModel extends BaseViewModel {
     _isProcessing = true;
     notifyListeners();
 
+    // Add placeholder AI message that will be updated with streaming content
+    final aiMsgIndex = messages.length;
+    final aiMsg = ChatMessage(
+      content: '',
+      isUser: false,
+      timestamp: DateTime.now(),
+    );
+    messages.add(aiMsg);
+    _shouldScroll = true;
+    notifyListeners();
+
     try {
-      // Build conversation history from last 5 messages (excluding current)
+      // Build conversation history from last 10 messages (excluding current)
       final history = messages
           .take(messages.length > 10 ? 10 : messages.length)
           .map((m) => '${m.isUser ? "User" : "AI"}: ${m.content}')
           .toList();
 
-      final result = await _ragService.askWithRAG(
+      List<SearchResult>? sources;
+      RAGMetrics? metrics;
+
+      // Stream tokens and update the message incrementally
+      await for (final event in _ragService.askWithRAGStream(
         text,
         includeMetrics: true,
         conversationHistory: history.isNotEmpty ? history : null,
-      );
-
-      final aiMsg = ChatMessage(
-        content: result.response,
-        isUser: false,
-        timestamp: DateTime.now(),
-        sources: result.sources,
-        metrics: result.metrics,
-      );
-      messages.add(aiMsg);
-      await _chatRepository.saveMessage(aiMsg); // Persist AI response
-      _shouldScroll = true;
+      )) {
+        if (event is RAGMetadataEvent) {
+          // Store sources and metrics for later
+          sources = event.sources;
+          metrics = event.metrics;
+        } else if (event is RAGTokenEvent) {
+          // Update the message content with the new token
+          messages[aiMsgIndex] = ChatMessage(
+            content: messages[aiMsgIndex].content + event.token,
+            isUser: false,
+            timestamp: messages[aiMsgIndex].timestamp,
+            sources: sources,
+            metrics: metrics,
+          );
+          _shouldScroll = true;
+          notifyListeners(); // Trigger UI update for each token
+        } else if (event is RAGCompleteEvent) {
+          // Stream completed, persist the final message
+          await _chatRepository.saveMessage(messages[aiMsgIndex]);
+        }
+      }
     } on AuthenticationRequiredException {
+      // Remove the placeholder message on error
+      messages.removeAt(aiMsgIndex);
       // Show token input dialog
       await _showTokenDialog();
       _snackbarService.showSnackbar(
         message: 'Please provide authentication and try again',
       );
     } on Exception catch (e) {
+      // Remove the placeholder message on error
+      messages.removeAt(aiMsgIndex);
       _snackbarService.showSnackbar(message: 'Error: $e');
     } finally {
       _isProcessing = false;
