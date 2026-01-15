@@ -15,7 +15,10 @@ import '../services/chat_repository.dart';
 import '../services/embedding_service.dart';
 import '../services/environment_service.dart';
 import '../services/model_management_service.dart';
+import '../services/query_expansion_service.dart';
 import '../services/rag_service.dart';
+import '../services/rag_settings_service.dart';
+import '../services/reranking_service.dart';
 import '../services/vector_store.dart';
 
 final locator = StackedLocator.instance;
@@ -39,4 +42,7 @@ Future<void> setupLocator({
   locator.registerLazySingleton(() => ModelManagementService());
   locator.registerLazySingleton(() => EmbeddingService());
   locator.registerLazySingleton(() => RagService());
+  locator.registerLazySingleton(() => RagSettingsService());
+  locator.registerLazySingleton(() => QueryExpansionService());
+  locator.registerLazySingleton(() => RerankingService());
 }

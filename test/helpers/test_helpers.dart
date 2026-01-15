@@ -45,7 +45,7 @@ MockModelManagementService getAndRegisterMockModelManagementService() {
   // Default simple mock behaviors
   when(() => service.models).thenReturn([]);
   when(() => service.modelStatusStream).thenAnswer((_) => const Stream.empty());
-  when(service.initialize).thenAnswer((_) => Future.value());
+  when(service.initialize).thenAnswer((_) async {});
   when(() => service.downloadModel(any())).thenAnswer((_) => Future.value());
 
   return service;
@@ -62,7 +62,7 @@ MockRagSettingsService getAndRegisterMockRagSettingsService() {
   when(() => service.chunkOverlapPercent).thenReturn(0.15);
   when(() => service.semanticWeight).thenReturn(0.7);
   when(() => service.rerankTopK).thenReturn(10);
-  when(service.initialize).thenAnswer((_) => Future.value());
+  when(service.initialize).thenAnswer((_) async {});
 
   return service;
 }

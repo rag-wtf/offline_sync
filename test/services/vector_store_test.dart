@@ -3,6 +3,7 @@ import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class MockPathProviderPlatform extends PathProviderPlatform {
   @override
@@ -17,11 +18,15 @@ void main() {
   setUp(() async {
     PathProviderPlatform.instance = MockPathProviderPlatform();
 
-    // Register RagSettingsService for VectorStore dependency
-    // Only setup if not already registered
-    if (!locator.isRegistered<RagSettingsService>()) {
-      await setupLocator();
-    }
+    // Mock SharedPreferences for RagSettingsService
+    SharedPreferences.setMockInitialValues({});
+
+    // Reset locator to ensure clean state before each test
+    await locator.reset();
+
+    // Setup locator with fresh registrations
+    await setupLocator();
+
     final ragSettings = locator<RagSettingsService>();
     await ragSettings.initialize();
 
@@ -29,10 +34,10 @@ void main() {
     await vectorStore.initialize();
   });
 
-  tearDown() async {
+  tearDown(() async {
     vectorStore.close();
     await locator.reset();
-  }
+  });
 
   group('VectorStore Tests', () {
     test('insert and retrieve semantic embedding', () async {
