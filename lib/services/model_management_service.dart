@@ -50,7 +50,23 @@ class ModelManagementService {
   // Track active downloads to prevent race conditions
   final Map<String, Future<void>> _activeDownloads = {};
 
+  // Track active models
+  String? _activeInferenceModelId;
+  String? _activeEmbeddingModelId;
+
   List<ModelInfo> get models => List.unmodifiable(_models);
+
+  /// Get active inference model
+  ModelInfo? get activeInferenceModel {
+    if (_activeInferenceModelId == null) return null;
+    return _models.firstWhere((m) => m.id == _activeInferenceModelId);
+  }
+
+  /// Get active embedding model
+  ModelInfo? get activeEmbeddingModel {
+    if (_activeEmbeddingModelId == null) return null;
+    return _models.firstWhere((m) => m.id == _activeEmbeddingModelId);
+  }
 
   Future<void> initialize() async {
     log('DEBUG: ModelManagementService.initialize() called');
@@ -89,21 +105,16 @@ class ModelManagementService {
           ..status = ModelStatus.downloaded
           ..progress = 1.0;
 
+        // Only activate if this is set as active model
         if (model.type == AppModelType.embedding) {
+          _activeEmbeddingModelId = model.id;
           await _activateEmbeddingModel(model);
         } else if (model.type == AppModelType.inference) {
+          _activeInferenceModelId = model.id;
           await _activateInferenceModel(model);
         }
-      } else {
-        // Auto-download models if missing
-        if (model.type == AppModelType.embedding ||
-            model.type == AppModelType.inference) {
-          log('Auto-downloading model ${model.id}');
-          log('DEBUG: About to call downloadModel for ${model.id}');
-          await downloadModel(model.id);
-          log('DEBUG: downloadModel completed for ${model.id}');
-        }
       }
+      // Don't auto-download - let startup handle recommended model selection
     }
     log('DEBUG: initialize() completed, calling _notify()');
     _notify();

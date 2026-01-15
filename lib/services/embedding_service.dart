@@ -21,7 +21,7 @@ class EmbeddingService {
         '[EmbeddingService] No active embedder found. Initializing default...',
       );
 
-      const config = ModelConfig.embeddingModel;
+      const config = EmbeddingModels.embeddingGemma256;
 
       try {
         final token = await AuthTokenService.loadToken();

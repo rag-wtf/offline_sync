@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
+import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
+import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
 import 'package:stacked/stacked.dart';
 import 'package:stacked_services/stacked_services.dart';
@@ -12,6 +14,9 @@ class StartupViewModel extends BaseViewModel {
   final NavigationService _navigationService = locator<NavigationService>();
   final ModelManagementService _modelService =
       locator<ModelManagementService>();
+  final DeviceCapabilityService _deviceService = DeviceCapabilityService();
+  final ModelRecommendationService _recommendationService =
+      ModelRecommendationService();
 
   StreamSubscription<List<ModelInfo>>? _subscription;
 
@@ -20,6 +25,10 @@ class StartupViewModel extends BaseViewModel {
 
   bool _needsToken = false;
   bool get needsToken => _needsToken;
+
+  DeviceCapabilities? _capabilities;
+  bool _isUnsupportedDevice = false;
+  bool get isUnsupportedDevice => _isUnsupportedDevice;
 
   Future<void> runStartupLogic() async {
     log('DEBUG: runStartupLogic called');
@@ -74,19 +83,65 @@ class StartupViewModel extends BaseViewModel {
     );
 
     try {
+      // 1. Detect device capabilities
+      _statusMessage = 'Detecting device capabilities...';
+      notifyListeners();
+      _capabilities = await _deviceService.getCapabilities();
+      log('Device capabilities: $_capabilities');
+
+      // 2. Check minimum requirements
+      if (!_recommendationService.meetsMinimumRequirements(_capabilities!)) {
+        _isUnsupportedDevice = true;
+        final message = _recommendationService.getUnsupportedDeviceMessage(
+          _capabilities!,
+        );
+        setError(message);
+        // For now, continue with smallest models anyway
+        log('Device does not meet minimum requirements, using smallest models');
+      }
+
+      // 3. Get recommended models
+      _statusMessage = 'Selecting optimal models...';
+      notifyListeners();
+      final recommended = _recommendationService.getRecommendedModels(
+        _capabilities!,
+      );
+      log(
+        'Recommended models: Inference=${recommended.inferenceModel.name}, '
+        'Embedding=${recommended.embeddingModel.name}, '
+        'Tier=${recommended.tier}',
+      );
+
+      // 4. Initialize model service (checks existing models)
       log('DEBUG: About to call _modelService.initialize()');
       log('About to call _modelService.initialize()', name: 'StartupViewModel');
       await _modelService.initialize();
       log('DEBUG: _modelService.initialize() completed');
       log('_modelService.initialize() completed', name: 'StartupViewModel');
 
-      // Check if any critical errors occurred during initialize (that weren't caught/handled fully)
+      // 5. Download recommended models if not present
+      final inferenceModel = _modelService.models.firstWhere(
+        (m) => m.id == recommended.inferenceModel.id,
+      );
+      final embeddingModel = _modelService.models.firstWhere(
+        (m) => m.id == recommended.embeddingModel.id,
+      );
+
+      if (inferenceModel.status != ModelStatus.downloaded) {
+        log('Downloading recommended inference model: ${inferenceModel.name}');
+        await _modelService.downloadModel(inferenceModel.id);
+      }
+
+      if (embeddingModel.status != ModelStatus.downloaded) {
+        log('Downloading recommended embedding model: ${embeddingModel.name}');
+        await _modelService.downloadModel(embeddingModel.id);
+      }
+
+      // Check if any critical errors occurred during downloads
       final errors = _modelService.models.where(
         (m) => m.status == ModelStatus.error,
       );
       if (errors.isNotEmpty) {
-        // If 401 was already caught by listener, fine.
-        // Otherwise set generic error.
         if (errors.any((m) => m.errorMessage?.contains('401') ?? false)) {
           _needsToken = true;
           setError('Missing or invalid Hugging Face Token.');
