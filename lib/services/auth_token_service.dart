@@ -9,11 +9,7 @@ class AuthTokenService {
   AuthTokenService._();
 
   static const String _authTokenKey = 'auth_token';
-  static const _storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(
-      encryptedSharedPreferences: true,
-    ),
-  );
+  static const _storage = FlutterSecureStorage();
 
   /// Load the stored HuggingFace authentication token.
   ///
