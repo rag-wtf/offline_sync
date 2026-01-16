@@ -218,10 +218,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_gemma
-      sha256: "2b1df65a5c5d03f63a2322aa741fa7b8163097cbd4c51e5bbc40be0b312f97d5"
+      sha256: "2f90dabd83a16b8f38f3bb38c9ac1d0669f1f6f4a07585341f41682825e03ba4"
       url: "https://pub.dev"
     source: hosted
-    version: "0.12.0"
+    version: "0.12.2"
   flutter_localizations:
     dependency: "direct main"
     description: flutter
@@ -860,4 +860,4 @@ packages:
     version: "3.1.3"
 sdks:
   dart: ">=3.9.0 <4.0.0"
-  flutter: ">=3.35.0 <4.0.0"
+  flutter: ">=3.35.0"
