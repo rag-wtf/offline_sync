@@ -3,7 +3,7 @@ import 'dart:developer';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
-import 'package:offline_sync/services/model_config.dart';
+
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
@@ -30,6 +30,10 @@ class StartupViewModel extends BaseViewModel {
   DeviceCapabilities? _capabilities;
   bool _isUnsupportedDevice = false;
   bool get isUnsupportedDevice => _isUnsupportedDevice;
+
+  // Track recommended model IDs for navigation check
+  String? _recommendedInferenceModelId;
+  String? _recommendedEmbeddingModelId;
 
   Future<void> runStartupLogic() async {
     log('DEBUG: runStartupLogic called');
@@ -113,6 +117,10 @@ class StartupViewModel extends BaseViewModel {
         'Tier=${recommended.tier}',
       );
 
+      // Store recommended model IDs for later navigation check
+      _recommendedInferenceModelId = recommended.inferenceModel.id;
+      _recommendedEmbeddingModelId = recommended.embeddingModel.id;
+
       // 4. Initialize model service (checks existing models)
       log('DEBUG: About to call _modelService.initialize()');
       log('About to call _modelService.initialize()', name: 'StartupViewModel');
@@ -166,11 +174,12 @@ class StartupViewModel extends BaseViewModel {
   }
 
   Future<void> _checkAndNavigate() async {
+    // Check the status of the recommended models that were downloaded
     final inferenceModel = _modelService.models.firstWhere(
-      (m) => m.type == AppModelType.inference,
+      (m) => m.id == _recommendedInferenceModelId,
     );
     final embeddingModel = _modelService.models.firstWhere(
-      (m) => m.type == AppModelType.embedding,
+      (m) => m.id == _recommendedEmbeddingModelId,
     );
 
     log(
