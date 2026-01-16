@@ -31,6 +31,7 @@ import 'package:stacked_services/stacked_services.dart';
   ],
   dependencies: [
     LazySingleton<NavigationService>(classType: NavigationService),
+    LazySingleton<DialogService>(classType: DialogService),
     LazySingleton<SnackbarService>(classType: SnackbarService),
     LazySingleton<EnvironmentService>(classType: EnvironmentService),
     LazySingleton<VectorStore>(classType: VectorStore),
