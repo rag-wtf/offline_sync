@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/embedding_service.dart';
+import 'package:offline_sync/services/model_config.dart';
+import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
 
 /// Service for expanding queries to improve retrieval recall
@@ -118,7 +120,21 @@ Variants:''';
     if (_inferenceModel != null) return;
 
     try {
-      _inferenceModel = await FlutterGemma.getActiveModel();
+      final settings = locator<RagSettingsService>();
+      final userMaxTokens = settings.maxTokens;
+
+      final maxTokens =
+          userMaxTokens ??
+          ModelConfig.allModels
+              .firstWhere(
+                (m) => m.type == AppModelType.inference,
+                orElse: () => InferenceModels.gemma3_270M,
+              )
+              .maxTokens;
+
+      _inferenceModel = await FlutterGemma.getActiveModel(
+        maxTokens: maxTokens,
+      );
     } catch (e) {
       throw Exception(
         'Failed to get active inference model for query expansion: $e',

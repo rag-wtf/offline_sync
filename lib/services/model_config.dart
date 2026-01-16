@@ -27,6 +27,7 @@ class InferenceModels {
     minRamMB: 600,
     requiresGpu: false,
     tier: DeviceTier.low,
+    maxTokens: 1024, // Conservative for low-end devices
   );
 
   // Mid tier: Gemma 3 1B
@@ -40,6 +41,7 @@ class InferenceModels {
     minRamMB: 1024,
     requiresGpu: false,
     tier: DeviceTier.mid,
+    maxTokens: 2048, // Moderate context for mid-tier devices
   );
 
   // High tier: Gemma 3n E2B (multimodal)
@@ -53,6 +55,7 @@ class InferenceModels {
     minRamMB: 4096,
     requiresGpu: true,
     tier: DeviceTier.high,
+    maxTokens: 4096, // Larger context for high-end devices
   );
 
   // Premium tier: Gemma 3n E4B (multimodal, largest)
@@ -66,6 +69,7 @@ class InferenceModels {
     minRamMB: 8192,
     requiresGpu: true,
     tier: DeviceTier.premium,
+    maxTokens: 8192, // Maximum context for premium devices
   );
 
   static List<ModelDefinition> get all => [
@@ -91,6 +95,7 @@ class EmbeddingModels {
     minRamMB: 200,
     requiresGpu: false,
     tier: DeviceTier.low,
+    maxTokens: 256, // Embedding input limit
   );
 
   // Mid tier: EmbeddingGemma 256
@@ -106,6 +111,7 @@ class EmbeddingModels {
     minRamMB: 400,
     requiresGpu: false,
     tier: DeviceTier.mid,
+    maxTokens: 256, // Sequence length
   );
 
   // High tier: EmbeddingGemma 512
@@ -121,6 +127,7 @@ class EmbeddingModels {
     minRamMB: 400,
     requiresGpu: false,
     tier: DeviceTier.high,
+    maxTokens: 512, // Sequence length
   );
 
   // Premium tier: EmbeddingGemma 1024
@@ -136,6 +143,7 @@ class EmbeddingModels {
     minRamMB: 400,
     requiresGpu: false,
     tier: DeviceTier.premium,
+    maxTokens: 1024, // Sequence length
   );
 
   static List<ModelDefinition> get all => [
@@ -157,6 +165,7 @@ class ModelDefinition {
     required this.minRamMB,
     required this.requiresGpu,
     required this.tier,
+    required this.maxTokens,
     this.tokenizerUrl,
     this.sha256,
   });
@@ -170,6 +179,7 @@ class ModelDefinition {
   final int minRamMB;
   final bool requiresGpu;
   final DeviceTier tier;
+  final int maxTokens; // Maximum context window (input + output)
   final String? sha256; // For future checksum validation
 
   /// Get the expected filename from the URL

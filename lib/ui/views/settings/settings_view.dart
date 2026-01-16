@@ -115,6 +115,100 @@ class SettingsView extends StackedView<SettingsViewModel> {
               ],
             ),
           ),
+
+          // Token Management Section
+          const SizedBox(height: 32),
+          const Text(
+            'Token Management',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Control context and history to fit within model limits',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 16),
+
+          // Search Top K Slider
+          ListTile(
+            title: Text(
+              'Search Top K: ${viewModel.searchTopK}',
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+                Slider(
+                  value: viewModel.searchTopK.toDouble(),
+                  min: 1,
+                  max: 5,
+                  divisions: 4,
+                  label: '${viewModel.searchTopK}',
+                  onChanged: viewModel.setSearchTopK,
+                ),
+                const Text(
+                  'Number of context chunks retrieved from vector search',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+
+          // Max History Messages Slider
+          ListTile(
+            title: Text(
+              'Max History Messages: ${viewModel.maxHistoryMessages}',
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+                Slider(
+                  value: viewModel.maxHistoryMessages.toDouble(),
+                  max: 5,
+                  divisions: 5,
+                  label: '${viewModel.maxHistoryMessages}',
+                  onChanged: viewModel.setMaxHistoryMessages,
+                ),
+                const Text(
+                  'Maximum conversation history messages included in context',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+
+          // Max Tokens Slider
+          ListTile(
+            title: Text(
+              viewModel.isMaxTokensCustom
+                  ? 'Max Tokens: ${viewModel.maxTokens} (Custom)'
+                  : 'Max Tokens: ${viewModel.maxTokens} '
+                        '(Default)',
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 8),
+                Slider(
+                  value: viewModel.maxTokens.toDouble(),
+                  min: 512,
+                  max: 8192,
+                  divisions: 15,
+                  label: '${viewModel.maxTokens}',
+                  onChanged: viewModel.setMaxTokens,
+                ),
+                Text(
+                  viewModel.isMaxTokensCustom
+                      ? 'Custom value '
+                            '(default: ${viewModel.modelDefaultMaxTokens})'
+                      : 'Maximum context window for the model '
+                            '(input + output)',
+                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

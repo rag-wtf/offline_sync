@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/embedding_service.dart';
+import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/query_expansion_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/reranking_service.dart';
@@ -97,13 +98,17 @@ class RagService {
       searchResults = await expansionService.searchWithExpandedQueries(
         query,
         queryVariants,
-        limit: settings.rerankingEnabled ? settings.rerankTopK : 3,
+        limit: settings.rerankingEnabled
+            ? settings.rerankTopK
+            : settings.searchTopK,
       );
     } else {
       searchResults = await _vectorStore.hybridSearch(
         query,
         queryEmbedding,
-        limit: settings.rerankingEnabled ? settings.rerankTopK : 3,
+        limit: settings.rerankingEnabled
+            ? settings.rerankTopK
+            : settings.searchTopK,
       );
     }
     final searchTime = stopwatch.elapsed - embeddingTime;
@@ -119,18 +124,15 @@ class RagService {
         topK: settings.rerankTopK,
       );
       rerankingTime = stopwatch.elapsed - rerankStart;
-      // Take top 3 for generation
-      searchResults = searchResults.take(3).toList();
+      // Take top searchTopK for generation
+      searchResults = searchResults.take(settings.searchTopK).toList();
     }
 
-    // 5. Build Context
-    final context = _buildContext(searchResults);
-
-    // 6. Generate Response with conversation history
+    // 5. Generate Response with conversation history and token budget mgmt
     await _ensureInferenceModel();
     final response = await _generate(
       query,
-      context,
+      searchResults,
       conversationHistory: conversationHistory,
     );
     final generationTime = stopwatch.elapsed - searchTime - embeddingTime;
@@ -229,14 +231,11 @@ class RagService {
           : null,
     );
 
-    // 6. Build Context
-    final context = _buildContext(searchResults);
-
-    // 7. Stream tokens from generation
+    // 6. Stream tokens from generation with token budget management
     await _ensureInferenceModel();
     await for (final token in _generateStream(
       query,
-      context,
+      searchResults,
       conversationHistory: conversationHistory,
     )) {
       yield RAGTokenEvent(token);
@@ -284,7 +283,22 @@ class RagService {
     if (_inferenceModel != null) return;
 
     try {
-      _inferenceModel = await FlutterGemma.getActiveModel();
+      // Get maxTokens from user settings or model config
+      final settings = locator<RagSettingsService>();
+      final userMaxTokens = settings.maxTokens;
+
+      final maxTokens =
+          userMaxTokens ??
+          ModelConfig.allModels
+              .firstWhere(
+                (m) => m.type == AppModelType.inference,
+                orElse: () => InferenceModels.gemma3_270M,
+              )
+              .maxTokens;
+
+      _inferenceModel = await FlutterGemma.getActiveModel(
+        maxTokens: maxTokens,
+      );
     } catch (e) {
       throw Exception(
         'Failed to get active inference model: $e. '
@@ -303,18 +317,31 @@ class RagService {
 
   Future<String> _generate(
     String query,
-    String context, {
+    List<SearchResult> searchResults, {
     List<String>? conversationHistory,
   }) async {
-    // Build conversation history section
-    final historySection =
-        conversationHistory != null && conversationHistory.isNotEmpty
-        ? '''
-Previous conversation:
-${conversationHistory.take(5).join('\n')}
+    // Get max tokens from model config
+    final modelConfig = ModelConfig.allModels.firstWhere(
+      (m) => m.type == AppModelType.inference,
+      orElse: () => InferenceModels.gemma3_270M,
+    );
 
-'''
-        : '';
+    // Calculate token budget
+    final maxTokens = modelConfig.maxTokens;
+    final outputReserve = (maxTokens * 0.25).floor(); // 25% for output
+    final queryTokens = _estimateTokens(query);
+    final availableForPrompt = maxTokens - outputReserve - queryTokens;
+
+    // Allocate: 55% context, 35% history, 10% template
+    final contextBudget = (availableForPrompt * 0.55).floor();
+    final historyBudget = (availableForPrompt * 0.35).floor();
+
+    // Build components within budget
+    final historySection = _buildHistoryWithBudget(
+      conversationHistory,
+      historyBudget,
+    );
+    final context = _buildContextWithBudget(searchResults, contextBudget);
 
     final prompt =
         '''
@@ -353,18 +380,31 @@ Answer based only on the provided context. If the answer is not in the context, 
   /// Stream tokens from the model as they're generated
   Stream<String> _generateStream(
     String query,
-    String context, {
+    List<SearchResult> searchResults, {
     List<String>? conversationHistory,
   }) async* {
-    // Build conversation history section
-    final historySection =
-        conversationHistory != null && conversationHistory.isNotEmpty
-        ? '''
-Previous conversation:
-${conversationHistory.take(5).join('\n')}
+    // Get max tokens from model config
+    final modelConfig = ModelConfig.allModels.firstWhere(
+      (m) => m.type == AppModelType.inference,
+      orElse: () => InferenceModels.gemma3_270M,
+    );
 
-'''
-        : '';
+    // Calculate token budget
+    final maxTokens = modelConfig.maxTokens;
+    final outputReserve = (maxTokens * 0.25).floor(); // 25% for output
+    final queryTokens = _estimateTokens(query);
+    final availableForPrompt = maxTokens - outputReserve - queryTokens;
+
+    // Allocate: 55% context, 35% history, 10% template
+    final contextBudget = (availableForPrompt * 0.55).floor();
+    final historyBudget = (availableForPrompt * 0.35).floor();
+
+    // Build components within budget
+    final historySection = _buildHistoryWithBudget(
+      conversationHistory,
+      historyBudget,
+    );
+    final context = _buildContextWithBudget(searchResults, contextBudget);
 
     final prompt =
         '''
@@ -395,15 +435,6 @@ Answer based only on the provided context. If the answer is not in the context, 
         yield modelResponse.token;
       }
     }
-  }
-
-  String _buildContext(List<SearchResult> results) {
-    if (results.isEmpty) return 'No relevant context found.';
-    return results
-        .asMap()
-        .entries
-        .map((e) => '[Source ${e.key + 1}]: ${e.value.content}')
-        .join('\n\n');
   }
 
   /// Split text into chunks using character limit with line-based boundaries
@@ -492,5 +523,79 @@ Answer based only on the provided context. If the answer is not in the context, 
     }
 
     return chunks.where((c) => c.isNotEmpty).toList();
+  }
+
+  /// Estimate token count using ~4 chars = 1 token heuristic
+  int _estimateTokens(String text) {
+    return (text.length / 4).ceil();
+  }
+
+  /// Build conversation history with token budget, keeping most recent first
+  String _buildHistoryWithBudget(
+    List<String>? history,
+    int tokenBudget,
+  ) {
+    if (history == null || history.isEmpty || tokenBudget <= 0) return '';
+
+    final settings = locator<RagSettingsService>();
+    // Limit to maxHistoryMessages
+    final limitedHistory = history.take(settings.maxHistoryMessages).toList();
+
+    if (limitedHistory.isEmpty) return '';
+
+    // Always keep most recent exchange (last 2 messages if available)
+    final recentCount = limitedHistory.length >= 2 ? 2 : limitedHistory.length;
+    final recent = limitedHistory.reversed.take(recentCount).toList().reversed;
+    var tokens = _estimateTokens(recent.join('\n'));
+
+    // Add older messages if budget allows (oldest dropped first)
+    final older = limitedHistory.reversed.skip(recentCount).toList();
+    final includedOlder = <String>[];
+
+    for (final msg in older) {
+      final msgTokens = _estimateTokens(msg);
+      if (tokens + msgTokens <= tokenBudget) {
+        includedOlder.add(msg);
+        tokens += msgTokens;
+      } else {
+        break; // Drop remaining oldest messages
+      }
+    }
+
+    // Build: [older...] + [recent]
+    final allMessages = [...includedOlder.reversed, ...recent];
+    if (allMessages.isEmpty) return '';
+
+    return '''
+Previous conversation:
+${allMessages.join('\n')}
+
+''';
+  }
+
+  /// Build context from search results with token budget
+  String _buildContextWithBudget(
+    List<SearchResult> results,
+    int tokenBudget,
+  ) {
+    if (results.isEmpty) return 'No relevant context found.';
+
+    // Results already sorted by relevance score
+    final chunks = <String>[];
+    var tokens = 0;
+
+    for (final result in results) {
+      final chunkText = '[Source ${chunks.length + 1}]: ${result.content}';
+      final chunkTokens = _estimateTokens(chunkText);
+
+      if (tokens + chunkTokens <= tokenBudget) {
+        chunks.add(chunkText);
+        tokens += chunkTokens;
+      } else {
+        break; // Skip lower-relevance chunks
+      }
+    }
+
+    return chunks.isEmpty ? 'No relevant context found.' : chunks.join('\n\n');
   }
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:stacked/stacked.dart';
@@ -16,6 +17,35 @@ class SettingsViewModel extends BaseViewModel {
   bool get rerankingEnabled => _ragSettings.rerankingEnabled;
   double get chunkOverlapPercent => _ragSettings.chunkOverlapPercent * 100;
   double get semanticWeight => _ragSettings.semanticWeight;
+  int get searchTopK => _ragSettings.searchTopK;
+  int get maxHistoryMessages => _ragSettings.maxHistoryMessages;
+
+  // Get user-configured maxTokens or model default
+  int get maxTokens {
+    final userValue = _ragSettings.maxTokens;
+    if (userValue != null) return userValue;
+
+    // Return model default
+    return ModelConfig.allModels
+        .firstWhere(
+          (m) => m.type == AppModelType.inference,
+          orElse: () => InferenceModels.gemma3_270M,
+        )
+        .maxTokens;
+  }
+
+  // Get the model's default maxTokens for display
+  int get modelDefaultMaxTokens {
+    return ModelConfig.allModels
+        .firstWhere(
+          (m) => m.type == AppModelType.inference,
+          orElse: () => InferenceModels.gemma3_270M,
+        )
+        .maxTokens;
+  }
+
+  // Whether user has overridden the default
+  bool get isMaxTokensCustom => _ragSettings.maxTokens != null;
 
   void setup() {
     _modelService.modelStatusStream.listen((_) => notifyListeners());
@@ -50,6 +80,27 @@ class SettingsViewModel extends BaseViewModel {
 
   Future<void> setSemanticWeight(double value) async {
     await _ragSettings.setSemanticWeight(value);
+    notifyListeners();
+  }
+
+  Future<void> setSearchTopK(double value) async {
+    await _ragSettings.setSearchTopK(value.round());
+    notifyListeners();
+  }
+
+  Future<void> setMaxHistoryMessages(double value) async {
+    await _ragSettings.setMaxHistoryMessages(value.round());
+    notifyListeners();
+  }
+
+  Future<void> setMaxTokens(double value) async {
+    final intValue = value.round();
+    // If it matches model default, clear the override
+    if (intValue == modelDefaultMaxTokens) {
+      await _ragSettings.setMaxTokens(null);
+    } else {
+      await _ragSettings.setMaxTokens(intValue);
+    }
     notifyListeners();
   }
 }
