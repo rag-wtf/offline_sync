@@ -98,4 +98,32 @@ class RagSettingsService {
       await prefs.setInt(_keyMaxTokens, _maxTokens!);
     }
   }
+
+  // Document Management Settings
+  static const _keyMaxDocumentSizeMB = 'rag_max_doc_size_mb';
+  static const _keyContextualRetrieval = 'rag_contextual_retrieval_enabled';
+
+  int _maxDocumentSizeMB = 10; // Default 10MB
+  bool _contextualRetrievalEnabled = false;
+
+  int get maxDocumentSizeMB => _maxDocumentSizeMB;
+  bool get contextualRetrievalEnabled => _contextualRetrievalEnabled;
+
+  // Dynamic token limit: Double the base limit if CR is enabled
+  // Base is usually 4096 (High tier), so this allows ~8192 tokens (~32k chars)
+  // when contextual retrieval is active, assuming the model supports it
+  // (e.g. Premium).
+  bool get doubleMaxTokens => _contextualRetrievalEnabled;
+
+  Future<void> setMaxDocumentSizeMB(int value) async {
+    _maxDocumentSizeMB = value.clamp(1, 50); // 1MB to 50MB
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyMaxDocumentSizeMB, _maxDocumentSizeMB);
+  }
+
+  Future<void> setContextualRetrievalEnabled({required bool value}) async {
+    _contextualRetrievalEnabled = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyContextualRetrieval, value);
+  }
 }

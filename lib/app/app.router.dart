@@ -8,7 +8,12 @@
 // ignore_for_file: no_leading_underscores_for_library_prefixes
 import 'package:flutter/material.dart' as _i5;
 import 'package:flutter/material.dart';
+import 'package:offline_sync/models/document.dart' as _i9;
 import 'package:offline_sync/ui/views/chat/chat_view.dart' as _i3;
+import 'package:offline_sync/ui/views/document_detail/document_detail_view.dart'
+    as _i8;
+import 'package:offline_sync/ui/views/document_library/document_library_view.dart'
+    as _i7;
 import 'package:offline_sync/ui/views/settings/settings_view.dart' as _i4;
 import 'package:offline_sync/ui/views/startup/startup_view.dart' as _i2;
 import 'package:stacked/stacked.dart' as _i1;
@@ -21,7 +26,17 @@ class Routes {
 
   static const settingsView = '/settings-view';
 
-  static const all = <String>{startupView, chatView, settingsView};
+  static const documentLibraryView = '/document-library-view';
+
+  static const documentDetailView = '/document-detail-view';
+
+  static const all = <String>{
+    startupView,
+    chatView,
+    settingsView,
+    documentLibraryView,
+    documentDetailView,
+  };
 }
 
 class StackedRouter extends _i1.RouterBase {
@@ -29,6 +44,8 @@ class StackedRouter extends _i1.RouterBase {
     _i1.RouteDef(Routes.startupView, page: _i2.StartupView),
     _i1.RouteDef(Routes.chatView, page: _i3.ChatView),
     _i1.RouteDef(Routes.settingsView, page: _i4.SettingsView),
+    _i1.RouteDef(Routes.documentLibraryView, page: _i7.DocumentLibraryView),
+    _i1.RouteDef(Routes.documentDetailView, page: _i8.DocumentDetailView),
   ];
 
   final _pagesMap = <Type, _i1.StackedRouteFactory>{
@@ -56,6 +73,27 @@ class StackedRouter extends _i1.RouterBase {
       );
       return _i5.MaterialPageRoute<dynamic>(
         builder: (context) => _i4.SettingsView(key: args.key),
+        settings: data,
+      );
+    },
+    _i7.DocumentLibraryView: (data) {
+      final args = data.getArgs<DocumentLibraryViewArguments>(
+        orElse: () => const DocumentLibraryViewArguments(),
+      );
+      return _i5.MaterialPageRoute<dynamic>(
+        builder: (context) => _i7.DocumentLibraryView(key: args.key),
+        settings: data,
+      );
+    },
+    _i8.DocumentDetailView: (data) {
+      final args = data.getArgs<DocumentDetailViewArguments>(
+        orElse: () => throw Exception('Arguments must be provided'),
+      );
+      return _i5.MaterialPageRoute<dynamic>(
+        builder: (context) => _i8.DocumentDetailView(
+          key: args.key,
+          document: args.document,
+        ),
         settings: data,
       );
     },
@@ -134,6 +172,55 @@ class SettingsViewArguments {
   }
 }
 
+class DocumentLibraryViewArguments {
+  const DocumentLibraryViewArguments({this.key});
+
+  final _i5.Key? key;
+
+  @override
+  String toString() {
+    return '{"key": "$key"}';
+  }
+
+  @override
+  bool operator ==(covariant DocumentLibraryViewArguments other) {
+    if (identical(this, other)) return true;
+    return other.key == key;
+  }
+
+  @override
+  int get hashCode {
+    return key.hashCode;
+  }
+}
+
+class DocumentDetailViewArguments {
+  const DocumentDetailViewArguments({
+    this.key,
+    required this.document,
+  });
+
+  final _i5.Key? key;
+
+  final _i9.Document document;
+
+  @override
+  String toString() {
+    return '{"key": "$key", "document": "$document"}';
+  }
+
+  @override
+  bool operator ==(covariant DocumentDetailViewArguments other) {
+    if (identical(this, other)) return true;
+    return other.key == key && other.document == document;
+  }
+
+  @override
+  int get hashCode {
+    return key.hashCode ^ document.hashCode;
+  }
+}
+
 extension NavigatorStateExtension on _i6.NavigationService {
   Future<dynamic> navigateToStartupView({
     _i5.Key? key,
@@ -182,6 +269,43 @@ extension NavigatorStateExtension on _i6.NavigationService {
     return navigateTo<dynamic>(
       Routes.settingsView,
       arguments: SettingsViewArguments(key: key),
+      id: routerId,
+      preventDuplicates: preventDuplicates,
+      parameters: parameters,
+      transition: transition,
+    );
+  }
+
+  Future<dynamic> navigateToDocumentLibraryView({
+    _i5.Key? key,
+    int? routerId,
+    bool preventDuplicates = true,
+    Map<String, String>? parameters,
+    Widget Function(BuildContext, Animation<double>, Animation<double>, Widget)?
+    transition,
+  }) async {
+    return navigateTo<dynamic>(
+      Routes.documentLibraryView,
+      arguments: DocumentLibraryViewArguments(key: key),
+      id: routerId,
+      preventDuplicates: preventDuplicates,
+      parameters: parameters,
+      transition: transition,
+    );
+  }
+
+  Future<dynamic> navigateToDocumentDetailView({
+    required _i9.Document document,
+    _i5.Key? key,
+    int? routerId,
+    bool preventDuplicates = true,
+    Map<String, String>? parameters,
+    Widget Function(BuildContext, Animation<double>, Animation<double>, Widget)?
+    transition,
+  }) async {
+    return navigateTo<dynamic>(
+      Routes.documentDetailView,
+      arguments: DocumentDetailViewArguments(key: key, document: document),
       id: routerId,
       preventDuplicates: preventDuplicates,
       parameters: parameters,

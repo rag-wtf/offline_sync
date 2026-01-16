@@ -1,20 +1,25 @@
 import 'dart:async';
 import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:stacked/stacked.dart';
+import 'package:stacked_services/stacked_services.dart';
 
 class SettingsViewModel extends BaseViewModel {
   final ModelManagementService _modelService =
       locator<ModelManagementService>();
   final RagSettingsService _ragSettings = locator<RagSettingsService>();
+  final NavigationService _navigationService = locator<NavigationService>();
 
   List<ModelInfo> get models => _modelService.models;
 
   // RAG Settings getters
   bool get queryExpansionEnabled => _ragSettings.queryExpansionEnabled;
   bool get rerankingEnabled => _ragSettings.rerankingEnabled;
+  bool get contextualRetrievalEnabled =>
+      _ragSettings.contextualRetrievalEnabled;
   double get chunkOverlapPercent => _ragSettings.chunkOverlapPercent * 100;
   double get semanticWeight => _ragSettings.semanticWeight;
   int get searchTopK => _ragSettings.searchTopK;
@@ -71,6 +76,13 @@ class SettingsViewModel extends BaseViewModel {
     notifyListeners();
   }
 
+  // Positional bool required by SwitchListTile.onChanged callback signature
+  // ignore: avoid_positional_boolean_parameters
+  Future<void> toggleContextualRetrieval(bool value) async {
+    await _ragSettings.setContextualRetrievalEnabled(value: value);
+    notifyListeners();
+  }
+
   Future<void> setChunkOverlap(double value) async {
     await _ragSettings.setChunkOverlapPercent(
       value / 100,
@@ -102,5 +114,9 @@ class SettingsViewModel extends BaseViewModel {
       await _ragSettings.setMaxTokens(intValue);
     }
     notifyListeners();
+  }
+
+  Future<void> navigateToDocumentLibrary() async {
+    await _navigationService.navigateTo<dynamic>(Routes.documentLibraryView);
   }
 }

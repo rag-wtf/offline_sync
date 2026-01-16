@@ -25,6 +25,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.3"
+  archive:
+    dependency: "direct main"
+    description:
+      name: archive
+      sha256: "2fde1607386ab523f7a36bb3e7edb43bd58e6edaf2ffb29d8a6d578b297fdbbd"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.0.7"
   args:
     dependency: transitive
     description:
@@ -209,6 +217,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "7.0.3"
+  epub_plus:
+    dependency: "direct main"
+    description:
+      name: epub_plus
+      sha256: de0b50c8db19be3642df9bb8a25694297efa09fe208d0f8060570daae6a8d330
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.1.0"
   fake_async:
     dependency: transitive
     description:
@@ -258,10 +274,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_gemma
-      sha256: "5541d8ac38f92e6c67564a3f6cfd6c73d28436bf7ace206044b4951cbc02e0f3"
+      sha256: "2f90dabd83a16b8f38f3bb38c9ac1d0669f1f6f4a07585341f41682825e03ba4"
       url: "https://pub.dev"
     source: hosted
-    version: "0.12.1"
+    version: "0.12.2"
   flutter_localizations:
     dependency: "direct main"
     description: flutter
@@ -445,6 +461,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.1.2"
+  image:
+    dependency: transitive
+    description:
+      name: image
+      sha256: "492bd52f6c4fbb6ee41f781ff27765ce5f627910e1e0cbecfa3d9add5562604c"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.7.2"
   injectable:
     dependency: "direct main"
     description:
@@ -693,6 +717,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.5.2"
+  posix:
+    dependency: transitive
+    description:
+      name: posix
+      sha256: "6323a5b0fa688b6a010df4905a56b00181479e6d10534cecfecede2aa55add61"
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.0.3"
   protobuf:
     dependency: transitive
     description:
@@ -898,6 +930,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.4.1"
+  syncfusion_flutter_core:
+    dependency: transitive
+    description:
+      name: syncfusion_flutter_core
+      sha256: c9446faa7a5cd8f6496357e41e8c4b24e158a8760222d32a5837abc35dd5d629
+      url: "https://pub.dev"
+    source: hosted
+    version: "32.1.23"
+  syncfusion_flutter_pdf:
+    dependency: "direct main"
+    description:
+      name: syncfusion_flutter_pdf
+      sha256: "2be401dad8cb56cc13311688cb82bc45e68fb264dd678fdaadc94c44513d5a7d"
+      url: "https://pub.dev"
+    source: hosted
+    version: "32.1.23"
   system_info_plus:
     dependency: "direct main"
     description:
@@ -1002,6 +1050,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.5"
+  uuid:
+    dependency: "direct main"
+    description:
+      name: uuid
+      sha256: a11b666489b1954e01d992f3d601b1804a33937b5a8fe677bd26b8a9f96f96e8
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.5.2"
   vector_math:
     dependency: transitive
     description:
@@ -1083,7 +1139,7 @@ packages:
     source: hosted
     version: "1.1.0"
   xml:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: xml
       sha256: "971043b3a0d3da28727e40ed3e0b5d18b742fa5a68665cca88e74b7876d5e025"
@@ -1108,4 +1164,4 @@ packages:
     version: "3.1.3"
 sdks:
   dart: ">=3.9.999 <4.0.0"
-  flutter: ">=3.35.0 <4.0.0"
+  flutter: ">=3.35.1 <4.0.0"

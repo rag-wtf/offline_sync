@@ -1,10 +1,10 @@
-import 'dart:io';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/widgets.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
+import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/chat_repository.dart';
+import 'package:offline_sync/services/document_management_service.dart';
 import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/rag_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
@@ -32,9 +32,19 @@ class ChatViewModel extends BaseViewModel {
   final SnackbarService _snackbarService = locator<SnackbarService>();
   final NavigationService _navigationService = locator<NavigationService>();
   final ChatRepository _chatRepository = locator<ChatRepository>();
+  final DialogService _dialogService = locator<DialogService>();
+  final DocumentManagementService _documentService =
+      locator<DocumentManagementService>();
 
   final List<ChatMessage> messages = [];
   final ScrollController scrollController = ScrollController();
+
+  List<Document> _availableDocuments = [];
+  List<Document> get availableDocuments => _availableDocuments;
+
+  final Set<String> _selectedDocumentIds = {};
+  Set<String> get selectedDocumentIds => _selectedDocumentIds;
+
   bool _isProcessing = false;
   bool get isProcessing => _isProcessing;
 
@@ -43,6 +53,15 @@ class ChatViewModel extends BaseViewModel {
 
   void onScrolled() {
     _shouldScroll = false;
+  }
+
+  void toggleDocumentSelection(String docId) {
+    if (_selectedDocumentIds.contains(docId)) {
+      _selectedDocumentIds.remove(docId);
+    } else {
+      _selectedDocumentIds.add(docId);
+    }
+    notifyListeners();
   }
 
   Future<void> initialize() async {
@@ -55,11 +74,25 @@ class ChatViewModel extends BaseViewModel {
       if (messages.isNotEmpty) {
         _shouldScroll = true;
       }
+
+      await _refreshDocuments();
+
+      // Listen to ingestion events to update available documents
+      _documentService.ingestionProgressStream.listen((event) async {
+        if (event.stage == 'complete') {
+          await _refreshDocuments();
+        }
+      });
     } on Exception catch (e) {
       _snackbarService.showSnackbar(message: 'Initialization error: $e');
     } finally {
       setBusy(false);
     }
+  }
+
+  Future<void> _refreshDocuments() async {
+    _availableDocuments = await _documentService.getAllDocuments();
+    notifyListeners();
   }
 
   Future<void> sendMessage(String text) async {
@@ -104,6 +137,9 @@ class ChatViewModel extends BaseViewModel {
         text,
         includeMetrics: true,
         conversationHistory: history.isNotEmpty ? history : null,
+        documentIds: _selectedDocumentIds.isNotEmpty
+            ? _selectedDocumentIds.toList()
+            : null,
       )) {
         if (event is RAGMetadataEvent) {
           // Store sources and metrics for later
@@ -143,15 +179,37 @@ class ChatViewModel extends BaseViewModel {
     }
   }
 
+  Future<void> showSourceDetail(SearchResult source) async {
+    // If we have documentId in metadata, we can navigate to detail view
+    final docId = source.metadata['documentId'] as String?;
+    if (docId != null) {
+      // For now, show a dialog with the content as we can't easily fetch
+      // the Document object without adding a method to
+      // DocumentManagementService.
+      // Phase 4 requirement: Source detail bottom sheet
+      // (impl as dialog/bottom sheet)
+
+      await _dialogService.showDialog(
+        title: (source.metadata['documentTitle'] as String?) ?? 'Source Detail',
+        description: source.content,
+      );
+    }
+  }
+
   Future<void> pickAndIngestFiles() async {
+    // Use DocumentLibraryViewModel's logic or delegate?
+    // Duplicate logic is fine for now but ideally we use the service.
+
+    // Actually, why not just navigate to DocumentLibraryView?
+    // User might want to ingest *while* in chat.
+
+    final docService = locator<DocumentManagementService>();
+    // ... use docService.addDocument ...
+
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: true,
       type: FileType.custom,
-      allowedExtensions: [
-        'txt',
-        'md',
-        // PDF parsing not yet implemented
-      ],
+      allowedExtensions: ['pdf', 'docx', 'txt', 'md', 'epub', 'json'],
     );
 
     if (result == null || result.files.isEmpty) return;
@@ -162,43 +220,18 @@ class ChatViewModel extends BaseViewModel {
     try {
       for (final file in result.files) {
         if (file.path == null) continue;
-
-        final content = await _readFileContent(file.path!);
-        await _ragService.ingestDocument(file.name, content);
+        await docService.addDocument(file.path!);
         ingestedCount++;
       }
 
       _snackbarService.showSnackbar(
         message: 'Successfully ingested $ingestedCount file(s)',
       );
-    } on AuthenticationRequiredException {
-      // Show token input dialog
-      await _showTokenDialog();
-      _snackbarService.showSnackbar(
-        message: 'Please provide authentication and try again',
-      );
     } on Exception catch (e) {
       _snackbarService.showSnackbar(message: 'Ingestion error: $e');
     } finally {
       setBusy(false);
     }
-  }
-
-  Future<String> _readFileContent(String path) async {
-    // Basic text reader. For PDF, we'd need sync_fusion or similar.
-    // Assuming text/markdown for Phase 1.
-    return Stream.fromIterable([path])
-        .asyncMap(
-          (p) async => (p.endsWith('.pdf'))
-              ? 'PDF parsing not implemented'
-              : await _readText(p),
-        )
-        .first;
-  }
-
-  Future<String> _readText(String path) async {
-    final file = File(path);
-    return file.readAsString();
   }
 
   Future<void> _showTokenDialog() async {

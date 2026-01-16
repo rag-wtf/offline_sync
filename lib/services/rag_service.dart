@@ -68,6 +68,7 @@ class RagService {
     String query, {
     bool includeMetrics = false,
     List<String>? conversationHistory,
+    List<String>? documentIds,
   }) async {
     if (!_isInitialized) throw Exception('RAG Service not initialized');
 
@@ -101,6 +102,7 @@ class RagService {
         limit: settings.rerankingEnabled
             ? settings.rerankTopK
             : settings.searchTopK,
+        documentIds: documentIds,
       );
     } else {
       searchResults = await _vectorStore.hybridSearch(
@@ -109,6 +111,7 @@ class RagService {
         limit: settings.rerankingEnabled
             ? settings.rerankTopK
             : settings.searchTopK,
+        documentIds: documentIds,
       );
     }
     final searchTime = stopwatch.elapsed - embeddingTime;
@@ -159,6 +162,7 @@ class RagService {
     String query, {
     bool includeMetrics = false,
     List<String>? conversationHistory,
+    List<String>? documentIds,
   }) async* {
     if (!_isInitialized) throw Exception('RAG Service not initialized');
 
@@ -190,12 +194,14 @@ class RagService {
         query,
         queryVariants,
         limit: settings.rerankingEnabled ? settings.rerankTopK : 3,
+        documentIds: documentIds,
       );
     } else {
       searchResults = await _vectorStore.hybridSearch(
         query,
         queryEmbedding,
         limit: settings.rerankingEnabled ? settings.rerankTopK : 3,
+        documentIds: documentIds,
       );
     }
     final searchTime = stopwatch.elapsed - embeddingTime;

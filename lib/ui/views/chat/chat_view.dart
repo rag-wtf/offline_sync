@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:offline_sync/services/vector_store.dart';
 import 'package:offline_sync/ui/views/chat/chat_viewmodel.dart';
 import 'package:stacked/stacked.dart';
 
@@ -19,6 +20,54 @@ class ChatView extends StackedView<ChatViewModel> {
         );
       }
     });
+  }
+
+  void _showFilterDialog(BuildContext context, ChatViewModel viewModel) {
+    unawaited(
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Filter by Documents'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: viewModel.availableDocuments.isEmpty
+                ? const Text('No documents available.')
+                : ViewModelBuilder<ChatViewModel>.reactive(
+                    viewModelBuilder: () => viewModel,
+                    disposeViewModel: false, // Don't dispose parent VM
+                    builder: (context, model, child) {
+                      return ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: model.availableDocuments.length,
+                        itemBuilder: (context, index) {
+                          final doc = model.availableDocuments[index];
+                          final isSelected = model.selectedDocumentIds.contains(
+                            doc.id,
+                          );
+                          return CheckboxListTile(
+                            title: Text(doc.title),
+                            subtitle: Text(
+                              doc.format.name.toUpperCase(),
+                              style: const TextStyle(fontSize: 10),
+                            ),
+                            value: isSelected,
+                            onChanged: (_) =>
+                                model.toggleDocumentSelection(doc.id),
+                          );
+                        },
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -50,7 +99,10 @@ class ChatView extends StackedView<ChatViewModel> {
                     itemCount: viewModel.messages.length,
                     itemBuilder: (context, index) {
                       final message = viewModel.messages[index];
-                      return _MessageTile(message: message);
+                      return _MessageTile(
+                        message: message,
+                        onSourceClick: viewModel.showSourceDetail,
+                      );
                     },
                   ),
           ),
@@ -62,7 +114,9 @@ class ChatView extends StackedView<ChatViewModel> {
           _ChatInput(
             onSend: viewModel.sendMessage,
             onAttach: viewModel.pickAndIngestFiles,
+            onFilter: () => _showFilterDialog(context, viewModel),
             isProcessing: viewModel.isProcessing,
+            hasActiveFilters: viewModel.selectedDocumentIds.isNotEmpty,
           ),
         ],
       ),
@@ -79,8 +133,12 @@ class ChatView extends StackedView<ChatViewModel> {
 }
 
 class _MessageTile extends StatelessWidget {
-  const _MessageTile({required this.message});
+  const _MessageTile({
+    required this.message,
+    this.onSourceClick,
+  });
   final ChatMessage message;
+  final void Function(SearchResult)? onSourceClick;
 
   @override
   Widget build(BuildContext context) {
@@ -141,13 +199,39 @@ class _MessageTile extends StatelessWidget {
               message.sources != null &&
               message.sources!.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(top: 4, left: 4),
-              child: Text(
-                'Sources: ${message.sources!.length} chunks retrieved',
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontStyle: FontStyle.italic,
-                ),
+              padding: const EdgeInsets.only(top: 8, left: 4),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Sources:',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: message.sources!.map((source) {
+                      final title =
+                          source.metadata['documentTitle'] as String? ??
+                          'Source';
+                      return ActionChip(
+                        label: Text(
+                          title,
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                        avatar: const Icon(Icons.description, size: 14),
+                        onPressed: () => onSourceClick?.call(source),
+                        padding: EdgeInsets.zero,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      );
+                    }).toList(),
+                  ),
+                ],
               ),
             ),
         ],
@@ -202,11 +286,15 @@ class _ChatInput extends StatefulWidget {
   const _ChatInput({
     required this.onSend,
     required this.onAttach,
+    required this.onFilter,
     required this.isProcessing,
+    required this.hasActiveFilters,
   });
   final void Function(String) onSend;
   final VoidCallback onAttach;
+  final VoidCallback onFilter;
   final bool isProcessing;
+  final bool hasActiveFilters;
 
   @override
   State<_ChatInput> createState() => _ChatInputState();
@@ -244,6 +332,27 @@ class _ChatInputState extends State<_ChatInput> {
       child: SafeArea(
         child: Row(
           children: [
+            Stack(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.filter_list),
+                  onPressed: widget.onFilter,
+                ),
+                if (widget.hasActiveFilters)
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
             IconButton(
               icon: const Icon(Icons.attach_file),
               onPressed: widget.onAttach,

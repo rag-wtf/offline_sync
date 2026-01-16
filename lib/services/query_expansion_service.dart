@@ -64,6 +64,7 @@ Variants:''';
     List<String> queryVariants, {
     int limit = 10,
     double? semanticWeight,
+    List<String>? documentIds,
   }) async {
     final allResults = <SearchResult>[];
 
@@ -75,6 +76,7 @@ Variants:''';
         embedding,
         limit: limit * 2, // Get more candidates for merging
         semanticWeight: semanticWeight,
+        documentIds: documentIds,
       );
       allResults.addAll(results);
     }

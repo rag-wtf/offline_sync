@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store_path_stub.dart'
     if (dart.library.io) 'package:offline_sync/services/vector_store_path_native.dart'
@@ -26,6 +27,13 @@ class SearchResult {
   final String content;
   final double score;
   final Map<String, dynamic> metadata;
+
+  // Typed getters for source attribution
+  String? get documentId => metadata['documentId'] as String?;
+  String? get documentTitle => metadata['documentTitle'] as String?;
+  String? get documentPath => metadata['documentPath'] as String?;
+  int? get chunkIndex => metadata['seq'] as int?;
+  // You might add totalChunks here if you inject it into metadata
 }
 
 /// Data class for batch embedding insertions
@@ -102,6 +110,29 @@ class VectorStore {
       CREATE INDEX IF NOT EXISTS idx_chat_timestamp ON chat_messages(timestamp)
     ''');
 
+    // Documents table for management (NEW)
+    _db!.execute('''
+      CREATE TABLE IF NOT EXISTS documents (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        format TEXT NOT NULL,
+        chunk_count INTEGER NOT NULL,
+        total_characters INTEGER NOT NULL,
+        content_hash TEXT NOT NULL,
+        ingested_at INTEGER NOT NULL,
+        last_refreshed INTEGER,
+        status TEXT DEFAULT 'complete',
+        contextual_retrieval INTEGER DEFAULT 0,
+        error_message TEXT
+      )
+    ''');
+
+    // Index for hash-based duplicate detection (NEW)
+    _db!.execute('''
+      CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(content_hash)
+    ''');
+
     if (_hasFts5) {
       try {
         _db!.execute('''
@@ -132,6 +163,7 @@ class VectorStore {
     List<double> queryEmbedding, {
     int limit = 5,
     double? semanticWeight,
+    List<String>? documentIds,
   }) async {
     // Get semantic weight from settings if not provided
     final settingsService = locator<RagSettingsService>();
@@ -139,20 +171,19 @@ class VectorStore {
 
     // 1. Fetch candidates (Keyword Search)
     final keywordResults = _hasFts5
-        ? _fts5Search(query, limit: 100) // Increase candidate pool
-        : _fallbackKeywordSearch(query, limit: 100);
+        ? _fts5Search(
+            query,
+            limit: 100,
+            documentIds: documentIds,
+          ) // Increase candidate pool
+        : _fallbackKeywordSearch(query, limit: 100, documentIds: documentIds);
 
     // 2. Compute Semantic Search (using Candidates from FTS5 if possible,
     // or all if small)
-    // For simplicity, we'll fetch top N candidates from the database or all
-    // if total count is small.
-    // Here we'll take top 100 from FTS5 and maybe some random/all others
-    // if needed, but 100 is usually enough for hybrid.
-    // If FTS5 is not available, we have to load more.
-
     final semanticResults = await _semanticSearchAsync(
       queryEmbedding,
       limit: limit * 2,
+      documentIds: documentIds,
     );
 
     return _mergeResults(
@@ -166,11 +197,20 @@ class VectorStore {
   Future<List<SearchResult>> _semanticSearchAsync(
     List<double> embedding, {
     required int limit,
+    List<String>? documentIds,
   }) async {
     // Fetch all embeddings and IDs from DB
-    final rows = _db!.select(
-      'SELECT id, content, embedding, metadata FROM vectors',
-    );
+    // Filter by documentIds if provided
+    var sql = 'SELECT id, content, embedding, metadata FROM vectors';
+    var params = <Object?>[];
+
+    if (documentIds != null && documentIds.isNotEmpty) {
+      final placeholders = List.filled(documentIds.length, '?').join(', ');
+      sql += ' WHERE document_id IN ($placeholders)';
+      params = documentIds;
+    }
+
+    final rows = _db!.select(sql, params);
 
     // Convert to a format suitable for compute (plain data)
     final data = rows
@@ -191,21 +231,32 @@ class VectorStore {
     });
   }
 
-  List<SearchResult> _fts5Search(String query, {required int limit}) {
+  List<SearchResult> _fts5Search(
+    String query, {
+    required int limit,
+    List<String>? documentIds,
+  }) {
     final sanitized = _sanitizeFtsQuery(query);
 
     try {
-      final results = _db!.select(
-        '''
-        SELECT v.*, bm25(vectors_fts) as score
-        FROM vectors_fts
-        JOIN vectors v ON vectors_fts.rowid = v.rowid
-        WHERE vectors_fts MATCH ?
-        ORDER BY score
-        LIMIT ?
-      ''',
-        [sanitized, limit],
-      );
+      var sql = '''
+      SELECT v.*, bm25(vectors_fts) as score
+      FROM vectors_fts
+      JOIN vectors v ON vectors_fts.rowid = v.rowid
+      WHERE vectors_fts MATCH ?
+    ''';
+      final params = <Object?>[sanitized];
+
+      if (documentIds != null && documentIds.isNotEmpty) {
+        final placeholders = List.filled(documentIds.length, '?').join(', ');
+        sql += ' AND v.document_id IN ($placeholders)';
+        params.addAll(documentIds);
+      }
+
+      sql += ' ORDER BY score LIMIT ?';
+      params.add(limit);
+
+      final results = _db!.select(sql, params);
 
       return results
           .map(
@@ -220,13 +271,18 @@ class VectorStore {
           )
           .toList();
     } on Exception catch (_) {
-      return _fallbackKeywordSearch(query, limit: limit);
+      return _fallbackKeywordSearch(
+        query,
+        limit: limit,
+        documentIds: documentIds,
+      );
     }
   }
 
   List<SearchResult> _fallbackKeywordSearch(
     String query, {
     required int limit,
+    List<String>? documentIds,
   }) {
     final words = query
         .toLowerCase()
@@ -246,10 +302,20 @@ class VectorStore {
     final conditions = sanitizedWords
         .map((w) => "LOWER(content) LIKE '%' || ? || '%'")
         .join(' OR ');
-    final results = _db!.select(
-      'SELECT * FROM vectors WHERE $conditions LIMIT ?',
-      [...sanitizedWords, limit],
-    );
+
+    var sql = 'SELECT * FROM vectors WHERE ($conditions)';
+    final params = <Object?>[...sanitizedWords];
+
+    if (documentIds != null && documentIds.isNotEmpty) {
+      final placeholders = List.filled(documentIds.length, '?').join(', ');
+      sql += ' AND document_id IN ($placeholders)';
+      params.addAll(documentIds);
+    }
+
+    sql += ' LIMIT ?';
+    params.add(limit);
+
+    final results = _db!.select(sql, params);
 
     return results
         .map(
@@ -320,21 +386,113 @@ INSERT OR REPLACE INTO vectors
     }
   }
 
+  // --- Document Management Methods (NEW) ---
+
+  void insertDocument(Document doc) {
+    _db!.prepare('''
+      INSERT OR REPLACE INTO documents (
+        id, title, file_path, format, chunk_count, total_characters, 
+        content_hash, ingested_at, last_refreshed, status, 
+        contextual_retrieval, error_message
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ''')
+      ..execute([
+        doc.id,
+        doc.title,
+        doc.filePath,
+        doc.format.name,
+        doc.chunkCount,
+        doc.totalCharacters,
+        doc.contentHash,
+        doc.ingestedAt.millisecondsSinceEpoch,
+        doc.lastRefreshed?.millisecondsSinceEpoch,
+        doc.status.name,
+        if (doc.contextualRetrievalEnabled) 1 else 0,
+        doc.errorMessage,
+      ])
+      ..close();
+  }
+
+  void updateDocument(Document doc) {
+    insertDocument(doc); // REPLACE covers update since ID is primary key
+  }
+
+  Document? getDocument(String id) {
+    final result = _db!.select('SELECT * FROM documents WHERE id = ?', [id]);
+    if (result.isEmpty) return null;
+    return Document.fromJson(result.first);
+  }
+
+  List<Document> getAllDocuments() {
+    final result = _db!.select(
+      'SELECT * FROM documents ORDER BY ingested_at DESC',
+    );
+    return result.map(Document.fromJson).toList();
+  }
+
+  Document? findByHash(String hash) {
+    final result = _db!.select(
+      'SELECT * FROM documents WHERE content_hash = ?',
+      [hash],
+    );
+    if (result.isEmpty) return null;
+    return Document.fromJson(result.first);
+  }
+
+  List<EmbeddingData> getChunksForDocument(String documentId) {
+    final results = _db!.select(
+      'SELECT * FROM vectors WHERE document_id = ? ORDER BY id ASC',
+      [documentId],
+    );
+
+    return results.map((row) {
+      return EmbeddingData(
+        id: row['id'] as String,
+        documentId: row['document_id'] as String,
+        content: row['content'] as String,
+        embedding: (jsonDecode(row['embedding'] as String) as List)
+            .cast<double>(),
+        metadata: row['metadata'] != null
+            ? jsonDecode(row['metadata'] as String) as Map<String, dynamic>
+            : {},
+      );
+    }).toList();
+  }
+
+  void deleteDocument(String id) {
+    _db!.execute('BEGIN TRANSACTION');
+    try {
+      // Delete document record
+      _db!.execute('DELETE FROM documents WHERE id = ?', [id]);
+
+      // Delete associated vectors
+      _db!.execute('DELETE FROM vectors WHERE document_id = ?', [id]);
+
+      _db!.execute('COMMIT');
+    } catch (e) {
+      _db!.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+
+  /// Optimize database size and performance
+  void optimizeDatabase() {
+    _db!.execute('VACUUM');
+  }
+
+  // -----------------------------------------
+
   String _sanitizeFtsQuery(String query) {
-    // Remove FTS5 special characters and operators to prevent injection
     return query
-        // Remove special characters used in FTS5 syntax
         .replaceAll(RegExp(r'["\*\-\(\)\^\:]'), ' ')
-        // Remove FTS5 boolean operators (case-insensitive)
-        .replaceAll(RegExp(r'\b(OR|AND|NOT|NEAR)\b', caseSensitive: false), ' ')
-        // Collapse multiple spaces
+        .replaceAll(
+          RegExp(r'\b(OR|AND|NOT|NEAR)\b', caseSensitive: false),
+          ' ',
+        )
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
 
-  /// Merge results using Reciprocal Rank Fusion (RRF)
-  /// RRF is the industry standard for hybrid search as it handles
-  /// incompatible score scales (BM25 vs cosine similarity) correctly
   List<SearchResult> _mergeResults(
     List<SearchResult> semantic,
     List<SearchResult> keyword, {
@@ -345,7 +503,6 @@ INSERT OR REPLACE INTO vectors
     final scores = <String, double>{};
     final items = <String, SearchResult>{};
 
-    // Calculate RRF scores based on rank position
     for (var i = 0; i < semantic.length; i++) {
       final id = semantic[i].id;
       scores[id] = (scores[id] ?? 0) + semanticWeight / (k + i + 1);
@@ -359,7 +516,6 @@ INSERT OR REPLACE INTO vectors
       items[id] ??= keyword[i];
     }
 
-    // Sort by RRF score and return top results
     final sorted = scores.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
@@ -382,7 +538,7 @@ INSERT OR REPLACE INTO vectors
   }
 }
 
-/// Isolate function for calculating similarities
+/// Isolate function for calculating similarities(must be top-level)
 List<SearchResult> _calculateSimilarities(Map<String, dynamic> params) {
   final queryEmbedding = params['queryEmbedding'] as List<double>;
   final data = params['data'] as List<Map<String, dynamic>>;
@@ -394,7 +550,6 @@ List<SearchResult> _calculateSimilarities(Map<String, dynamic> params) {
         .map((e) => (e as num).toDouble())
         .toList();
 
-    // Cosine similarity
     var dotProduct = 0.0;
     var normA = 0.0;
     var normB = 0.0;

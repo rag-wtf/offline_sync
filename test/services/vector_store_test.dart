@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/models/document.dart';
+import 'package:offline_sync/services/document_parser_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -30,12 +34,23 @@ void main() {
     final ragSettings = locator<RagSettingsService>();
     await ragSettings.initialize();
 
+    final dbFile = File('vectors.db');
+    if (dbFile.existsSync()) {
+      dbFile.deleteSync();
+    }
+
     vectorStore = VectorStore();
     await vectorStore.initialize();
   });
 
   tearDown(() async {
     vectorStore.close();
+
+    final dbFile = File('vectors.db');
+    if (dbFile.existsSync()) {
+      dbFile.deleteSync();
+    }
+
     await locator.reset();
   });
 
@@ -87,6 +102,86 @@ void main() {
       test('combines scores correctly', () {
         // This is harder to test without exposing internals,
         // but we can verify behavior through results ordering.
+      });
+    });
+
+    group('Document Management Tests', () {
+      test('CRUD operations', () async {
+        final doc = Document(
+          id: 'doc_1',
+          title: 'Test Document',
+          filePath: '/path/to/test.pdf',
+          format: DocumentFormat.pdf,
+          chunkCount: 10,
+          totalCharacters: 1000,
+          contentHash: 'hash123',
+          ingestedAt: DateTime.now(),
+          contextualRetrievalEnabled: true,
+        );
+
+        // Create
+        vectorStore.insertDocument(doc);
+
+        // Read
+        final retrieved = vectorStore.getDocument('doc_1');
+        expect(retrieved, isNotNull);
+        expect(retrieved!.title, 'Test Document');
+        expect(retrieved.contextualRetrievalEnabled, isTrue);
+
+        final all = vectorStore.getAllDocuments();
+        expect(all.length, 1);
+        expect(all.first.id, 'doc_1');
+
+        // Find by Hash
+        final byHash = vectorStore.findByHash('hash123');
+        expect(byHash?.id, 'doc_1');
+        expect(vectorStore.findByHash('invalid'), isNull);
+
+        // Update
+        final updatedDoc = Document(
+          id: 'doc_1',
+          title: 'Updated Title',
+          filePath: '/path/to/test.pdf',
+          format: DocumentFormat.pdf,
+          chunkCount: 10,
+          totalCharacters: 1000,
+          contentHash: 'hash123',
+          ingestedAt: DateTime.now(),
+        );
+        vectorStore.updateDocument(updatedDoc);
+        expect(vectorStore.getDocument('doc_1')!.title, 'Updated Title');
+
+        // Delete (Cascade verify)
+        // First insert a vector linked to this doc
+        vectorStore.insertEmbedding(
+          id: 'vec_1',
+          documentId: 'doc_1',
+          content: 'chunk 1',
+          embedding: [0.1, 0.2],
+        );
+
+        // Verify vector exists
+        var results = await vectorStore.hybridSearch(
+          'chunk',
+          [0.1, 0.2],
+          limit: 10,
+          semanticWeight: 0.5,
+        );
+        expect(results.length, 1);
+
+        vectorStore.deleteDocument('doc_1');
+
+        // Verify document gone
+        expect(vectorStore.getDocument('doc_1'), isNull);
+
+        // Verify vector gone
+        results = await vectorStore.hybridSearch(
+          'chunk',
+          [0.1, 0.2],
+          limit: 10,
+          semanticWeight: 0.5,
+        );
+        expect(results.isEmpty, true);
       });
     });
   });

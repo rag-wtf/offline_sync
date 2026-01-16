@@ -63,6 +63,16 @@ class SettingsView extends StackedView<SettingsViewModel> {
             onChanged: viewModel.toggleReranking,
           ),
 
+          // Contextual Retrieval Toggle
+          SwitchListTile(
+            title: const Text('Contextual Retrieval'),
+            subtitle: const Text(
+              'Add context to document chunks for better retrieval (adds time)',
+            ),
+            value: viewModel.contextualRetrievalEnabled,
+            onChanged: viewModel.toggleContextualRetrieval,
+          ),
+
           const SizedBox(height: 16),
 
           // Chunk Overlap Slider
@@ -209,6 +219,17 @@ class SettingsView extends StackedView<SettingsViewModel> {
               ],
             ),
           ),
+
+          const Divider(height: 32),
+
+          ListTile(
+            title: const Text('Manage Knowledge Base'),
+            subtitle: const Text('Add, view, and delete documents'),
+            trailing: const Icon(Icons.arrow_forward_ios),
+            onTap: viewModel.navigateToDocumentLibrary,
+          ),
+
+          const SizedBox(height: 32),
         ],
       ),
     );
