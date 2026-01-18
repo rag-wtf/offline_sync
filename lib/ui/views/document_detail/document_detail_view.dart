@@ -14,57 +14,203 @@ class DocumentDetailView extends StackedView<DocumentDetailViewModel> {
     DocumentDetailViewModel viewModel,
     Widget? child,
   ) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(document.title),
+        title: Text(
+          document.title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        elevation: 0,
+        scrolledUnderElevation: 4,
       ),
       body: viewModel.isBusy
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: colorScheme.primary),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Loading chunks...',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            )
           : Column(
               children: [
                 _buildHeader(context, viewModel),
-                const Divider(),
                 Expanded(
-                  child: ListView.builder(
-                    itemCount: viewModel.chunks.length,
-                    itemBuilder: (context, index) {
-                      final chunk = viewModel.chunks[index];
-                      return ExpansionTile(
-                        title: Text(
-                          'Chunk ${index + 1}',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          chunk.content.trim(),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Content:',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 8),
-                                SelectableText(chunk.content),
-                                const SizedBox(height: 16),
-                                const Text(
-                                  'Metadata:',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 8),
-                                SelectableText(chunk.metadata.toString()),
-                              ],
+                  child: viewModel.chunks.isEmpty
+                      ? Center(
+                          child: Text(
+                            'No chunks found',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
                             ),
                           ),
-                        ],
-                      );
-                    },
-                  ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                          itemCount: viewModel.chunks.length,
+                          itemBuilder: (context, index) {
+                            final chunk = viewModel.chunks[index];
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              child: Theme(
+                                data: theme.copyWith(
+                                  dividerColor: Colors.transparent,
+                                ),
+                                child: ExpansionTile(
+                                  tilePadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 4,
+                                  ),
+                                  childrenPadding: const EdgeInsets.fromLTRB(
+                                    16,
+                                    0,
+                                    16,
+                                    16,
+                                  ),
+                                  leading: Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: colorScheme.primaryContainer,
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      '${index + 1}',
+                                      style: theme.textTheme.labelMedium
+                                          ?.copyWith(
+                                            color:
+                                                colorScheme.onPrimaryContainer,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                    ),
+                                  ),
+                                  title: Text(
+                                    'Chunk ${index + 1}',
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  subtitle: Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Text(
+                                      chunk.content.trim(),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: colorScheme.onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ),
+                                  children: [
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: colorScheme.surfaceContainerLow,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.text_snippet_outlined,
+                                                size: 16,
+                                                color: colorScheme.primary,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Content',
+                                                style: theme
+                                                    .textTheme
+                                                    .labelMedium
+                                                    ?.copyWith(
+                                                      color:
+                                                          colorScheme.primary,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 12),
+                                          SelectableText(
+                                            chunk.content,
+                                            style: theme.textTheme.bodyMedium
+                                                ?.copyWith(
+                                                  height: 1.5,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Container(
+                                      width: double.infinity,
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: colorScheme.surfaceContainerLow,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.data_object_rounded,
+                                                size: 16,
+                                                color: colorScheme.tertiary,
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'Metadata',
+                                                style: theme
+                                                    .textTheme
+                                                    .labelMedium
+                                                    ?.copyWith(
+                                                      color:
+                                                          colorScheme.tertiary,
+                                                      fontWeight:
+                                                          FontWeight.w600,
+                                                    ),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 12),
+                                          SelectableText(
+                                            chunk.metadata.toString(),
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  fontFamily: 'monospace',
+                                                  color: colorScheme
+                                                      .onSurfaceVariant,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
                 ),
               ],
             ),
@@ -72,52 +218,109 @@ class DocumentDetailView extends StackedView<DocumentDetailViewModel> {
   }
 
   Widget _buildHeader(BuildContext context, DocumentDetailViewModel viewModel) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final doc = viewModel.document ?? document;
-    return Padding(
-      padding: const EdgeInsets.all(16),
+
+    return Container(
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+        ),
+      ),
       child: Column(
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildInfoItem(context, 'Format', doc.format.name.toUpperCase()),
-              _buildInfoItem(context, 'Status', doc.status.name.toUpperCase()),
-              _buildInfoItem(context, 'Chunks', '${doc.chunkCount}'),
+              _buildInfoItem(
+                context,
+                Icons.insert_drive_file_rounded,
+                'Format',
+                doc.format.name.toUpperCase(),
+              ),
+              _buildInfoItem(
+                context,
+                Icons.check_circle_rounded,
+                'Status',
+                doc.status.name.toUpperCase(),
+              ),
+              _buildInfoItem(
+                context,
+                Icons.layers_rounded,
+                'Chunks',
+                '${doc.chunkCount}',
+              ),
             ],
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              const Icon(Icons.folder_open, size: 16, color: Colors.grey),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  doc.filePath,
-                  style: Theme.of(context).textTheme.bodySmall,
-                  overflow: TextOverflow.ellipsis,
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.folder_open_rounded,
+                  size: 16,
+                  color: colorScheme.outline,
                 ),
-              ),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    doc.filePath,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildInfoItem(BuildContext context, String label, String value) {
+  Widget _buildInfoItem(
+    BuildContext context,
+    IconData icon,
+    String label,
+    String value,
+  ) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: colorScheme.primaryContainer.withValues(alpha: 0.5),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 20, color: colorScheme.primary),
+        ),
+        const SizedBox(height: 8),
         Text(
           label,
-          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-            color: Colors.grey,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
           ),
         ),
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ],
     );

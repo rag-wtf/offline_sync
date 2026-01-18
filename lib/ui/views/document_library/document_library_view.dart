@@ -14,28 +14,51 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
     DocumentLibraryViewModel viewModel,
     Widget? child,
   ) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Knowledge Base'),
+        elevation: 0,
+        scrolledUnderElevation: 4,
         actions: [
           if (viewModel.isIngesting)
-            const Padding(
-              padding: EdgeInsets.all(16),
+            Padding(
+              padding: const EdgeInsets.all(16),
               child: SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: colorScheme.primary,
+                ),
               ),
             ),
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: viewModel.pickAndIngestFile,
-        icon: const Icon(Icons.add),
+        icon: const Icon(Icons.add_rounded),
         label: const Text('Add Document'),
+        elevation: 2,
       ),
       body: viewModel.isBusy
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: colorScheme.primary),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Loading documents...',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            )
           : viewModel.documents.isEmpty
           ? _buildEmptyState(context)
           : _buildDocumentList(context, viewModel),
@@ -43,32 +66,52 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
   }
 
   Widget _buildEmptyState(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.library_books_outlined,
-            size: 80,
-            color: Theme.of(context).disabledColor,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'No documents ingested yet',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: Theme.of(context).disabledColor,
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.library_books_outlined,
+                size: 64,
+                color: colorScheme.primary,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Add PDF, DOCX, Markdown, or Text files\n'
-            'to start chatting with your data.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).disabledColor,
+            const SizedBox(height: 24),
+            Text(
+              'No documents yet',
+              style: theme.textTheme.titleLarge?.copyWith(
+                color: colorScheme.onSurface,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            Text(
+              'Add PDF, DOCX, Markdown, or Text files\n'
+              'to start chatting with your data.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 32),
+            Text(
+              'Tap the button below to get started',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.outline,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -77,8 +120,11 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
     BuildContext context,
     DocumentLibraryViewModel viewModel,
   ) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 80),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
       itemCount: viewModel.documents.length,
       itemBuilder: (context, index) {
         final doc = viewModel.documents[index];
@@ -86,67 +132,88 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
           key: Key(doc.id),
           direction: DismissDirection.endToStart,
           background: Container(
-            color: Colors.red,
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: colorScheme.error,
+              borderRadius: BorderRadius.circular(16),
+            ),
             alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 20),
-            child: const Icon(Icons.delete, color: Colors.white),
+            padding: const EdgeInsets.only(right: 24),
+            child: Icon(
+              Icons.delete_rounded,
+              color: colorScheme.onError,
+            ),
           ),
           confirmDismiss: (direction) async {
             await viewModel.deleteDocument(doc);
-            // If delete was successful (and VM updated),
-            // the item is removed.
-            // We return false here because the VM handles the refresh/state
-            // update which will rebuild the list. Returning true would try
-            // to remove it from the tree immediately which might conflict
-            // if VM is busy.
-            // Actually, usually in standard Dismissible you return true.
-            // But since we have an async delete confirmation...
-            // Let's rely on VM state.
             return false;
           },
-          child: ListTile(
-            leading: _buildFormatIcon(context, doc.format),
-            title: Text(
-              doc.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                Row(
+          child: Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: InkWell(
+              onTap: () => viewModel.showDocumentDetails(doc),
+              borderRadius: BorderRadius.circular(16),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
                   children: [
-                    _buildStatusBadge(context, doc.status),
+                    _buildFormatIcon(context, doc.format),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            doc.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              _buildStatusBadge(context, doc.status),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  '${doc.chunkCount} chunks • '
+                                  '${DateFormat.yMMMd().format(
+                                    doc.ingestedAt,
+                                  )}',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (doc.errorMessage != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Text(
+                                doc.errorMessage!,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: colorScheme.error,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(width: 8),
-                    Text(
-                      '${doc.chunkCount} chunks • '
-                      '${DateFormat.yMMMd().format(doc.ingestedAt)}',
-                      style: Theme.of(context).textTheme.bodySmall,
+                    Icon(
+                      Icons.chevron_right_rounded,
+                      color: colorScheme.outline,
                     ),
                   ],
                 ),
-                if (doc.errorMessage != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      doc.errorMessage!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                        fontSize: 12,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-              ],
+              ),
             ),
-            trailing: IconButton(
-              icon: const Icon(Icons.info_outline),
-              onPressed: () => viewModel.showDocumentDetails(doc),
-            ),
-            onTap: () => viewModel.showDocumentDetails(doc),
           ),
         );
       },
@@ -154,85 +221,86 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
   }
 
   Widget _buildFormatIcon(BuildContext context, DocumentFormat format) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     IconData icon;
     Color color;
 
     switch (format) {
       case DocumentFormat.pdf:
-        icon = Icons.picture_as_pdf;
+        icon = Icons.picture_as_pdf_rounded;
         color = Colors.red;
       case DocumentFormat.docx:
-        icon = Icons.description;
+        icon = Icons.description_rounded;
         color = Colors.blue;
       case DocumentFormat.epub:
-        icon = Icons.book;
+        icon = Icons.book_rounded;
         color = Colors.orange;
       case DocumentFormat.markdown:
-        icon = Icons.code; // or data_object
+        icon = Icons.code_rounded;
         color = Colors.teal;
       case DocumentFormat.plainText:
       case DocumentFormat.unknown:
-        icon = Icons.article;
-        color = Colors.grey;
+        icon = Icons.article_rounded;
+        color = colorScheme.outline;
     }
 
     return Container(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Icon(icon, color: color),
+      child: Icon(icon, color: color, size: 24),
     );
   }
 
   Widget _buildStatusBadge(BuildContext context, IngestionStatus status) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     Color color;
     String label;
+    IconData? icon;
 
     switch (status) {
       case IngestionStatus.pending:
-        color = Colors.grey;
+        color = colorScheme.outline;
         label = 'Pending';
+        icon = Icons.hourglass_empty_rounded;
       case IngestionStatus.processing:
-        color = Colors.blue;
-        label = 'Processing...';
+        color = colorScheme.primary;
+        label = 'Processing';
+        icon = Icons.sync_rounded;
       case IngestionStatus.complete:
         color = Colors.green;
         label = 'Ready';
+        icon = Icons.check_circle_rounded;
       case IngestionStatus.error:
-        color = Colors.red;
+        color = colorScheme.error;
         label = 'Failed';
-    }
-
-    if (status == IngestionStatus.complete) {
-      // Don't show badge if ready, to keep it clean, maybe just green dot?
-      // Or simply nothing if it's the standard state.
-      // But let's show a small dot.
-      return Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-        ),
-      );
+        icon = Icons.error_rounded;
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 10,
-          color: color,
-          fontWeight: FontWeight.bold,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

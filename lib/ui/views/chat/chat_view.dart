@@ -23,36 +23,74 @@ class ChatView extends StackedView<ChatViewModel> {
   }
 
   void _showFilterDialog(BuildContext context, ChatViewModel viewModel) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     unawaited(
       showDialog(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Filter by Documents'),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.filter_list_rounded, color: colorScheme.primary),
+              const SizedBox(width: 12),
+              const Text('Filter by Documents'),
+            ],
+          ),
           content: SizedBox(
             width: double.maxFinite,
             child: viewModel.availableDocuments.isEmpty
-                ? const Text('No documents available.')
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.folder_open_outlined,
+                        size: 48,
+                        color: colorScheme.outline,
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No documents available.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  )
                 : ViewModelBuilder<ChatViewModel>.reactive(
                     viewModelBuilder: () => viewModel,
-                    disposeViewModel: false, // Don't dispose parent VM
+                    disposeViewModel: false,
                     builder: (context, model, child) {
-                      return ListView.builder(
+                      return ListView.separated(
                         shrinkWrap: true,
                         itemCount: model.availableDocuments.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1),
                         itemBuilder: (context, index) {
                           final doc = model.availableDocuments[index];
                           final isSelected = model.selectedDocumentIds.contains(
                             doc.id,
                           );
                           return CheckboxListTile(
-                            title: Text(doc.title),
+                            title: Text(
+                              doc.title,
+                              style: theme.textTheme.bodyLarge,
+                            ),
                             subtitle: Text(
                               doc.format.name.toUpperCase(),
-                              style: const TextStyle(fontSize: 10),
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: colorScheme.primary,
+                              ),
                             ),
                             value: isSelected,
                             onChanged: (_) =>
                                 model.toggleDocumentSelection(doc.id),
+                            checkboxShape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            activeColor: colorScheme.primary,
                           );
                         },
                       );
@@ -60,7 +98,7 @@ class ChatView extends StackedView<ChatViewModel> {
                   ),
           ),
           actions: [
-            TextButton(
+            FilledButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Done'),
             ),
@@ -72,6 +110,9 @@ class ChatView extends StackedView<ChatViewModel> {
 
   @override
   Widget builder(BuildContext context, ChatViewModel viewModel, Widget? child) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     // Listen for message changes to scroll
     if (viewModel.shouldScroll) {
       _scrollToBottom(viewModel);
@@ -80,22 +121,62 @@ class ChatView extends StackedView<ChatViewModel> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('RAG Sync Chat'),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [colorScheme.primary, colorScheme.secondary],
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                Icons.auto_awesome,
+                size: 20,
+                color: colorScheme.onPrimary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Text('RAG Sync Chat'),
+          ],
+        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings),
+            icon: const Icon(Icons.settings_outlined),
             onPressed: viewModel.navigateToSettings,
+            tooltip: 'Settings',
           ),
         ],
+        elevation: 0,
+        scrolledUnderElevation: 4,
       ),
       body: Column(
         children: [
           Expanded(
             child: viewModel.isBusy
-                ? const Center(child: CircularProgressIndicator())
+                ? Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CircularProgressIndicator(
+                          color: colorScheme.primary,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Loading...',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : viewModel.messages.isEmpty
+                ? _buildEmptyChat(context)
                 : ListView.builder(
                     controller: viewModel.scrollController,
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                     itemCount: viewModel.messages.length,
                     itemBuilder: (context, index) {
                       final message = viewModel.messages[index];
@@ -107,9 +188,18 @@ class ChatView extends StackedView<ChatViewModel> {
                   ),
           ),
           if (viewModel.isProcessing)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: LinearProgressIndicator(),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  minHeight: 3,
+                  backgroundColor: colorScheme.surfaceContainerHighest,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    colorScheme.primary,
+                  ),
+                ),
+              ),
             ),
           _ChatInput(
             onSend: viewModel.sendMessage,
@@ -119,6 +209,50 @@ class ChatView extends StackedView<ChatViewModel> {
             hasActiveFilters: viewModel.selectedDocumentIds.isNotEmpty,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyChat(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: colorScheme.primaryContainer.withValues(alpha: 0.3),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.chat_bubble_outline_rounded,
+                size: 64,
+                color: colorScheme.primary,
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Start a conversation',
+              style: theme.textTheme.titleLarge?.copyWith(
+                color: colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Ask questions about your documents\n'
+              'or upload new ones to get started.',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -143,29 +277,40 @@ class _MessageTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = message.isUser
-        ? theme.colorScheme.primaryContainer
-        : theme.colorScheme.surfaceContainerHighest;
-    final textColor = message.isUser
-        ? theme.colorScheme.onPrimaryContainer
-        : theme.colorScheme.onSurface;
-    final align = message.isUser
-        ? CrossAxisAlignment.end
-        : CrossAxisAlignment.start;
+    final colorScheme = theme.colorScheme;
+
+    final isUser = message.isUser;
+    final bubbleColor = isUser
+        ? colorScheme.primary
+        : colorScheme.surfaceContainerHighest;
+    final textColor = isUser ? colorScheme.onPrimary : colorScheme.onSurface;
+    final align = isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 6),
       child: Column(
         crossAxisAlignment: align,
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.8,
+              maxWidth: MediaQuery.of(context).size.width * 0.78,
             ),
             decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(12),
+              color: bubbleColor,
+              borderRadius: BorderRadius.only(
+                topLeft: const Radius.circular(20),
+                topRight: const Radius.circular(20),
+                bottomLeft: Radius.circular(isUser ? 20 : 4),
+                bottomRight: Radius.circular(isUser ? 4 : 20),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: colorScheme.shadow.withValues(alpha: 0.08),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -176,44 +321,54 @@ class _MessageTile extends StatelessWidget {
                     Flexible(
                       child: Text(
                         message.content,
-                        style: TextStyle(color: textColor),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: textColor,
+                          height: 1.4,
+                        ),
                       ),
                     ),
                     // Show blinking cursor for empty or streaming AI messages
-                    if (!message.isUser && message.content.isEmpty)
+                    if (!isUser && message.content.isEmpty)
                       _BlinkingCursor(color: textColor),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
                   DateFormat('HH:mm').format(message.timestamp),
-                  style: TextStyle(
-                    fontSize: 10,
+                  style: theme.textTheme.labelSmall?.copyWith(
                     color: textColor.withValues(alpha: 0.6),
                   ),
                 ),
               ],
             ),
           ),
-          if (!message.isUser &&
-              message.sources != null &&
-              message.sources!.isNotEmpty)
+          if (!isUser && message.sources != null && message.sources!.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 8, left: 4),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Sources:',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.source_outlined,
+                        size: 14,
+                        color: colorScheme.outline,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Sources',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: colorScheme.outline,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Wrap(
-                    spacing: 8,
+                    spacing: 6,
                     runSpacing: 4,
                     children: message.sources!.map((source) {
                       final title =
@@ -222,12 +377,19 @@ class _MessageTile extends StatelessWidget {
                       return ActionChip(
                         label: Text(
                           title,
-                          style: const TextStyle(fontSize: 11),
+                          style: theme.textTheme.labelSmall,
                         ),
-                        avatar: const Icon(Icons.description, size: 14),
+                        avatar: Icon(
+                          Icons.description_outlined,
+                          size: 14,
+                          color: colorScheme.primary,
+                        ),
                         onPressed: () => onSourceClick?.call(source),
                         padding: EdgeInsets.zero,
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        side: BorderSide(
+                          color: colorScheme.outlineVariant,
+                        ),
                       );
                     }).toList(),
                   ),
@@ -276,7 +438,10 @@ class _BlinkingCursorState extends State<_BlinkingCursor>
         width: 2,
         height: 16,
         margin: const EdgeInsets.only(left: 2),
-        color: widget.color,
+        decoration: BoxDecoration(
+          color: widget.color,
+          borderRadius: BorderRadius.circular(1),
+        ),
       ),
     );
   }
@@ -302,41 +467,55 @@ class _ChatInput extends StatefulWidget {
 
 class _ChatInputState extends State<_ChatInput> {
   final _controller = TextEditingController();
+  final _focusNode = FocusNode();
 
   void _handleSend() {
     if (_controller.text.isEmpty) return;
     widget.onSend(_controller.text);
     _controller.clear();
+    _focusNode.requestFocus();
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: const BoxDecoration(
-        color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
         boxShadow: [
           BoxShadow(
-            color: Colors.black12,
-            blurRadius: 4,
-            offset: Offset(0, -2),
+            color: colorScheme.shadow.withValues(alpha: 0.08),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
           ),
         ],
       ),
       child: SafeArea(
+        top: false,
         child: Row(
           children: [
+            // Filter button
             Stack(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.filter_list),
+                  icon: Icon(
+                    Icons.filter_list_rounded,
+                    color: widget.hasActiveFilters
+                        ? colorScheme.primary
+                        : colorScheme.onSurfaceVariant,
+                  ),
                   onPressed: widget.onFilter,
+                  tooltip: 'Filter documents',
                 ),
                 if (widget.hasActiveFilters)
                   Positioned(
@@ -345,31 +524,69 @@ class _ChatInputState extends State<_ChatInput> {
                     child: Container(
                       width: 8,
                       height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
+                      decoration: BoxDecoration(
+                        color: colorScheme.tertiary,
                         shape: BoxShape.circle,
                       ),
                     ),
                   ),
               ],
             ),
+            // Attach button
             IconButton(
-              icon: const Icon(Icons.attach_file),
+              icon: Icon(
+                Icons.attach_file_rounded,
+                color: colorScheme.onSurfaceVariant,
+              ),
               onPressed: widget.onAttach,
+              tooltip: 'Attach document',
             ),
+            // Text input
             Expanded(
-              child: TextField(
-                controller: _controller,
-                decoration: const InputDecoration(
-                  hintText: 'Ask about your documents...',
-                  border: InputBorder.none,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(24),
                 ),
-                onSubmitted: (_) => _handleSend(),
+                child: TextField(
+                  controller: _controller,
+                  focusNode: _focusNode,
+                  decoration: InputDecoration(
+                    hintText: 'Ask about your documents...',
+                    hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                  ),
+                  style: theme.textTheme.bodyMedium,
+                  onSubmitted: (_) => _handleSend(),
+                  textInputAction: TextInputAction.send,
+                ),
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.send),
-              onPressed: widget.isProcessing ? null : _handleSend,
+            const SizedBox(width: 8),
+            // Send button
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              child: IconButton.filled(
+                icon: Icon(
+                  Icons.send_rounded,
+                  color: widget.isProcessing
+                      ? colorScheme.onSurfaceVariant
+                      : colorScheme.onPrimary,
+                ),
+                onPressed: widget.isProcessing ? null : _handleSend,
+                style: IconButton.styleFrom(
+                  backgroundColor: widget.isProcessing
+                      ? colorScheme.surfaceContainerHighest
+                      : colorScheme.primary,
+                  disabledBackgroundColor: colorScheme.surfaceContainerHighest,
+                ),
+              ),
             ),
           ],
         ),
