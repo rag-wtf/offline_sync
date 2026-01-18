@@ -79,12 +79,22 @@ class ChatView extends StackedView<ChatViewModel> {
     }
 
     return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
       appBar: AppBar(
-        title: const Text('RAG Sync Chat'),
+        title: Text(
+          'RAG Sync Chat',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        centerTitle: false,
+        elevation: 0,
+        backgroundColor: Theme.of(context).colorScheme.surface,
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings),
+            icon: const Icon(Icons.settings_outlined),
             onPressed: viewModel.navigateToSettings,
+            tooltip: 'Settings',
           ),
         ],
       ),
@@ -95,21 +105,32 @@ class ChatView extends StackedView<ChatViewModel> {
                 ? const Center(child: CircularProgressIndicator())
                 : ListView.builder(
                     controller: viewModel.scrollController,
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 24,
+                    ),
                     itemCount: viewModel.messages.length,
                     itemBuilder: (context, index) {
                       final message = viewModel.messages[index];
-                      return _MessageTile(
-                        message: message,
-                        onSourceClick: viewModel.showSourceDetail,
+                      // Improve spacing between messages
+                      final isLastMessage =
+                          index == viewModel.messages.length - 1;
+                      return Padding(
+                        padding: EdgeInsets.only(
+                          bottom: isLastMessage ? 16 : 0,
+                        ),
+                        child: _MessageTile(
+                          message: message,
+                          onSourceClick: viewModel.showSourceDetail,
+                        ),
                       );
                     },
                   ),
           ),
           if (viewModel.isProcessing)
             const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: LinearProgressIndicator(),
+              padding: EdgeInsets.zero,
+              child: LinearProgressIndicator(minHeight: 2),
             ),
           _ChatInput(
             onSend: viewModel.sendMessage,
@@ -143,29 +164,37 @@ class _MessageTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = message.isUser
-        ? theme.colorScheme.primaryContainer
-        : theme.colorScheme.surfaceContainerHighest;
-    final textColor = message.isUser
-        ? theme.colorScheme.onPrimaryContainer
-        : theme.colorScheme.onSurface;
-    final align = message.isUser
-        ? CrossAxisAlignment.end
-        : CrossAxisAlignment.start;
+    final isUser = message.isUser;
+
+    final color = isUser
+        ? theme.colorScheme.primary
+        : theme.colorScheme.secondaryContainer.withValues(alpha: 0.5);
+
+    final textColor = isUser
+        ? theme.colorScheme.onPrimary
+        : theme.colorScheme.onSecondaryContainer;
+
+    final align = isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start;
+    final borderRadius = BorderRadius.only(
+      topLeft: const Radius.circular(16),
+      topRight: const Radius.circular(16),
+      bottomLeft: isUser ? const Radius.circular(16) : Radius.zero,
+      bottomRight: isUser ? Radius.zero : const Radius.circular(16),
+    );
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         crossAxisAlignment: align,
         children: [
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.8,
+              maxWidth: MediaQuery.of(context).size.width * 0.85,
             ),
             decoration: BoxDecoration(
               color: color,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: borderRadius,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -176,58 +205,84 @@ class _MessageTile extends StatelessWidget {
                     Flexible(
                       child: Text(
                         message.content,
-                        style: TextStyle(color: textColor),
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: textColor,
+                          height: 1.5,
+                        ),
                       ),
                     ),
-                    // Show blinking cursor for empty or streaming AI messages
-                    if (!message.isUser && message.content.isEmpty)
+                    if (!isUser && message.content.isEmpty)
                       _BlinkingCursor(color: textColor),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Text(
                   DateFormat('HH:mm').format(message.timestamp),
-                  style: TextStyle(
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: textColor.withValues(alpha: 0.7),
                     fontSize: 10,
-                    color: textColor.withValues(alpha: 0.6),
                   ),
                 ),
               ],
             ),
           ),
-          if (!message.isUser &&
-              message.sources != null &&
-              message.sources!.isNotEmpty)
+          if (!isUser && message.sources != null && message.sources!.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(top: 8, left: 4),
+              padding: const EdgeInsets.only(top: 8, left: 4, bottom: 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Sources:',
-                    style: TextStyle(
-                      fontSize: 12,
+                  Text(
+                    'Sources',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: theme.colorScheme.outline,
                       fontWeight: FontWeight.bold,
-                      color: Colors.grey,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Wrap(
                     spacing: 8,
-                    runSpacing: 4,
+                    runSpacing: 8,
                     children: message.sources!.map((source) {
                       final title =
                           source.metadata['documentTitle'] as String? ??
                           'Source';
-                      return ActionChip(
-                        label: Text(
-                          title,
-                          style: const TextStyle(fontSize: 11),
+                      return InkWell(
+                        onTap: () => onSourceClick?.call(source),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: theme.colorScheme.outlineVariant,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.description_outlined,
+                                size: 14,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  title,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: theme.colorScheme.onSurfaceVariant,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        avatar: const Icon(Icons.description, size: 14),
-                        onPressed: () => onSourceClick?.call(source),
-                        padding: EdgeInsets.zero,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       );
                     }).toList(),
                   ),
@@ -317,17 +372,14 @@ class _ChatInputState extends State<_ChatInput> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 4,
-            offset: Offset(0, -2),
-          ),
-        ],
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(
+          top: BorderSide(color: theme.colorScheme.outlineVariant),
+        ),
       ),
       child: SafeArea(
         child: Row(
@@ -335,8 +387,14 @@ class _ChatInputState extends State<_ChatInput> {
             Stack(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.filter_list),
+                  icon: Icon(
+                    Icons.filter_list_rounded,
+                    color: widget.hasActiveFilters
+                        ? theme.colorScheme.primary
+                        : theme.colorScheme.onSurfaceVariant,
+                  ),
                   onPressed: widget.onFilter,
+                  tooltip: 'Filter documents',
                 ),
                 if (widget.hasActiveFilters)
                   Positioned(
@@ -345,31 +403,60 @@ class _ChatInputState extends State<_ChatInput> {
                     child: Container(
                       width: 8,
                       height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
                         shape: BoxShape.circle,
+                        border: Border.all(
+                          color: theme.colorScheme.surface,
+                          width: 1.5,
+                        ),
                       ),
                     ),
                   ),
               ],
             ),
             IconButton(
-              icon: const Icon(Icons.attach_file),
+              icon: Icon(
+                Icons.add_circle_outline_rounded,
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
               onPressed: widget.onAttach,
+              tooltip: 'Add documents',
             ),
+            const SizedBox(width: 8),
             Expanded(
-              child: TextField(
-                controller: _controller,
-                decoration: const InputDecoration(
-                  hintText: 'Ask about your documents...',
-                  border: InputBorder.none,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(
+                    alpha: 0.5,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
                 ),
-                onSubmitted: (_) => _handleSend(),
+                child: TextField(
+                  controller: _controller,
+                  decoration: InputDecoration(
+                    hintText: 'Ask a question...',
+                    hintStyle: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.7,
+                      ),
+                    ),
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  style: theme.textTheme.bodyMedium,
+                  onSubmitted: (_) => _handleSend(),
+                  textInputAction: TextInputAction.send,
+                ),
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.send),
+            const SizedBox(width: 8),
+            IconButton.filled(
+              icon: const Icon(Icons.arrow_upward_rounded),
               onPressed: widget.isProcessing ? null : _handleSend,
+              tooltip: 'Send message',
             ),
           ],
         ),
