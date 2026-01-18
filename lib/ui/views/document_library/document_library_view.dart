@@ -45,27 +45,43 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
   Widget _buildEmptyState(BuildContext context) {
     return Center(
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.library_books_outlined,
-            size: 80,
-            color: Theme.of(context).disabledColor,
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.library_books_outlined,
+              size: 64,
+              color: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.5),
+            ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 24),
           Text(
-            'No documents ingested yet',
+            'No documents yet',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              color: Theme.of(context).disabledColor,
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            'Add PDF, DOCX, Markdown, or Text files\n'
-            'to start chatting with your data.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Theme.of(context).disabledColor,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Text(
+              'Add PDF, DOCX, Markdown, or Text files\n'
+              'to start chatting with your data.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ),
         ],
@@ -77,76 +93,90 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
     BuildContext context,
     DocumentLibraryViewModel viewModel,
   ) {
-    return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 80),
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
       itemCount: viewModel.documents.length,
+      separatorBuilder: (context, index) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final doc = viewModel.documents[index];
         return Dismissible(
           key: Key(doc.id),
           direction: DismissDirection.endToStart,
           background: Container(
-            color: Colors.red,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.error,
+              borderRadius: BorderRadius.circular(12),
+            ),
             alignment: Alignment.centerRight,
             padding: const EdgeInsets.only(right: 20),
             child: const Icon(Icons.delete, color: Colors.white),
           ),
           confirmDismiss: (direction) async {
             await viewModel.deleteDocument(doc);
-            // If delete was successful (and VM updated),
-            // the item is removed.
-            // We return false here because the VM handles the refresh/state
-            // update which will rebuild the list. Returning true would try
-            // to remove it from the tree immediately which might conflict
-            // if VM is busy.
-            // Actually, usually in standard Dismissible you return true.
-            // But since we have an async delete confirmation...
-            // Let's rely on VM state.
             return false;
           },
-          child: ListTile(
-            leading: _buildFormatIcon(context, doc.format),
-            title: Text(
-              doc.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w500),
+          child: Card(
+            margin: EdgeInsets.zero,
+            elevation: 0,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(
+                color: Theme.of(
+                  context,
+                ).colorScheme.outlineVariant.withValues(alpha: 0.5),
+              ),
             ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                Row(
+            child: InkWell(
+              onTap: () => viewModel.showDocumentDetails(doc),
+              borderRadius: BorderRadius.circular(12),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
                   children: [
-                    _buildStatusBadge(context, doc.status),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${doc.chunkCount} chunks • '
-                      '${DateFormat.yMMMd().format(doc.ingestedAt)}',
-                      style: Theme.of(context).textTheme.bodySmall,
+                    _buildFormatIcon(context, doc.format),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            doc.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              _buildStatusBadge(context, doc.status),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${doc.chunkCount} chunks',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                              Text(
+                                ' • ${DateFormat.yMMMd().format(
+                                  doc.ingestedAt,
+                                )}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chevron_right),
+                      onPressed: () => viewModel.showDocumentDetails(doc),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ],
                 ),
-                if (doc.errorMessage != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      doc.errorMessage!,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                        fontSize: 12,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-              ],
+              ),
             ),
-            trailing: IconButton(
-              icon: const Icon(Icons.info_outline),
-              onPressed: () => viewModel.showDocumentDetails(doc),
-            ),
-            onTap: () => viewModel.showDocumentDetails(doc),
           ),
         );
       },
@@ -160,29 +190,30 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
     switch (format) {
       case DocumentFormat.pdf:
         icon = Icons.picture_as_pdf;
-        color = Colors.red;
+        color = const Color(0xFFF40F02);
       case DocumentFormat.docx:
         icon = Icons.description;
-        color = Colors.blue;
+        color = const Color(0xFF2B579A);
       case DocumentFormat.epub:
         icon = Icons.book;
-        color = Colors.orange;
+        color = const Color(0xFFFDD835);
       case DocumentFormat.markdown:
-        icon = Icons.code; // or data_object
-        color = Colors.teal;
+        icon = Icons.code;
+        color = const Color(0xFF009688);
       case DocumentFormat.plainText:
       case DocumentFormat.unknown:
         icon = Icons.article;
-        color = Colors.grey;
+        color = const Color(0xFF9E9E9E);
     }
 
     return Container(
-      padding: const EdgeInsets.all(8),
+      width: 48,
+      height: 48,
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Icon(icon, color: color),
+      child: Icon(icon, color: color, size: 28),
     );
   }
 
@@ -196,7 +227,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
         label = 'Pending';
       case IngestionStatus.processing:
         color = Colors.blue;
-        label = 'Processing...';
+        label = 'Processing';
       case IngestionStatus.complete:
         color = Colors.green;
         label = 'Ready';
@@ -206,9 +237,6 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
     }
 
     if (status == IngestionStatus.complete) {
-      // Don't show badge if ready, to keep it clean, maybe just green dot?
-      // Or simply nothing if it's the standard state.
-      // But let's show a small dot.
       return Container(
         width: 8,
         height: 8,
