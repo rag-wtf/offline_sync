@@ -37,7 +37,9 @@ class ChatView extends StackedView<ChatViewModel> {
             children: [
               Icon(Icons.filter_list_rounded, color: colorScheme.primary),
               const SizedBox(width: 12),
-              const Text('Filter by Documents'),
+              const Flexible(
+                child: Text('Filter by Documents'),
+              ),
             ],
           ),
           content: SizedBox(
