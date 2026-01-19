@@ -1,7 +1,7 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/inference_model_provider.dart';
+import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
 
 /// Service for LLM-based relevance reranking of search results
@@ -17,35 +17,46 @@ class RerankingService {
   }) async {
     if (candidates.isEmpty) return candidates;
 
-    final inferenceModel = await _inferenceModelProvider.getModel();
+    try {
+      final inferenceModel = await _inferenceModelProvider.getModel();
 
-    final scoredResults = <_ScoredResult>[];
+      final scoredResults = <_ScoredResult>[];
 
-    // Score each candidate chunk
-    for (var i = 0; i < candidates.length && i < topK; i++) {
-      final candidate = candidates[i];
-      final score = await _scoreRelevance(
-        inferenceModel,
-        query,
-        candidate.content,
+      // Score each candidate chunk
+      for (var i = 0; i < candidates.length && i < topK; i++) {
+        final candidate = candidates[i];
+        final score = await _scoreRelevance(
+          inferenceModel,
+          query,
+          candidate.content,
+        );
+        scoredResults.add(_ScoredResult(result: candidate, score: score));
+      }
+
+      // Sort by relevance score (highest first)
+      scoredResults.sort((a, b) => b.score.compareTo(a.score));
+
+      // Return reranked results
+      return scoredResults
+          .map(
+            (scored) => SearchResult(
+              id: scored.result.id,
+              content: scored.result.content,
+              score: scored.score,
+              metadata: scored.result.metadata,
+            ),
+          )
+          .toList();
+    } on Exception catch (e, stack) {
+      LoggingService.error(
+        'Error reranking results',
+        name: 'RerankingService',
+        error: e,
+        stackTrace: stack,
       );
-      scoredResults.add(_ScoredResult(result: candidate, score: score));
+      // Return original candidates on error
+      return candidates;
     }
-
-    // Sort by relevance score (highest first)
-    scoredResults.sort((a, b) => b.score.compareTo(a.score));
-
-    // Return reranked results
-    return scoredResults
-        .map(
-          (scored) => SearchResult(
-            id: scored.result.id,
-            content: scored.result.content,
-            score: scored.score,
-            metadata: scored.result.metadata,
-          ),
-        )
-        .toList();
   }
 
   /// Score the relevance of a document chunk to a query (scale 0-10)
@@ -85,8 +96,13 @@ Relevance score:''';
       );
 
       return (score ?? 5.0).clamp(0.0, 10.0);
-    } on Exception catch (e) {
-      debugPrint('[RerankingService] Error scoring relevance: $e');
+    } on Exception catch (e, stack) {
+      LoggingService.error(
+        'Error scoring relevance',
+        name: 'RerankingService',
+        error: e,
+        stackTrace: stack,
+      );
       // Return neutral score on error
       return 5.0;
     }

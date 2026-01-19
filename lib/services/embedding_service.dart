@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
 import 'package:offline_sync/services/exceptions.dart';
+import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 
 class EmbeddingService {
@@ -17,8 +17,9 @@ class EmbeddingService {
       _isInitialized = true;
     } on Object {
       // If it fails, we need to install one.
-      debugPrint(
-        '[EmbeddingService] No active embedder found. Initializing default...',
+      LoggingService.info(
+        'No active embedder found. Initializing default...',
+        name: 'EmbeddingService',
       );
 
       const config = EmbeddingModels.embeddingGemma256;
@@ -32,10 +33,16 @@ class EmbeddingService {
             .install();
 
         _isInitialized = true;
-        debugPrint('[EmbeddingService] Default embedder initialized. ✅');
-      } catch (e) {
-        debugPrint(
-          '[EmbeddingService] Failed to initialize default embedder: $e',
+        LoggingService.info(
+          'Default embedder initialized. ✅',
+          name: 'EmbeddingService',
+        );
+      } catch (e, stack) {
+        LoggingService.error(
+          'Failed to initialize default embedder',
+          name: 'EmbeddingService',
+          error: e,
+          stackTrace: stack,
         );
 
         // Check if it's an authentication error

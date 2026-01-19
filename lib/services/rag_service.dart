@@ -5,17 +5,26 @@ import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/embedding_service.dart';
 import 'package:offline_sync/services/inference_model_provider.dart';
+import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/query_expansion_service.dart';
 import 'package:offline_sync/services/rag_constants.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
+import 'package:offline_sync/services/rag_token_manager.dart';
 import 'package:offline_sync/services/reranking_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
 
+/// Result of a RAG query containing the text response and source documents
 class RAGResult {
   RAGResult({required this.response, required this.sources, this.metrics});
+
+  /// The generated text response from the model
   final String response;
+
+  /// The list of source document chunks used for generation
   final List<SearchResult> sources;
+
+  /// Performance metrics for the RAG operation (optional)
   final RAGMetrics? metrics;
 }
 
@@ -35,6 +44,7 @@ class RAGTokenEvent extends RAGStreamEvent {
 
 class RAGCompleteEvent extends RAGStreamEvent {}
 
+/// Performance metrics for RAG operations
 class RAGMetrics {
   RAGMetrics({
     required this.embeddingTime,
@@ -45,12 +55,26 @@ class RAGMetrics {
     this.rerankingTime,
     this.expandedQueryCount,
   });
+
+  /// Time taken to generate the query embedding
   final Duration embeddingTime;
+
+  /// Time taken for the vector store search
   final Duration searchTime;
+
+  /// Time taken for LLM generation
   final Duration generationTime;
+
+  /// Number of document chunks retrieved from the vector store
   final int chunksRetrieved;
+
+  /// Time taken for query expansion (if enabled)
   final Duration? queryExpansionTime;
+
+  /// Time taken for reranking (if enabled)
   final Duration? rerankingTime;
+
+  /// Number of expanded queries generated (if enabled)
   final int? expandedQueryCount;
 }
 
@@ -59,6 +83,7 @@ class RagService {
   final VectorStore _vectorStore = locator<VectorStore>();
   final InferenceModelProvider _inferenceModelProvider =
       locator<InferenceModelProvider>();
+  final RagTokenManager _tokenManager = locator<RagTokenManager>();
 
   bool _isInitialized = false;
 
@@ -68,6 +93,13 @@ class RagService {
     _isInitialized = true;
   }
 
+  /// Performs a Retrieval-Augmented Generation (RAG) query
+  ///
+  /// 1. Expands the query (if enabled)
+  /// 2. Embeds the query using the embedding model
+  /// 3. Performs hybrid search in the vector store
+  /// 4. Reranks results using LLM (if enabled)
+  /// 5. Generates a response based on retrieved context
   Future<RAGResult> askWithRAG(
     String query, {
     bool includeMetrics = false,
@@ -76,6 +108,7 @@ class RagService {
   }) async {
     if (!_isInitialized) throw Exception('RAG Service not initialized');
 
+    LoggingService.info('Performing RAG query: $query');
     final settings = locator<RagSettingsService>();
     final stopwatch = Stopwatch()..start();
 
@@ -142,6 +175,9 @@ class RagService {
       conversationHistory: conversationHistory,
     );
     final generationTime = stopwatch.elapsed - searchTime - embeddingTime;
+
+    final duration = stopwatch.elapsed;
+    LoggingService.info('RAG query completed in ${duration.inMilliseconds}ms');
 
     return RAGResult(
       response: response,
@@ -301,7 +337,7 @@ class RagService {
     // Calculate token budget using constants from RagConstants
     final maxTokens = modelConfig.maxTokens;
     final outputReserve = (maxTokens * RagConstants.outputReserveRatio).floor();
-    final queryTokens = _estimateTokens(query);
+    final queryTokens = _tokenManager.estimateTokens(query);
     final availableForPrompt = maxTokens - outputReserve - queryTokens;
 
     // Allocate using defined ratios
@@ -311,8 +347,9 @@ class RagService {
         .floor();
 
     // Build components within budget
-    final historySection = buildHistoryWithBudget(
-      conversationHistory,
+    final settings = locator<RagSettingsService>();
+    final historySection = _tokenManager.buildHistoryWithBudget(
+      conversationHistory?.take(settings.maxHistoryMessages).toList() ?? [],
       historyBudget,
     );
     final context = _buildContextWithBudget(searchResults, contextBudget);
@@ -367,7 +404,7 @@ Answer based only on the provided context. If the answer is not in the context, 
     // Calculate token budget using constants from RagConstants
     final maxTokens = modelConfig.maxTokens;
     final outputReserve = (maxTokens * RagConstants.outputReserveRatio).floor();
-    final queryTokens = _estimateTokens(query);
+    final queryTokens = _tokenManager.estimateTokens(query);
     final availableForPrompt = maxTokens - outputReserve - queryTokens;
 
     // Allocate using defined ratios
@@ -377,8 +414,9 @@ Answer based only on the provided context. If the answer is not in the context, 
         .floor();
 
     // Build components within budget
-    final historySection = buildHistoryWithBudget(
-      conversationHistory,
+    final settings = locator<RagSettingsService>();
+    final historySection = _tokenManager.buildHistoryWithBudget(
+      conversationHistory?.take(settings.maxHistoryMessages).toList() ?? [],
       historyBudget,
     );
     final context = _buildContextWithBudget(searchResults, contextBudget);
@@ -396,6 +434,11 @@ Answer based only on the provided context. If the answer is not in the context, 
 <end_of_turn>
 <start_of_turn>model
 ''';
+
+    LoggingService.debug(
+      'Generated prompt (${prompt.length} chars). '
+      'Budget: context=$contextBudget, history=$historyBudget',
+    );
 
     final inferenceModel = await _inferenceModelProvider.getModel();
     final chat = await inferenceModel.createChat(temperature: 0.1);
@@ -503,55 +546,6 @@ Answer based only on the provided context. If the answer is not in the context, 
     return chunks.where((c) => c.isNotEmpty).toList();
   }
 
-  /// Estimate token count using ~4 chars = 1 token heuristic
-  int _estimateTokens(String text) {
-    return (text.length / 4).ceil();
-  }
-
-  /// Build conversation history with token budget, keeping most recent first
-  @visibleForTesting
-  String buildHistoryWithBudget(
-    List<String>? history,
-    int tokenBudget,
-  ) {
-    if (history == null || history.isEmpty || tokenBudget <= 0) return '';
-
-    final settings = locator<RagSettingsService>();
-    // Limit to maxHistoryMessages
-    final limitedHistory = history.take(settings.maxHistoryMessages).toList();
-
-    if (limitedHistory.isEmpty) return '';
-
-    // Always keep most recent exchange (last 2 messages if available)
-    final recentCount = limitedHistory.length >= 2 ? 2 : limitedHistory.length;
-    final recent = limitedHistory.reversed.take(recentCount).toList().reversed;
-    var tokens = _estimateTokens(recent.join('\n'));
-
-    // Add older messages if budget allows (oldest dropped first)
-    final older = limitedHistory.reversed.skip(recentCount).toList();
-    final includedOlder = <String>[];
-
-    for (final msg in older) {
-      final msgTokens = _estimateTokens(msg);
-      if (tokens + msgTokens <= tokenBudget) {
-        includedOlder.add(msg);
-        tokens += msgTokens;
-      } else {
-        break; // Drop remaining oldest messages
-      }
-    }
-
-    // Build: [older...] + [recent]
-    final allMessages = [...includedOlder.reversed, ...recent];
-    if (allMessages.isEmpty) return '';
-
-    return '''
-Previous conversation:
-${allMessages.join('\n')}
-
-''';
-  }
-
   /// Build context from search results with token budget
   String _buildContextWithBudget(
     List<SearchResult> results,
@@ -565,7 +559,7 @@ ${allMessages.join('\n')}
 
     for (final result in results) {
       final chunkText = '[Source ${chunks.length + 1}]: ${result.content}';
-      final chunkTokens = _estimateTokens(chunkText);
+      final chunkTokens = _tokenManager.estimateTokens(chunkText);
 
       if (tokens + chunkTokens <= tokenBudget) {
         chunks.add(chunkText);

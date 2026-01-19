@@ -3,5 +3,68 @@
     "counterAppBarTitle": "Contador",
     "@counterAppBarTitle": {
         "description": "Texto mostrado en la AppBar de la página del contador"
-    }
+    },
+    "ragSyncChatTitle": "RAG Sync Chat",
+    "filterByDocuments": "Filtrar por documentos",
+    "noDocumentsAvailable": "No hay documentos disponibles.",
+    "done": "Hecho",
+    "loading": "Cargando...",
+    "startConversation": "Iniciar una conversación",
+    "startConversationSubtitle": "Haz preguntas sobre tus documentos\no sube nuevos para empezar.",
+    "sourceDetail": "Detalle de fuente",
+    "settingsTooltip": "Ajustes",
+    "initializationError": "Error de inicialización: {error}",
+    "@initializationError": {
+        "placeholders": {
+            "error": {
+                "type": "Object"
+            }
+        }
+    },
+    "authRequired": "Por favor proporcione autenticación e intente de nuevo",
+    "errorGeneric": "Error: {error}",
+    "@errorGeneric": {
+        "placeholders": {
+            "error": {
+                "type": "Object"
+            }
+        }
+    },
+    "failedIngestion": "No se pudieron ingestar {count} archivo(s)",
+    "@failedIngestion": {
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
+    },
+    "mixedIngestion": "Ingestado {success} archivo(s). Falló {failed} archivo(s).",
+    "@mixedIngestion": {
+        "placeholders": {
+            "success": {
+                "type": "int"
+            },
+            "failed": {
+                "type": "int"
+            }
+        }
+    },
+    "successIngestion": "Ingestado exitosamente {count} archivo(s)",
+    "@successIngestion": {
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
+    },
+    "ingestionError": "Error de ingestión: {error}",
+    "@ingestionError": {
+         "placeholders": {
+            "error": {
+                "type": "Object"
+            }
+        }
+    },
+    "attachDocument": "Adjuntar documento",
+    "chatInputHint": "Pregunta sobre tus documentos..."
 }

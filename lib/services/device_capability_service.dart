@@ -2,6 +2,7 @@ import 'dart:developer';
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:system_info_plus/system_info_plus.dart';
 
 /// Device capabilities for model selection
 class DeviceCapabilities {
@@ -73,17 +74,19 @@ class DeviceCapabilityService {
 
   Future<DeviceCapabilities> _getAndroidCapabilities() async {
     final androidInfo = await _deviceInfo.androidInfo;
-
-    // Try to get memory info from system_info_plus
-    // Note: This requires system_info_plus package which may not work on all
-    // Android versions. We'll use a conservative estimate if it fails.
-    const ramMB = 4096; // Default to 4GB if we can't detect
-
-    // Android builds often have totalMemory in systemFeatures
-    // but it's not always reliable. For now, use conservative default.
     log('Android device: ${androidInfo.model}');
 
-    return const DeviceCapabilities(
+    var ramMB = 2048; // Safe fallback
+    try {
+      final totalMemory = await SystemInfoPlus.physicalMemory;
+      if (totalMemory != null && totalMemory > 0) {
+        ramMB = (totalMemory / (1024 * 1024)).round();
+      }
+    } on Object catch (e) {
+      log('Error detecting Android RAM: $e');
+    }
+
+    return DeviceCapabilities(
       totalRamMB: ramMB,
       availableStorageMB: 4096, // Conservative estimate
       hasGpu: true, // Most modern Android devices have GPU
@@ -93,14 +96,19 @@ class DeviceCapabilityService {
 
   Future<DeviceCapabilities> _getIosCapabilities() async {
     final iosInfo = await _deviceInfo.iosInfo;
-
-    // iOS devices typically have good specs
-    // Map based on device model if needed
-    const ramMB = 4096; // Conservative default for iOS
-
     log('iOS device: ${iosInfo.model}');
 
-    return const DeviceCapabilities(
+    var ramMB = 2048; // Safe fallback
+    try {
+      final totalMemory = await SystemInfoPlus.physicalMemory;
+      if (totalMemory != null && totalMemory > 0) {
+        ramMB = (totalMemory / (1024 * 1024)).round();
+      }
+    } on Object catch (e) {
+      log('Error detecting iOS RAM: $e');
+    }
+
+    return DeviceCapabilities(
       totalRamMB: ramMB,
       availableStorageMB: 4096,
       hasGpu: true, // iOS devices have GPU
@@ -110,12 +118,20 @@ class DeviceCapabilityService {
 
   Future<DeviceCapabilities> _getLinuxCapabilities() async {
     final linuxInfo = await _deviceInfo.linuxInfo;
-
     log('Linux device: ${linuxInfo.prettyName}');
 
-    // For Linux desktop, assume reasonable specs
-    return const DeviceCapabilities(
-      totalRamMB: 8192, // 8GB default for desktop
+    var ramMB = 4096; // Safe fallback for desktop
+    try {
+      final totalMemory = await SystemInfoPlus.physicalMemory;
+      if (totalMemory != null && totalMemory > 0) {
+        ramMB = (totalMemory / (1024 * 1024)).round();
+      }
+    } on Object catch (e) {
+      log('Error detecting Linux RAM: $e');
+    }
+
+    return DeviceCapabilities(
+      totalRamMB: ramMB,
       availableStorageMB: 10240, // 10GB
       hasGpu: true, // Desktop likely has GPU
       platform: 'linux',
@@ -124,12 +140,20 @@ class DeviceCapabilityService {
 
   Future<DeviceCapabilities> _getMacOsCapabilities() async {
     final macInfo = await _deviceInfo.macOsInfo;
-
     log('macOS device: ${macInfo.model}');
 
-    // macOS devices typically have good specs
-    return const DeviceCapabilities(
-      totalRamMB: 8192, // 8GB default
+    var ramMB = 4096; // Safe fallback
+    try {
+      final totalMemory = await SystemInfoPlus.physicalMemory;
+      if (totalMemory != null && totalMemory > 0) {
+        ramMB = (totalMemory / (1024 * 1024)).round();
+      }
+    } on Object catch (e) {
+      log('Error detecting macOS RAM: $e');
+    }
+
+    return DeviceCapabilities(
+      totalRamMB: ramMB,
       availableStorageMB: 10240,
       hasGpu: true,
       platform: 'macos',
@@ -138,11 +162,20 @@ class DeviceCapabilityService {
 
   Future<DeviceCapabilities> _getWindowsCapabilities() async {
     final windowsInfo = await _deviceInfo.windowsInfo;
-
     log('Windows device: ${windowsInfo.computerName}');
 
-    return const DeviceCapabilities(
-      totalRamMB: 8192, // 8GB default for desktop
+    var ramMB = 4096; // Safe fallback
+    try {
+      final totalMemory = await SystemInfoPlus.physicalMemory;
+      if (totalMemory != null && totalMemory > 0) {
+        ramMB = (totalMemory / (1024 * 1024)).round();
+      }
+    } on Object catch (e) {
+      log('Error detecting Windows RAM: $e');
+    }
+
+    return DeviceCapabilities(
+      totalRamMB: ramMB,
       availableStorageMB: 10240,
       hasGpu: true,
       platform: 'windows',

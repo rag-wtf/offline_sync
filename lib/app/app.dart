@@ -11,6 +11,7 @@ import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/services/query_expansion_service.dart';
 import 'package:offline_sync/services/rag_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
+import 'package:offline_sync/services/rag_token_manager.dart';
 import 'package:offline_sync/services/reranking_service.dart';
 import 'package:offline_sync/services/smart_chunker.dart';
 import 'package:offline_sync/services/vector_store.dart';
@@ -42,6 +43,7 @@ import 'package:stacked_services/stacked_services.dart';
     LazySingleton<InferenceModelProvider>(classType: InferenceModelProvider),
     LazySingleton<RagService>(classType: RagService),
     LazySingleton<RagSettingsService>(classType: RagSettingsService),
+    LazySingleton<RagTokenManager>(classType: RagTokenManager),
     LazySingleton<QueryExpansionService>(classType: QueryExpansionService),
     LazySingleton<RerankingService>(classType: RerankingService),
     LazySingleton<DocumentParserService>(classType: DocumentParserService),

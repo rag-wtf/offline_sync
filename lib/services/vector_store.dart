@@ -17,6 +17,7 @@ import 'package:sqlite3/common.dart';
 import 'package:sqlite3/sqlite3.dart'
     if (dart.library.html) 'package:offline_sync/bootstrap_web.dart';
 
+/// Result of a vector search operation
 class SearchResult {
   SearchResult({
     required this.id,
@@ -24,9 +25,17 @@ class SearchResult {
     required this.score,
     required this.metadata,
   });
+
+  /// Unique identifier for the chunk
   final String id;
+
+  /// Text content of the chunk
   final String content;
+
+  /// Combined relevance score (semantic + keyword)
   final double score;
+
+  /// Metadata associated with the chunk (document ID, title, etc.)
   final Map<String, dynamic> metadata;
 
   // Typed getters for source attribution
@@ -60,6 +69,7 @@ class VectorStore {
   /// Expose database for ChatRepository
   CommonDatabase? get db => _db;
 
+  /// Initializes the SQLite database and creates tables if they don't exist
   Future<void> initialize() async {
     // On web: use in-memory mode
     // (IndexedDB via bootstrap_web handles persistence)

@@ -14,6 +14,7 @@ import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
 import 'package:stacked/stacked.dart';
 import 'package:stacked_services/stacked_services.dart';
 
+/// Represents a single message in the chat history
 class ChatMessage {
   ChatMessage({
     required this.content,
@@ -22,13 +23,24 @@ class ChatMessage {
     this.sources,
     this.metrics,
   });
+
+  /// The text content of the message
   final String content;
+
+  /// Whether the message was sent by the user
   final bool isUser;
+
+  /// When the message was sent
   final DateTime timestamp;
+
+  /// Source documents used for RAG generation (if AI message)
   final List<SearchResult>? sources;
+
+  /// Performance metrics for the RAG generation (if AI message)
   final RAGMetrics? metrics;
 }
 
+/// ViewModel for the chat view, handling message sending and document ingestion
 class ChatViewModel extends BaseViewModel {
   final RagService _ragService = locator<RagService>();
   final SnackbarService _snackbarService = locator<SnackbarService>();
@@ -38,23 +50,35 @@ class ChatViewModel extends BaseViewModel {
   final DocumentManagementService _documentService =
       locator<DocumentManagementService>();
 
+  /// List of messages in the current conversation
   final List<ChatMessage> messages = [];
+
+  /// Controller for scrolling the chat list
   final ScrollController scrollController = ScrollController();
 
   StreamSubscription<IngestionProgress>? _progressSubscription;
 
   List<Document> _availableDocuments = [];
+
+  /// Documents available for filtering the search
   List<Document> get availableDocuments => _availableDocuments;
 
   final Set<String> _selectedDocumentIds = {};
+
+  /// IDs of documents selected for search filtering
   Set<String> get selectedDocumentIds => _selectedDocumentIds;
 
   bool _isProcessing = false;
+
+  /// Whether a RAG query is currently in progress
   bool get isProcessing => _isProcessing;
 
   bool _shouldScroll = false;
+
+  /// Whether the chat view should scroll to the bottom
   bool get shouldScroll => _shouldScroll;
 
+  /// Called when the user manualy scrolls the list
   void onScrolled() {
     _shouldScroll = false;
   }
@@ -68,6 +92,7 @@ class ChatViewModel extends BaseViewModel {
     notifyListeners();
   }
 
+  /// Initializes the ViewModel, loading history and available documents
   Future<void> initialize() async {
     setBusy(true);
     try {
@@ -105,6 +130,8 @@ class ChatViewModel extends BaseViewModel {
     notifyListeners();
   }
 
+  /// Sends a user message and triggers a RAG query
+  /// Updates the messages list in real-time as tokens are streamed back
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty || _isProcessing) return;
 
@@ -133,9 +160,12 @@ class ChatViewModel extends BaseViewModel {
     notifyListeners();
 
     try {
-      // Build conversation history from last 10 messages (excluding current)
-      final history = messages
-          .take(messages.length > 10 ? 10 : messages.length)
+      // Build history from last 10 messages (excluding current placeholder)
+      final history = messages.reversed
+          .skip(1) // Skip the placeholder AI message
+          .take(10)
+          .toList()
+          .reversed
           .map((m) => '${m.isUser ? "User" : "AI"}: ${m.content}')
           .toList();
 
@@ -189,6 +219,7 @@ class ChatViewModel extends BaseViewModel {
     }
   }
 
+  /// Shows a detailed view of a source document used for context
   Future<void> showSourceDetail(SearchResult source) async {
     // If we have documentId in metadata, we can navigate to detail view
     final docId = source.metadata['documentId'] as String?;
@@ -206,6 +237,7 @@ class ChatViewModel extends BaseViewModel {
     }
   }
 
+  /// Opens file picker and starts ingestion for one or more files
   Future<void> pickAndIngestFiles() async {
     // Use DocumentLibraryViewModel's logic or delegate?
     // Duplicate logic is fine for now but ideally we use the service.

@@ -1,8 +1,8 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/embedding_service.dart';
 import 'package:offline_sync/services/inference_model_provider.dart';
+import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/rag_constants.dart';
 import 'package:offline_sync/services/vector_store.dart';
 
@@ -13,12 +13,12 @@ class QueryExpansionService {
   final InferenceModelProvider _inferenceModelProvider =
       locator<InferenceModelProvider>();
 
-  /// Generates 2-3 rephrased variants of the original query
   Future<List<String>> expandQuery(String query) async {
-    final inferenceModel = await _inferenceModelProvider.getModel();
+    try {
+      final inferenceModel = await _inferenceModelProvider.getModel();
 
-    final prompt =
-        '''
+      final prompt =
+          '''
 Rephrase the following query in 2 different ways. 
 Keep each variant concise and semantically similar.
 Return only the variants, one per line, without numbering or explanations.
@@ -27,7 +27,6 @@ Original query: $query
 
 Variants:''';
 
-    try {
       final chat = await inferenceModel.createChat(temperature: 0.3);
       await chat.initSession();
       await chat.addQuery(Message(text: prompt, isUser: true));
@@ -51,8 +50,13 @@ Variants:''';
 
       // Always include original query
       return [query, ...variants];
-    } on Exception catch (e) {
-      debugPrint('[QueryExpansionService] Error expanding query: $e');
+    } on Exception catch (e, stack) {
+      LoggingService.error(
+        'Error expanding query',
+        name: 'QueryExpansionService',
+        error: e,
+        stackTrace: stack,
+      );
       // Fallback to original query only
       return [query];
     }

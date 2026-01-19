@@ -25,6 +25,7 @@ import '../services/model_recommendation_service.dart';
 import '../services/query_expansion_service.dart';
 import '../services/rag_service.dart';
 import '../services/rag_settings_service.dart';
+import '../services/rag_token_manager.dart';
 import '../services/reranking_service.dart';
 import '../services/smart_chunker.dart';
 import '../services/vector_store.dart';
@@ -53,6 +54,7 @@ Future<void> setupLocator({
   locator.registerLazySingleton(() => InferenceModelProvider());
   locator.registerLazySingleton(() => RagService());
   locator.registerLazySingleton(() => RagSettingsService());
+  locator.registerLazySingleton(() => RagTokenManager());
   locator.registerLazySingleton(() => QueryExpansionService());
   locator.registerLazySingleton(() => RerankingService());
   locator.registerLazySingleton(() => DocumentParserService());
