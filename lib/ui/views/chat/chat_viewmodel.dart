@@ -91,7 +91,11 @@ class ChatViewModel extends BaseViewModel {
   }
 
   Future<void> _refreshDocuments() async {
-    _availableDocuments = await _documentService.getAllDocuments();
+    final allDocuments = await _documentService.getAllDocuments();
+    // Filter to only show successfully indexed documents
+    _availableDocuments = allDocuments
+        .where((doc) => doc.status == IngestionStatus.complete)
+        .toList();
     notifyListeners();
   }
 
