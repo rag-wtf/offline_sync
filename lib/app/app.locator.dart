@@ -19,6 +19,7 @@ import '../services/document_management_service.dart';
 import '../services/document_parser_service.dart';
 import '../services/embedding_service.dart';
 import '../services/environment_service.dart';
+import '../services/inference_model_provider.dart';
 import '../services/model_management_service.dart';
 import '../services/model_recommendation_service.dart';
 import '../services/query_expansion_service.dart';
@@ -49,6 +50,7 @@ Future<void> setupLocator({
   locator.registerLazySingleton(() => ChatRepository());
   locator.registerLazySingleton(() => ModelManagementService());
   locator.registerLazySingleton(() => EmbeddingService());
+  locator.registerLazySingleton(() => InferenceModelProvider());
   locator.registerLazySingleton(() => RagService());
   locator.registerLazySingleton(() => RagSettingsService());
   locator.registerLazySingleton(() => QueryExpansionService());

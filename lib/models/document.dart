@@ -1,6 +1,6 @@
 import 'package:offline_sync/services/document_parser_service.dart';
 
-enum IngestionStatus { pending, processing, complete, error }
+enum IngestionStatus { pending, processing, complete, error, cancelled }
 
 class Document {
   const Document({

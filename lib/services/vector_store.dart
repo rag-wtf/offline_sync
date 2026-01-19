@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/models/document.dart';
+import 'package:offline_sync/services/rag_constants.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store_path_stub.dart'
     if (dart.library.io) 'package:offline_sync/services/vector_store_path_native.dart'
@@ -186,7 +187,7 @@ class VectorStore {
       documentIds: documentIds,
     );
 
-    return _mergeResults(
+    return mergeResults(
       semanticResults,
       keywordResults,
       semanticWeight: weight,
@@ -493,13 +494,14 @@ INSERT OR REPLACE INTO vectors
         .trim();
   }
 
-  List<SearchResult> _mergeResults(
+  @visibleForTesting
+  List<SearchResult> mergeResults(
     List<SearchResult> semantic,
     List<SearchResult> keyword, {
     required double semanticWeight,
     required int limit,
   }) {
-    const k = 60.0; // RRF constant
+    const k = RagConstants.rrfConstant;
     final scores = <String, double>{};
     final items = <String, SearchResult>{};
 

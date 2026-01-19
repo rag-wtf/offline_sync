@@ -62,19 +62,19 @@ class ChatView extends StackedView<ChatViewModel> {
                       ),
                     ],
                   )
-                : ViewModelBuilder<ChatViewModel>.reactive(
-                    viewModelBuilder: () => viewModel,
-                    disposeViewModel: false,
-                    builder: (context, model, child) {
+                : ListenableBuilder(
+                    listenable: viewModel,
+                    builder: (context, child) {
                       return ListView.separated(
                         shrinkWrap: true,
-                        itemCount: model.availableDocuments.length,
+                        itemCount: viewModel.availableDocuments.length,
                         separatorBuilder: (_, _) => const Divider(height: 1),
                         itemBuilder: (context, index) {
-                          final doc = model.availableDocuments[index];
-                          final isSelected = model.selectedDocumentIds.contains(
-                            doc.id,
-                          );
+                          final doc = viewModel.availableDocuments[index];
+                          final isSelected = viewModel.selectedDocumentIds
+                              .contains(
+                                doc.id,
+                              );
                           return CheckboxListTile(
                             title: Text(
                               doc.title,
@@ -88,7 +88,7 @@ class ChatView extends StackedView<ChatViewModel> {
                             ),
                             value: isSelected,
                             onChanged: (_) =>
-                                model.toggleDocumentSelection(doc.id),
+                                viewModel.toggleDocumentSelection(doc.id),
                             checkboxShape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(4),
                             ),

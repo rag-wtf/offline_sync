@@ -280,6 +280,10 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
         color = colorScheme.error;
         label = 'Failed';
         icon = Icons.error_rounded;
+      case IngestionStatus.cancelled:
+        color = Colors.orange;
+        label = 'Cancelled';
+        icon = Icons.cancel_rounded;
     }
 
     return Container(

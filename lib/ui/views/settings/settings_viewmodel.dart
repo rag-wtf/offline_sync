@@ -52,9 +52,19 @@ class SettingsViewModel extends BaseViewModel {
   // Whether user has overridden the default
   bool get isMaxTokensCustom => _ragSettings.maxTokens != null;
 
+  StreamSubscription<List<ModelInfo>>? _modelStatusSubscription;
+
   void setup() {
-    _modelService.modelStatusStream.listen((_) => notifyListeners());
+    _modelStatusSubscription = _modelService.modelStatusStream.listen(
+      (_) => notifyListeners(),
+    );
     unawaited(_modelService.initialize());
+  }
+
+  @override
+  void dispose() {
+    unawaited(_modelStatusSubscription?.cancel());
+    super.dispose();
   }
 
   Future<void> downloadModel(String id) async {

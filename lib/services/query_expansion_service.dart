@@ -2,20 +2,20 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/embedding_service.dart';
-import 'package:offline_sync/services/model_config.dart';
-import 'package:offline_sync/services/rag_settings_service.dart';
+import 'package:offline_sync/services/inference_model_provider.dart';
+import 'package:offline_sync/services/rag_constants.dart';
 import 'package:offline_sync/services/vector_store.dart';
 
 /// Service for expanding queries to improve retrieval recall
 class QueryExpansionService {
   final EmbeddingService _embeddingService = locator<EmbeddingService>();
   final VectorStore _vectorStore = locator<VectorStore>();
-
-  InferenceModel? _inferenceModel;
+  final InferenceModelProvider _inferenceModelProvider =
+      locator<InferenceModelProvider>();
 
   /// Generates 2-3 rephrased variants of the original query
   Future<List<String>> expandQuery(String query) async {
-    await _ensureInferenceModel();
+    final inferenceModel = await _inferenceModelProvider.getModel();
 
     final prompt =
         '''
@@ -28,7 +28,7 @@ Original query: $query
 Variants:''';
 
     try {
-      final chat = await _inferenceModel!.createChat(temperature: 0.3);
+      final chat = await inferenceModel.createChat(temperature: 0.3);
       await chat.initSession();
       await chat.addQuery(Message(text: prompt, isUser: true));
 
@@ -90,7 +90,7 @@ Variants:''';
     List<SearchResult> results,
     int limit,
   ) {
-    const k = 60.0; // RRF constant
+    const k = RagConstants.rrfConstant;
     final scores = <String, double>{};
     final items = <String, SearchResult>{};
 
@@ -116,35 +116,5 @@ Variants:''';
           ),
         )
         .toList();
-  }
-
-  Future<void> _ensureInferenceModel() async {
-    if (_inferenceModel != null) return;
-
-    try {
-      final settings = locator<RagSettingsService>();
-      final userMaxTokens = settings.maxTokens;
-
-      final maxTokens =
-          userMaxTokens ??
-          ModelConfig.allModels
-              .firstWhere(
-                (m) => m.type == AppModelType.inference,
-                orElse: () => InferenceModels.gemma3_270M,
-              )
-              .maxTokens;
-
-      _inferenceModel = await FlutterGemma.getActiveModel(
-        maxTokens: maxTokens,
-      );
-    } catch (e) {
-      throw Exception(
-        'Failed to get active inference model for query expansion: $e',
-      );
-    }
-
-    if (_inferenceModel == null) {
-      throw Exception('No active inference model found for query expansion');
-    }
   }
 }

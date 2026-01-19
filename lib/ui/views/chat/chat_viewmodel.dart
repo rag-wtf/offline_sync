@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/widgets.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -39,6 +41,8 @@ class ChatViewModel extends BaseViewModel {
   final List<ChatMessage> messages = [];
   final ScrollController scrollController = ScrollController();
 
+  StreamSubscription<IngestionProgress>? _progressSubscription;
+
   List<Document> _availableDocuments = [];
   List<Document> get availableDocuments => _availableDocuments;
 
@@ -78,7 +82,9 @@ class ChatViewModel extends BaseViewModel {
       await _refreshDocuments();
 
       // Listen to ingestion events to update available documents
-      _documentService.ingestionProgressStream.listen((event) async {
+      _progressSubscription = _documentService.ingestionProgressStream.listen((
+        event,
+      ) async {
         if (event.stage == 'complete') {
           await _refreshDocuments();
         }
@@ -219,18 +225,39 @@ class ChatViewModel extends BaseViewModel {
     if (result == null || result.files.isEmpty) return;
 
     setBusy(true);
-    var ingestedCount = 0;
 
     try {
-      for (final file in result.files) {
-        if (file.path == null) continue;
-        await docService.addDocument(file.path!);
-        ingestedCount++;
-      }
+      final paths = result.files
+          .where((f) => f.path != null)
+          .map((f) => f.path!)
+          .toList();
 
-      _snackbarService.showSnackbar(
-        message: 'Successfully ingested $ingestedCount file(s)',
-      );
+      if (paths.isEmpty) return;
+
+      final ingestionResult = await docService.addMultipleDocuments(paths);
+
+      if (ingestionResult.hasErrors) {
+        final failedCount = ingestionResult.failed.length;
+        final successCount = ingestionResult.succeeded.length;
+
+        if (successCount == 0) {
+          _snackbarService.showSnackbar(
+            message: 'Failed to ingest $failedCount file(s)',
+          );
+        } else {
+          _snackbarService.showSnackbar(
+            message:
+                'Ingested $successCount file(s). '
+                'Failed to ingest $failedCount file(s).',
+          );
+        }
+      } else {
+        _snackbarService.showSnackbar(
+          message:
+              'Successfully ingested '
+              '${ingestionResult.succeeded.length} file(s)',
+        );
+      }
     } on Exception catch (e) {
       _snackbarService.showSnackbar(message: 'Ingestion error: $e');
     } finally {
@@ -251,6 +278,7 @@ class ChatViewModel extends BaseViewModel {
 
   @override
   void dispose() {
+    unawaited(_progressSubscription?.cancel());
     scrollController.dispose();
     super.dispose();
   }

@@ -1,10 +1,13 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/embedding_service.dart';
+import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/query_expansion_service.dart';
+import 'package:offline_sync/services/rag_constants.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/reranking_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
@@ -54,8 +57,9 @@ class RAGMetrics {
 class RagService {
   final EmbeddingService _embeddingService = locator<EmbeddingService>();
   final VectorStore _vectorStore = locator<VectorStore>();
+  final InferenceModelProvider _inferenceModelProvider =
+      locator<InferenceModelProvider>();
 
-  InferenceModel? _inferenceModel;
   bool _isInitialized = false;
 
   Future<void> initialize() async {
@@ -132,7 +136,6 @@ class RagService {
     }
 
     // 5. Generate Response with conversation history and token budget mgmt
-    await _ensureInferenceModel();
     final response = await _generate(
       query,
       searchResults,
@@ -238,7 +241,6 @@ class RagService {
     );
 
     // 6. Stream tokens from generation with token budget management
-    await _ensureInferenceModel();
     await for (final token in _generateStream(
       query,
       searchResults,
@@ -258,7 +260,7 @@ class RagService {
     // (254 usable after special tokens)
     // Using very conservative 80 words (~100-160 tokens for code/markdown content)
     // Markdown/code can tokenize at 2-3 tokens per word vs 1.3 for regular text
-    final chunks = _splitIntoChunks(
+    final chunks = splitIntoChunks(
       content,
       80,
       overlapPercent: settings.chunkOverlapPercent,
@@ -285,42 +287,6 @@ class RagService {
     _vectorStore.insertEmbeddingsBatch(embeddingDataList);
   }
 
-  Future<void> _ensureInferenceModel() async {
-    if (_inferenceModel != null) return;
-
-    try {
-      // Get maxTokens from user settings or model config
-      final settings = locator<RagSettingsService>();
-      final userMaxTokens = settings.maxTokens;
-
-      final maxTokens =
-          userMaxTokens ??
-          ModelConfig.allModels
-              .firstWhere(
-                (m) => m.type == AppModelType.inference,
-                orElse: () => InferenceModels.gemma3_270M,
-              )
-              .maxTokens;
-
-      _inferenceModel = await FlutterGemma.getActiveModel(
-        maxTokens: maxTokens,
-      );
-    } catch (e) {
-      throw Exception(
-        'Failed to get active inference model: $e. '
-        'The model may still be downloading. Please wait and try again.',
-      );
-    }
-
-    if (_inferenceModel == null) {
-      throw Exception(
-        'No active inference model found. '
-        'The model may still be downloading. Please wait and try again, '
-        'or check the Settings screen to manually download a model.',
-      );
-    }
-  }
-
   Future<String> _generate(
     String query,
     List<SearchResult> searchResults, {
@@ -332,18 +298,20 @@ class RagService {
       orElse: () => InferenceModels.gemma3_270M,
     );
 
-    // Calculate token budget
+    // Calculate token budget using constants from RagConstants
     final maxTokens = modelConfig.maxTokens;
-    final outputReserve = (maxTokens * 0.25).floor(); // 25% for output
+    final outputReserve = (maxTokens * RagConstants.outputReserveRatio).floor();
     final queryTokens = _estimateTokens(query);
     final availableForPrompt = maxTokens - outputReserve - queryTokens;
 
-    // Allocate: 55% context, 35% history, 10% template
-    final contextBudget = (availableForPrompt * 0.55).floor();
-    final historyBudget = (availableForPrompt * 0.35).floor();
+    // Allocate using defined ratios
+    final contextBudget = (availableForPrompt * RagConstants.contextBudgetRatio)
+        .floor();
+    final historyBudget = (availableForPrompt * RagConstants.historyBudgetRatio)
+        .floor();
 
     // Build components within budget
-    final historySection = _buildHistoryWithBudget(
+    final historySection = buildHistoryWithBudget(
       conversationHistory,
       historyBudget,
     );
@@ -364,7 +332,8 @@ Answer based only on the provided context. If the answer is not in the context, 
 ''';
 
     final response = StringBuffer();
-    final chat = await _inferenceModel!.createChat(temperature: 0.1);
+    final inferenceModel = await _inferenceModelProvider.getModel();
+    final chat = await inferenceModel.createChat(temperature: 0.1);
 
     // Initialize the chat session
     await chat.initSession();
@@ -395,18 +364,20 @@ Answer based only on the provided context. If the answer is not in the context, 
       orElse: () => InferenceModels.gemma3_270M,
     );
 
-    // Calculate token budget
+    // Calculate token budget using constants from RagConstants
     final maxTokens = modelConfig.maxTokens;
-    final outputReserve = (maxTokens * 0.25).floor(); // 25% for output
+    final outputReserve = (maxTokens * RagConstants.outputReserveRatio).floor();
     final queryTokens = _estimateTokens(query);
     final availableForPrompt = maxTokens - outputReserve - queryTokens;
 
-    // Allocate: 55% context, 35% history, 10% template
-    final contextBudget = (availableForPrompt * 0.55).floor();
-    final historyBudget = (availableForPrompt * 0.35).floor();
+    // Allocate using defined ratios
+    final contextBudget = (availableForPrompt * RagConstants.contextBudgetRatio)
+        .floor();
+    final historyBudget = (availableForPrompt * RagConstants.historyBudgetRatio)
+        .floor();
 
     // Build components within budget
-    final historySection = _buildHistoryWithBudget(
+    final historySection = buildHistoryWithBudget(
       conversationHistory,
       historyBudget,
     );
@@ -426,7 +397,8 @@ Answer based only on the provided context. If the answer is not in the context, 
 <start_of_turn>model
 ''';
 
-    final chat = await _inferenceModel!.createChat(temperature: 0.1);
+    final inferenceModel = await _inferenceModelProvider.getModel();
+    final chat = await inferenceModel.createChat(temperature: 0.1);
 
     // Initialize the chat session
     await chat.initSession();
@@ -447,14 +419,14 @@ Answer based only on the provided context. If the answer is not in the context, 
   /// This handles markdown content (bullet points, tables, code) that
   /// lacks sentence endings. Implements sliding window with configurable
   /// overlap.
-  List<String> _splitIntoChunks(
+  @visibleForTesting
+  List<String> splitIntoChunks(
     String text,
     int targetWords, {
     double overlapPercent = 0.15,
   }) {
-    // Use character limit: ~500 chars ≈ ~100 tokens for mixed content
-    // This provides a safe margin under the 254 token limit
-    const maxChars = 500;
+    // Use character limit from RagConstants
+    const maxChars = RagConstants.maxCharsPerChunk;
     final overlapChars = (maxChars * overlapPercent).round();
 
     // Split on newlines to preserve markdown structure
@@ -537,7 +509,8 @@ Answer based only on the provided context. If the answer is not in the context, 
   }
 
   /// Build conversation history with token budget, keeping most recent first
-  String _buildHistoryWithBudget(
+  @visibleForTesting
+  String buildHistoryWithBudget(
     List<String>? history,
     int tokenBudget,
   ) {

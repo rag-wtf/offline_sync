@@ -5,6 +5,7 @@ import 'package:offline_sync/services/document_management_service.dart';
 import 'package:offline_sync/services/document_parser_service.dart';
 import 'package:offline_sync/services/embedding_service.dart';
 import 'package:offline_sync/services/environment_service.dart';
+import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/services/query_expansion_service.dart';
@@ -38,6 +39,7 @@ import 'package:stacked_services/stacked_services.dart';
     LazySingleton<ChatRepository>(classType: ChatRepository),
     LazySingleton<ModelManagementService>(classType: ModelManagementService),
     LazySingleton<EmbeddingService>(classType: EmbeddingService),
+    LazySingleton<InferenceModelProvider>(classType: InferenceModelProvider),
     LazySingleton<RagService>(classType: RagService),
     LazySingleton<RagSettingsService>(classType: RagSettingsService),
     LazySingleton<QueryExpansionService>(classType: QueryExpansionService),

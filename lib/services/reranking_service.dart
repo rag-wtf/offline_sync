@@ -1,13 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
-import 'package:offline_sync/services/model_config.dart';
-import 'package:offline_sync/services/rag_settings_service.dart';
+import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/vector_store.dart';
 
 /// Service for LLM-based relevance reranking of search results
 class RerankingService {
-  InferenceModel? _inferenceModel;
+  final InferenceModelProvider _inferenceModelProvider =
+      locator<InferenceModelProvider>();
 
   /// Rerank chunks by generating relevance scores using LLM
   Future<List<SearchResult>> rerank(
@@ -17,14 +17,18 @@ class RerankingService {
   }) async {
     if (candidates.isEmpty) return candidates;
 
-    await _ensureInferenceModel();
+    final inferenceModel = await _inferenceModelProvider.getModel();
 
     final scoredResults = <_ScoredResult>[];
 
     // Score each candidate chunk
     for (var i = 0; i < candidates.length && i < topK; i++) {
       final candidate = candidates[i];
-      final score = await _scoreRelevance(query, candidate.content);
+      final score = await _scoreRelevance(
+        inferenceModel,
+        query,
+        candidate.content,
+      );
       scoredResults.add(_ScoredResult(result: candidate, score: score));
     }
 
@@ -45,7 +49,11 @@ class RerankingService {
   }
 
   /// Score the relevance of a document chunk to a query (scale 0-10)
-  Future<double> _scoreRelevance(String query, String content) async {
+  Future<double> _scoreRelevance(
+    InferenceModel inferenceModel,
+    String query,
+    String content,
+  ) async {
     final prompt =
         '''
 Rate the relevance of the following document to the query on a scale of 0-10.
@@ -58,7 +66,7 @@ Document: ${content.length > 500 ? '${content.substring(0, 500)}...' : content}
 Relevance score:''';
 
     try {
-      final chat = await _inferenceModel!.createChat(temperature: 0.1);
+      final chat = await inferenceModel.createChat(temperature: 0.1);
       await chat.initSession();
       await chat.addQuery(Message(text: prompt, isUser: true));
 
@@ -81,36 +89,6 @@ Relevance score:''';
       debugPrint('[RerankingService] Error scoring relevance: $e');
       // Return neutral score on error
       return 5.0;
-    }
-  }
-
-  Future<void> _ensureInferenceModel() async {
-    if (_inferenceModel != null) return;
-
-    try {
-      final settings = locator<RagSettingsService>();
-      final userMaxTokens = settings.maxTokens;
-
-      final maxTokens =
-          userMaxTokens ??
-          ModelConfig.allModels
-              .firstWhere(
-                (m) => m.type == AppModelType.inference,
-                orElse: () => InferenceModels.gemma3_270M,
-              )
-              .maxTokens;
-
-      _inferenceModel = await FlutterGemma.getActiveModel(
-        maxTokens: maxTokens,
-      );
-    } catch (e) {
-      throw Exception(
-        'Failed to get active inference model for reranking: $e',
-      );
-    }
-
-    if (_inferenceModel == null) {
-      throw Exception('No active inference model found for reranking');
     }
   }
 }

@@ -37,6 +37,19 @@ class IngestionJob {
   bool get isCancelled => _cancelled;
 }
 
+class IngestionResult {
+  const IngestionResult({
+    required this.succeeded,
+    required this.failed,
+  });
+
+  final List<Document> succeeded;
+  final Map<String, String> failed;
+
+  bool get hasErrors => failed.isNotEmpty;
+  int get totalCount => succeeded.length + failed.length;
+}
+
 class DocumentManagementService {
   final VectorStore _vectorStore = locator<VectorStore>();
   final DocumentParserService _parserService = locator<DocumentParserService>();
@@ -53,17 +66,19 @@ class DocumentManagementService {
   // Job management for cancellation
   final Map<String, IngestionJob> _activeJobs = {};
 
-  Future<List<Document>> addMultipleDocuments(List<String> filePaths) async {
-    final results = <Document>[];
+  Future<IngestionResult> addMultipleDocuments(List<String> filePaths) async {
+    final succeeded = <Document>[];
+    final failed = <String, String>{};
+
     for (final filePath in filePaths) {
       try {
         final doc = await addDocument(filePath);
-        results.add(doc);
-      } on Exception catch (_) {
-        // Log error but continue with other files
+        succeeded.add(doc);
+      } on Object catch (e) {
+        failed[filePath] = e.toString();
       }
     }
-    return results;
+    return IngestionResult(succeeded: succeeded, failed: failed);
   }
 
   Future<Document> addDocument(
@@ -237,7 +252,7 @@ class DocumentManagementService {
       return doc;
     } catch (e) {
       final status = job.isCancelled
-          ? IngestionStatus.error
+          ? IngestionStatus.cancelled
           : IngestionStatus.error;
       final msg = job.isCancelled ? 'Cancelled' : e.toString();
 

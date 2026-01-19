@@ -14,6 +14,7 @@ class TokenInputDialog extends StatefulWidget {
 class _TokenInputDialogState extends State<TokenInputDialog> {
   final TextEditingController _tokenController = TextEditingController();
   bool _isSaving = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -23,9 +24,29 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
 
   Future<void> _saveToken() async {
     final token = _tokenController.text.trim();
-    if (token.isEmpty) return;
 
-    setState(() => _isSaving = true);
+    // Validate token is not empty
+    if (token.isEmpty) {
+      setState(() {
+        _errorMessage = 'Token cannot be empty';
+      });
+      return;
+    }
+
+    // Validate token format (HuggingFace tokens start with 'hf_')
+    if (!token.startsWith('hf_')) {
+      setState(() {
+        _errorMessage =
+            'Invalid token format. HuggingFace tokens should start with "hf_"';
+      });
+      return;
+    }
+
+    // Clear any previous error
+    setState(() {
+      _errorMessage = null;
+      _isSaving = true;
+    });
 
     await AuthTokenService.saveToken(token);
 
@@ -50,10 +71,12 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
           TextField(
             controller: _tokenController,
             obscureText: true,
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Hugging Face Access Token',
               hintText: 'hf_...',
-              border: OutlineInputBorder(),
+              border: const OutlineInputBorder(),
+              errorText: _errorMessage,
+              errorMaxLines: 2,
             ),
           ),
           const SizedBox(height: 16),

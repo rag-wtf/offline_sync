@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:offline_sync/services/rag_constants.dart';
+
 /// Intelligent text chunker that respects document structure
 class SmartChunker {
   /// Split text into chunks respecting structure
@@ -10,8 +12,8 @@ class SmartChunker {
   /// [overlapChars] Number of characters to overlap between chunks
   List<String> chunk(
     String text, {
-    int maxChars = 1000,
-    int overlapChars = 100,
+    int maxChars = RagConstants.maxCharsPerChunk,
+    int overlapChars = 50, // 10% overlap
   }) {
     if (text.isEmpty) return [];
     if (text.length <= maxChars) return [text];
