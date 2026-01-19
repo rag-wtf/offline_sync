@@ -23,7 +23,7 @@ The codebase is well-structured and implements a functional on-device RAG (Retri
 
 ### 1. Missing Proper Disposal of Stream Subscriptions
 
-**Location:** [startup_viewmodel.dart](file:///media/limcheekin/My%20Passport/ws/rag.wtf/offline_sync/lib/ui/views/startup/startup_viewmodel.dart#L42-L88)
+**Location:** [chat_viewmodel.dart](file:///media/limcheekin/My%20Passport/ws/rag.wtf/offline_sync/lib/ui/views/chat/chat_viewmodel.dart#L81-L85)
 
 **Issue:** The `ChatViewModel` creates a subscription to `ingestionProgressStream` in `initialize()` but **never cancels it**.
 
@@ -352,7 +352,7 @@ The subscription is never stored or cancelled.
 
 ---
 
-### 17. `RagSettingsService.initialize()` Not Always Called
+### 17. `RagSettingsService.initialize()` Not Always Called ✅ FIXED
 
 **Location:** [rag_settings_service.dart:35-46](file:///media/limcheekin/My%20Passport/ws/rag.wtf/offline_sync/lib/services/rag_settings_service.dart#L35-L46)
 
@@ -365,29 +365,46 @@ int _maxDocumentSizeMB = 10;
 bool _contextualRetrievalEnabled = false;
 ```
 
-**Fix:** Add to `initialize()`:
+**Resolution (2026-01-19):** Added the missing lines to `initialize()`:
 ```dart
+// Document Management Settings (Issue #17 fix)
 _maxDocumentSizeMB = prefs.getInt(_keyMaxDocumentSizeMB) ?? 10;
 _contextualRetrievalEnabled = prefs.getBool(_keyContextualRetrieval) ?? false;
 ```
 
 ---
 
-### 18. Widget Rebuild Inefficiency
+### 18. Widget Rebuild Inefficiency in Dialog
 
 **Location:** [chat_view.dart:65-100](file:///media/limcheekin/My%20Passport/ws/rag.wtf/offline_sync/lib/ui/views/chat/chat_view.dart#L65-L100)
 
-**Issue:** Nested `ViewModelBuilder` inside the dialog rebuilds unnecessarily:
+**Issue:** Nested `ViewModelBuilder` inside the filter dialog adds unnecessary widget overhead:
 
 ```dart
 ViewModelBuilder<ChatViewModel>.reactive(
-  viewModelBuilder: () => viewModel,  // Reuses existing ViewModel
+  viewModelBuilder: () => viewModel,  // Passes existing ViewModel
   disposeViewModel: false,
-  // ...
+  builder: (context, model, child) { ... }
 )
 ```
 
-This is unusual and could cause unexpected behavior. It's better to just use the ViewModel directly since it's already reactive.
+**Clarification:** This pattern is *functional* - it correctly reuses the ViewModel instance with `disposeViewModel: false`, and it does enable the dialog content to react to state changes (e.g., when `selectedDocumentIds` changes). However, it introduces unnecessary overhead from the `ViewModelBuilder` widget.
+
+**Better Alternative:** Since `BaseViewModel` extends `ChangeNotifier`, use `ListenableBuilder` directly:
+```dart
+ListenableBuilder(
+  listenable: viewModel,
+  builder: (context, child) {
+    return ListView.separated(
+      shrinkWrap: true,
+      itemCount: viewModel.availableDocuments.length,
+      // ...
+    );
+  },
+)
+```
+
+This is more lightweight and idiomatic for cases where you already have access to the ViewModel.
 
 ---
 

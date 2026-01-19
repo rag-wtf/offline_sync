@@ -43,6 +43,11 @@ class RagSettingsService {
     _searchTopK = prefs.getInt(_keySearchTopK) ?? 2;
     _maxHistoryMessages = prefs.getInt(_keyMaxHistoryMessages) ?? 2;
     _maxTokens = prefs.getInt(_keyMaxTokens); // null if not set
+
+    // Document Management Settings (Issue #17 fix)
+    _maxDocumentSizeMB = prefs.getInt(_keyMaxDocumentSizeMB) ?? 10;
+    _contextualRetrievalEnabled =
+        prefs.getBool(_keyContextualRetrieval) ?? false;
   }
 
   Future<void> setQueryExpansionEnabled({required bool value}) async {
