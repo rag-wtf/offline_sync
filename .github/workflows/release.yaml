@@ -1,0 +1,263 @@
+name: Release
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Target platform to build"
+        required: true
+        type: choice
+        options:
+          - all
+          - android
+          - ios
+          - linux
+          - macos
+          - windows
+          - web
+      build_type:
+        description: "Build type"
+        required: true
+        type: choice
+        default: "release"
+        options:
+          - release
+          - debug
+      version:
+        description: "Version tag (e.g., v1.0.0). Used in artifact filenames."
+        required: false
+        type: string
+        default: ""
+
+env:
+  FLUTTER_VERSION: "3.35.x"
+  VERSION_SUFFIX: ${{ github.event.inputs.version != '' && format('-{0}', github.event.inputs.version) || '' }}
+
+jobs:
+  build-android:
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'android' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Android APK
+        run: flutter build apk --${{ github.event.inputs.build_type }}
+
+      - name: Build Android App Bundle
+        if: ${{ github.event.inputs.build_type == 'release' }}
+        run: flutter build appbundle --release
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          path: build/app/outputs/flutter-apk/*.apk
+
+      - name: Upload App Bundle artifact
+        if: ${{ github.event.inputs.build_type == 'release' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-aab-release${{ env.VERSION_SUFFIX }}
+          path: build/app/outputs/bundle/release/*.aab
+
+  build-ios:
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'ios' }}
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS (no codesign)
+        run: flutter build ios --${{ github.event.inputs.build_type }} --no-codesign
+
+      - name: Create IPA directory
+        run: mkdir -p build/ios/ipa
+
+      - name: Create unsigned IPA
+        run: |
+          cd build/ios/iphoneos
+          mkdir Payload
+          cp -r Runner.app Payload/
+          zip -r ../ipa/offline_sync-${{ github.event.inputs.build_type }}.ipa Payload
+
+      - name: Upload iOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          path: build/ios/ipa/*.ipa
+
+  build-linux:
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsqlite3-dev
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Linux
+        run: flutter build linux --${{ github.event.inputs.build_type }}
+
+      - name: Create tarball
+        run: |
+          cd build/linux/x64/${{ github.event.inputs.build_type }}/bundle
+          tar -czvf ../../../../../offline_sync-linux-${{ github.event.inputs.build_type }}.tar.gz .
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          path: build/offline_sync-linux-${{ github.event.inputs.build_type }}.tar.gz
+
+  build-macos:
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos' }}
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS
+        run: flutter build macos --${{ github.event.inputs.build_type }}
+
+      - name: Create DMG
+        run: |
+          cd build/macos/Build/Products/${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}
+          hdiutil create -volname "Offline Sync" -srcfolder "offline_sync.app" -ov -format UDZO "../../../../../offline_sync-macos-${{ github.event.inputs.build_type }}.dmg"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          path: build/offline_sync-macos-${{ github.event.inputs.build_type }}.dmg
+
+  build-windows:
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows' }}
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --${{ github.event.inputs.build_type }}
+
+      - name: Create ZIP archive
+        run: |
+          Compress-Archive -Path "build\windows\x64\runner\${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}\*" -DestinationPath "build\offline_sync-windows-${{ github.event.inputs.build_type }}.zip"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          path: build/offline_sync-windows-${{ github.event.inputs.build_type }}.zip
+
+  build-web:
+    if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'web' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Web
+        run: flutter build web --${{ github.event.inputs.build_type }} --base-href "/${{ github.event.repository.name }}/"
+
+      - name: Setup Pages
+        if: ${{ github.event.inputs.platform == 'web' }}
+        uses: actions/configure-pages@v4
+
+      - name: Upload Pages artifact
+        if: ${{ github.event.inputs.platform == 'web' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+      - name: Deploy to GitHub Pages
+        if: ${{ github.event.inputs.platform == 'web' }}
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Upload Web build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          path: build/web
