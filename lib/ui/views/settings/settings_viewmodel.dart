@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
+import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
@@ -12,6 +13,10 @@ class SettingsViewModel extends BaseViewModel {
       locator<ModelManagementService>();
   final RagSettingsService _ragSettings = locator<RagSettingsService>();
   final NavigationService _navigationService = locator<NavigationService>();
+  final DeviceCapabilityService _deviceService = DeviceCapabilityService();
+
+  DeviceCapabilities? _capabilities;
+  DeviceCapabilities? get capabilities => _capabilities;
 
   List<ModelInfo> get models => _modelService.models;
 
@@ -59,6 +64,13 @@ class SettingsViewModel extends BaseViewModel {
       (_) => notifyListeners(),
     );
     unawaited(_modelService.initialize());
+    // Load device capabilities
+    unawaited(_loadDeviceCapabilities());
+  }
+
+  Future<void> _loadDeviceCapabilities() async {
+    _capabilities = await _deviceService.getCapabilities();
+    notifyListeners();
   }
 
   @override

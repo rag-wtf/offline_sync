@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/ui/views/settings/settings_viewmodel.dart';
 import 'package:stacked/stacked.dart';
@@ -226,6 +227,24 @@ class SettingsView extends StackedView<SettingsViewModel> {
           ),
 
           const SizedBox(height: 32),
+
+          // Device Information Section
+          if (viewModel.capabilities != null) ...[
+            const _SectionHeader(
+              icon: Icons.devices_rounded,
+              title: 'Device Information',
+            ),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: _DeviceInfoSection(
+                  capabilities: viewModel.capabilities!,
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+          ],
         ],
       ),
     );
@@ -426,6 +445,121 @@ class _ModelTile extends StatelessWidget {
               onPressed: onDownload,
             )
           : null,
+    );
+  }
+}
+
+// Device Information Section Widget
+class _DeviceInfoSection extends StatelessWidget {
+  const _DeviceInfoSection({required this.capabilities});
+
+  final DeviceCapabilities capabilities;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    String formatMemory(int mb) {
+      if (mb >= 1024) {
+        return '${(mb / 1024).toStringAsFixed(1)} GB';
+      }
+      return '$mb MB';
+    }
+
+    return Column(
+      children: [
+        _DeviceInfoRow(
+          icon: Icons.memory,
+          label: 'RAM',
+          value: formatMemory(capabilities.totalRamMB),
+          colorScheme: colorScheme,
+          theme: theme,
+        ),
+        const SizedBox(height: 12),
+        _DeviceInfoRow(
+          icon: Icons.storage,
+          label: 'Storage',
+          value: formatMemory(capabilities.availableStorageMB),
+          colorScheme: colorScheme,
+          theme: theme,
+        ),
+        const SizedBox(height: 12),
+        _DeviceInfoRow(
+          icon: Icons.computer,
+          label: 'Platform',
+          value: capabilities.platform.toUpperCase(),
+          colorScheme: colorScheme,
+          theme: theme,
+        ),
+        const SizedBox(height: 12),
+        _DeviceInfoRow(
+          icon: Icons.developer_board,
+          label: 'GPU',
+          value: capabilities.hasGpu ? 'Available' : 'Not Available',
+          colorScheme: colorScheme,
+          theme: theme,
+        ),
+      ],
+    );
+  }
+}
+
+// Helper widget for device info rows in settings
+class _DeviceInfoRow extends StatelessWidget {
+  const _DeviceInfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    required this.colorScheme,
+    required this.theme,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final ColorScheme colorScheme;
+  final ThemeData theme;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: colorScheme.primaryContainer.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 20,
+            color: colorScheme.primary,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

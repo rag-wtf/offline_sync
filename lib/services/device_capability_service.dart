@@ -80,7 +80,15 @@ class DeviceCapabilityService {
     try {
       final totalMemory = await SystemInfoPlus.physicalMemory;
       if (totalMemory != null && totalMemory > 0) {
-        ramMB = (totalMemory / (1024 * 1024)).round();
+        final calculatedRam = (totalMemory / (1024 * 1024)).round();
+        // Only use calculated value if it's reasonable (at least 512 MB)
+        // This prevents showing 0MB when physicalMemory returns very
+        // small values
+        if (calculatedRam >= 512) {
+          ramMB = calculatedRam;
+        } else {
+          log('Calculated RAM too small ($calculatedRam MB), using fallback');
+        }
       }
     } on Object catch (e) {
       log('Error detecting Android RAM: $e');
@@ -102,7 +110,13 @@ class DeviceCapabilityService {
     try {
       final totalMemory = await SystemInfoPlus.physicalMemory;
       if (totalMemory != null && totalMemory > 0) {
-        ramMB = (totalMemory / (1024 * 1024)).round();
+        final calculatedRam = (totalMemory / (1024 * 1024)).round();
+        // Only use calculated value if it's reasonable (at least 512 MB)
+        if (calculatedRam >= 512) {
+          ramMB = calculatedRam;
+        } else {
+          log('Calculated RAM too small ($calculatedRam MB), using fallback');
+        }
       }
     } on Object catch (e) {
       log('Error detecting iOS RAM: $e');
@@ -124,7 +138,13 @@ class DeviceCapabilityService {
     try {
       final totalMemory = await SystemInfoPlus.physicalMemory;
       if (totalMemory != null && totalMemory > 0) {
-        ramMB = (totalMemory / (1024 * 1024)).round();
+        final calculatedRam = (totalMemory / (1024 * 1024)).round();
+        // Only use calculated value if it's reasonable (at least 512 MB)
+        if (calculatedRam >= 512) {
+          ramMB = calculatedRam;
+        } else {
+          log('Calculated RAM too small ($calculatedRam MB), using fallback');
+        }
       }
     } on Object catch (e) {
       log('Error detecting Linux RAM: $e');
@@ -146,7 +166,13 @@ class DeviceCapabilityService {
     try {
       final totalMemory = await SystemInfoPlus.physicalMemory;
       if (totalMemory != null && totalMemory > 0) {
-        ramMB = (totalMemory / (1024 * 1024)).round();
+        final calculatedRam = (totalMemory / (1024 * 1024)).round();
+        // Only use calculated value if it's reasonable (at least 512 MB)
+        if (calculatedRam >= 512) {
+          ramMB = calculatedRam;
+        } else {
+          log('Calculated RAM too small ($calculatedRam MB), using fallback');
+        }
       }
     } on Object catch (e) {
       log('Error detecting macOS RAM: $e');
@@ -168,7 +194,13 @@ class DeviceCapabilityService {
     try {
       final totalMemory = await SystemInfoPlus.physicalMemory;
       if (totalMemory != null && totalMemory > 0) {
-        ramMB = (totalMemory / (1024 * 1024)).round();
+        final calculatedRam = (totalMemory / (1024 * 1024)).round();
+        // Only use calculated value if it's reasonable (at least 512 MB)
+        if (calculatedRam >= 512) {
+          ramMB = calculatedRam;
+        } else {
+          log('Calculated RAM too small ($calculatedRam MB), using fallback');
+        }
       }
     } on Object catch (e) {
       log('Error detecting Windows RAM: $e');

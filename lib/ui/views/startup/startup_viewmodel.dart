@@ -28,6 +28,7 @@ class StartupViewModel extends BaseViewModel {
   bool get needsToken => _needsToken;
 
   DeviceCapabilities? _capabilities;
+  DeviceCapabilities? get capabilities => _capabilities;
   bool _isUnsupportedDevice = false;
   bool get isUnsupportedDevice => _isUnsupportedDevice;
 
