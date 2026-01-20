@@ -20,6 +20,14 @@ class SettingsViewModel extends BaseViewModel {
 
   List<ModelInfo> get models => _modelService.models;
 
+  // Model selection getters
+  ModelInfo? get activeInferenceModel => _modelService.activeInferenceModel;
+  ModelInfo? get activeEmbeddingModel => _modelService.activeEmbeddingModel;
+  List<ModelInfo> get downloadedInferenceModels =>
+      _modelService.downloadedInferenceModels;
+  List<ModelInfo> get downloadedEmbeddingModels =>
+      _modelService.downloadedEmbeddingModels;
+
   // RAG Settings getters
   bool get queryExpansionEnabled => _ragSettings.queryExpansionEnabled;
   bool get rerankingEnabled => _ragSettings.rerankingEnabled;
@@ -81,6 +89,17 @@ class SettingsViewModel extends BaseViewModel {
 
   Future<void> downloadModel(String id) async {
     await _modelService.downloadModel(id);
+  }
+
+  // Model switching methods
+  Future<void> switchInferenceModel(String modelId) async {
+    await _modelService.switchInferenceModel(modelId);
+    notifyListeners();
+  }
+
+  Future<void> switchEmbeddingModel(String modelId) async {
+    await _modelService.switchEmbeddingModel(modelId);
+    notifyListeners();
   }
 
   // RAG Settings methods

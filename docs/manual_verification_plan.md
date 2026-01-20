@@ -125,28 +125,29 @@ Before starting manual verification:
 
 ### 1.1 First Launch (No Models Downloaded)
 
-- [ ] App launches without crash
-- [ ] Startup screen displays with animated logo
-- [ ] App title "OfflineSync RAG" displays correctly
-- [ ] Subtitle "On-device AI with your documents" displays
-- [ ] Loading indicator with "Initializing AI Models..." message appears
-- [ ] After initialization, app navigates to Settings view (since no models downloaded)
+- [x] App launches without crash
+- [x] Startup screen displays with animated logo
+- [x] App title "OfflineSync RAG" displays correctly
+- [x] Subtitle "On-device AI with your documents" displays
+- [x] Loading indicator with "Initializing AI Models..." message appears
+- [x] After initialization, app attempts to download models automatically
+- [x] After successful download, app navigates to Chat view
 
 ### 1.2 Launch with Downloaded Models
 
-- [ ] App launches without crash
-- [ ] Startup screen appears briefly with loading state
-- [ ] After model activation, app navigates directly to Chat view
-- [ ] No error messages appear
+- [x] App launches without crash
+- [x] Startup screen appears briefly with loading state
+- [x] After model activation, app navigates directly to Chat view
+- [x] No error messages appear
 
 ### 1.3 Launch with Error State
 
-- [ ] When models fail to initialize, error state displays
-- [ ] Error icon (red) and error message are visible
-- [ ] "Retry" button is displayed and functional
-- [ ] "Enter Token" button appears when authentication is required
-- [ ] Retry button triggers re-initialization flow
-- [ ] Enter Token button opens token input dialog
+- [x] When models fail to initialize, error state displays
+- [x] Error icon (red) and error message are visible
+- [x] "Retry" button is displayed and functional
+- [x] "Enter Token" button appears when authentication is required
+- [x] Retry button triggers re-initialization flow
+- [x] Enter Token button opens token input dialog
 
 ---
 
@@ -154,30 +155,30 @@ Before starting manual verification:
 
 ### 2.1 Model Listing (Settings View)
 
-- [ ] Navigate to Settings view
-- [ ] AI Model Management section displays
-- [ ] All available models are listed
-- [ ] Each model shows correct status icon:
-  - [ ] Green checkmark for downloaded models
-  - [ ] Cloud icon for not downloaded models
-  - [ ] Downloading icon for in-progress downloads
-  - [ ] Error icon for failed downloads
-- [ ] Model status label displays correctly (DOWNLOADED, NOT DOWNLOADED, etc.)
+- [x] Navigate to Settings view
+- [x] AI Model Management section displays
+- [x] All available models are listed
+- [x] Each model shows correct status icon:
+  - [x] Green checkmark for downloaded models
+  - [x] Cloud icon for not downloaded models
+  - [x] Downloading icon for in-progress downloads
+    - [ ] Error icon for failed downloads
+- [x] Model status label displays correctly (DOWNLOADED, NOT DOWNLOADED, etc.)
 
 ### 2.2 Model Download - Inference Model
 
-- [ ] Tap download button on an inference model
-- [ ] Download progress bar appears
-- [ ] Progress updates smoothly during download
-- [ ] Upon completion, status changes to "DOWNLOADED"
-- [ ] Download button disappears for successfully downloaded model
+- [x] Tap download button on an inference model
+- [x] Download progress bar appears
+- [x] Progress updates smoothly during download
+- [x] Upon completion, status changes to "DOWNLOADED"
+- [x] Download button disappears for successfully downloaded model
 
 ### 2.3 Model Download - Embedding Model
 
-- [ ] Tap download button on embedding model
-- [ ] If token required, Token Input Dialog appears
-- [ ] Download progress bar appears after valid token entry
-- [ ] Upon completion, embedding model status is "DOWNLOADED"
+- [x] Tap download button on embedding model
+- [x] If token required, Token Input Dialog appears
+- [x] Download progress bar appears after valid token entry
+- [x] Upon completion, embedding model status is "DOWNLOADED"
 
 ### 2.4 Model Download - Token Required
 
@@ -203,17 +204,17 @@ Before starting manual verification:
 
 ### 3.1 Document Library - Empty State
 
-- [ ] Navigate to Document Library (Settings > Manage Knowledge Base)
-- [ ] Empty state displays with appropriate icon
-- [ ] "Add documents" call-to-action is visible
-- [ ] Floating action button (FAB) to add documents is present
+- [x] Navigate to Document Library (Settings > Manage Knowledge Base)
+- [x] Empty state displays with appropriate icon
+- [x] "Add documents" call-to-action is visible
+- [x] Floating action button (FAB) to add documents is present
 
 ### 3.2 Document Addition - Single Document
 
-- [ ] Tap FAB to add document
-- [ ] File picker opens
-- [ ] Select a PDF file
-- [ ] Ingestion progress shows:
+- [x] Tap FAB to add document
+- [x] File picker opens
+- [x] Select a PDF file
+- [x] Ingestion progress shows:
   - [ ] "Reading file..." stage
   - [ ] "Parsing document..." stage
   - [ ] "Chunking text..." stage

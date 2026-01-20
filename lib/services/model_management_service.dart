@@ -259,6 +259,58 @@ class ModelManagementService {
     }
   }
 
+  /// Get downloaded inference models
+  List<ModelInfo> get downloadedInferenceModels => _models
+      .where(
+        (m) =>
+            m.type == AppModelType.inference &&
+            m.status == ModelStatus.downloaded,
+      )
+      .toList();
+
+  /// Get downloaded embedding models
+  List<ModelInfo> get downloadedEmbeddingModels => _models
+      .where(
+        (m) =>
+            m.type == AppModelType.embedding &&
+            m.status == ModelStatus.downloaded,
+      )
+      .toList();
+
+  /// Switch to a different inference model
+  Future<void> switchInferenceModel(String modelId) async {
+    final model = _models.firstWhere((m) => m.id == modelId);
+    if (model.status != ModelStatus.downloaded) {
+      log('Cannot switch to model $modelId: not downloaded');
+      return;
+    }
+    if (model.type != AppModelType.inference) {
+      log('Cannot switch to model $modelId: not an inference model');
+      return;
+    }
+    log('Switching to inference model $modelId');
+    _activeInferenceModelId = modelId;
+    await _activateInferenceModel(model);
+    _notify();
+  }
+
+  /// Switch to a different embedding model
+  Future<void> switchEmbeddingModel(String modelId) async {
+    final model = _models.firstWhere((m) => m.id == modelId);
+    if (model.status != ModelStatus.downloaded) {
+      log('Cannot switch to model $modelId: not downloaded');
+      return;
+    }
+    if (model.type != AppModelType.embedding) {
+      log('Cannot switch to model $modelId: not an embedding model');
+      return;
+    }
+    log('Switching to embedding model $modelId');
+    _activeEmbeddingModelId = modelId;
+    await _activateEmbeddingModel(model);
+    _notify();
+  }
+
   Future<void> switchModel(String modelId) async {
     // In flutter_gemma, switching usually happens via installModel()
     // or by just ensuring it's available.

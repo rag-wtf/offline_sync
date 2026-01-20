@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/model_management_service.dart';
@@ -34,20 +36,208 @@ class SettingsView extends StackedView<SettingsViewModel> {
             title: 'AI Model Management',
           ),
           const SizedBox(height: 12),
+
+          // Active Inference Model Selection (show only if >1 downloaded)
+          if (viewModel.downloadedInferenceModels.length > 1) ...[
+            Card(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.psychology_rounded,
+                          size: 18,
+                          color: colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Active Inference Model',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ...viewModel.downloadedInferenceModels.asMap().entries.map((
+                    entry,
+                  ) {
+                    final model = entry.value;
+                    final isLast =
+                        entry.key ==
+                        viewModel.downloadedInferenceModels.length - 1;
+                    final isActive =
+                        viewModel.activeInferenceModel?.id == model.id;
+                    return Column(
+                      children: [
+                        RadioListTile<String>(
+                          value: model.id,
+                          // RadioListTile.groupValue is deprecated
+                          // in favor of RadioGroup
+                          // ignore: deprecated_member_use
+                          groupValue: viewModel.activeInferenceModel?.id,
+                          // RadioListTile.onChanged is deprecated
+                          // in favor of RadioGroup
+                          // ignore: deprecated_member_use
+                          onChanged: (value) {
+                            if (value != null) {
+                              unawaited(
+                                viewModel.switchInferenceModel(value),
+                              );
+                            }
+                          },
+                          title: Text(
+                            model.name,
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              fontWeight: isActive
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                          subtitle: isActive
+                              ? Text(
+                                  'ACTIVE',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: colorScheme.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        if (!isLast) const Divider(height: 1, indent: 56),
+                      ],
+                    );
+                  }),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // Active Embedding Model Selection (show only if >1 downloaded)
+          if (viewModel.downloadedEmbeddingModels.length > 1) ...[
+            Card(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.hub_rounded,
+                          size: 18,
+                          color: colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Active Embedding Model',
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  ...viewModel.downloadedEmbeddingModels.asMap().entries.map((
+                    entry,
+                  ) {
+                    final model = entry.value;
+                    final isLast =
+                        entry.key ==
+                        viewModel.downloadedEmbeddingModels.length - 1;
+                    final isActive =
+                        viewModel.activeEmbeddingModel?.id == model.id;
+                    return Column(
+                      children: [
+                        RadioListTile<String>(
+                          value: model.id,
+                          // RadioListTile.groupValue is deprecated
+                          // in favor of RadioGroup
+                          // ignore: deprecated_member_use
+                          groupValue: viewModel.activeEmbeddingModel?.id,
+                          // RadioListTile.onChanged is deprecated
+                          // in favor of RadioGroup
+                          // ignore: deprecated_member_use
+                          onChanged: (value) {
+                            if (value != null) {
+                              unawaited(
+                                viewModel.switchEmbeddingModel(value),
+                              );
+                            }
+                          },
+                          title: Text(
+                            model.name,
+                            style: theme.textTheme.bodyLarge?.copyWith(
+                              fontWeight: isActive
+                                  ? FontWeight.w600
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                          subtitle: isActive
+                              ? Text(
+                                  'ACTIVE',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: colorScheme.primary,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                )
+                              : null,
+                        ),
+                        if (!isLast) const Divider(height: 1, indent: 56),
+                      ],
+                    );
+                  }),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+
+          // Available Models for Download
           Card(
             child: Column(
-              children: viewModel.models.asMap().entries.map((entry) {
-                final isLast = entry.key == viewModel.models.length - 1;
-                return Column(
-                  children: [
-                    _ModelTile(
-                      model: entry.value,
-                      onDownload: () => viewModel.downloadModel(entry.value.id),
-                    ),
-                    if (!isLast) const Divider(height: 1, indent: 16),
-                  ],
-                );
-              }).toList(),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.cloud_download_rounded,
+                        size: 18,
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Available Models',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ...viewModel.models.asMap().entries.map((entry) {
+                  final isLast = entry.key == viewModel.models.length - 1;
+                  return Column(
+                    children: [
+                      _ModelTile(
+                        model: entry.value,
+                        onDownload: () =>
+                            viewModel.downloadModel(entry.value.id),
+                      ),
+                      if (!isLast) const Divider(height: 1, indent: 16),
+                    ],
+                  );
+                }),
+              ],
             ),
           ),
 
