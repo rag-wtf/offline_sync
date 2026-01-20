@@ -45,7 +45,7 @@ on:
       - main
       - no-sync
 env:
-  FLUTTER_VERSION: "3.35.x"
+  FLUTTER_VERSION: "3.38.x"
   FLAVOR: ${{ github.event.inputs.flavor }}
   TARGET: lib/main_${{ github.event.inputs.flavor }}.dart
   VERSION_SUFFIX: ${{ github.event.inputs.version != '' && format('-{0}', github.event.inputs.version) || '' }}
