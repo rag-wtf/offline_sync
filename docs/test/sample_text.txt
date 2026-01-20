@@ -1,0 +1,34 @@
+Sample Plain Text Document
+==========================
+
+This is a plain text file for testing document processing.
+
+Introduction
+------------
+Plain text files are the simplest form of documents. They contain no formatting,
+only raw text characters. This makes them ideal for testing basic text extraction
+and processing capabilities.
+
+Content Sections
+----------------
+
+Section 1: Lorem Ipsum
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor
+incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis
+nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+
+Section 2: Technical Information
+This document is encoded in UTF-8 format. It contains approximately 1KB of text
+data, making it suitable for quick testing and verification of document ingestion
+pipelines.
+
+Section 3: Test Data
+The quick brown fox jumps over the lazy dog. This pangram contains every letter
+of the English alphabet and is commonly used for testing text processing systems.
+
+Conclusion
+----------
+This plain text file serves as a baseline test case for document processing
+functionality. It should be successfully parsed and indexed by the RAG system.
+
+End of Document
