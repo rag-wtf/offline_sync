@@ -25,6 +25,81 @@
 
 ---
 
+## 🤖 Automated Test Coverage Summary
+
+This section documents which items from this manual verification plan are **already covered by automated tests** in the `test/` directory.
+
+### Test Files Overview
+
+| Test File | Coverage Area | Tests |
+|-----------|--------------|-------|
+| `auth_token_service_test.dart` | Token persistence | 6 tests |
+| `chat_repository_test.dart` | Chat history persistence | 3 tests |
+| `document_management_service_test.dart` | Document ingestion | 3 tests |
+| `document_parser_service_test.dart` | Document parsing | 8 tests |
+| `environment_service_test.dart` | Environment/flavor detection | 3 tests |
+| `query_expansion_service_test.dart` | Query expansion | 3 tests |
+| `rag_service_test.dart` | RAG queries | 3 tests |
+| `rag_token_manager_test.dart` | Token budget management | 4 tests |
+| `reranking_service_test.dart` | LLM reranking | 2 tests |
+| `vector_store_test.dart` | Vector database operations | 4 tests |
+| `startup_view_test.dart` | Startup UI | 1 test |
+| `startup_viewmodel_test.dart` | Startup logic | 2 tests |
+
+### Items Covered by Automated Tests ✅
+
+The following manual verification items have **partial or full automated test coverage**:
+
+#### Section 1: Startup Flow
+- [x] **1.1** Loading indicator with "Initializing AI Models..." (`startup_view_test.dart`)
+- [x] **1.3** Error handling in startup (`startup_viewmodel_test.dart`)
+
+#### Section 3: Document Management
+- [x] **3.2** Document ingestion success flow (`document_management_service_test.dart`)
+- [x] **3.3** Multiple format detection: PDF, DOCX, EPUB, Markdown, Plain text (`document_parser_service_test.dart`)
+- [x] **3.5** Unsupported format detection (`document_parser_service_test.dart`)
+- [x] **3.6** Duplicate detection (`document_management_service_test.dart`)
+- [x] **3.8** Document CRUD operations in VectorStore (`vector_store_test.dart`)
+- [x] **3.10** Document deletion cascades to vectors (`vector_store_test.dart`)
+
+#### Section 4: Chat Functionality
+- [x] **4.2** RAG query flow (`rag_service_test.dart`)
+- [x] **4.5** RAG with hybrid search (`vector_store_test.dart`)
+
+#### Section 5: RAG Quality Settings
+- [x] **5.1** Query expansion generates variants (`query_expansion_service_test.dart`)
+- [x] **5.2** LLM reranking sorts by relevance (`reranking_service_test.dart`)
+- [x] **5.5** Semantic vs keyword search weighting (`vector_store_test.dart`)
+
+#### Section 6: Token Management Settings
+- [x] **6.2** History budget management (`rag_token_manager_test.dart`)
+
+#### Section 12: Data Persistence
+- [x] **12.1** Chat history persistence (`chat_repository_test.dart`)
+- [x] **12.4** Token persistence & migration (`auth_token_service_test.dart`)
+
+### Items Requiring Manual Verification ⚠️
+
+The following areas have **limited or no automated tests** and require manual verification:
+
+| Section | Area | Reason |
+|---------|------|--------|
+| 2 | Model Management | Requires real model downloads (network/hardware dependent) |
+| 3.4 | Batch Upload | UI flow not tested |
+| 3.7 | Cancellation | Async cancellation hard to unit test |
+| 4.3 | Streaming Response | Requires real model for streaming |
+| 4.4 | Auto-Scroll Behavior | UI interaction behavior |
+| 4.6 | Document Filtering Dialog | Widget interaction |
+| 7 | Navigation & UI | Visual verification needed |
+| 8 | Error Handling | Network/storage errors hard to simulate |
+| 9 | Performance & Edge Cases | Real device testing required |
+| 10 | Cross-Platform Testing | Platform-specific behavior |
+| 11 | Localization | Visual string verification |
+| 12.2 | Settings Persistence | SharedPreferences mocked in tests |
+| 12.5 | Model State Persistence | Requires real model state |
+
+---
+
 ## Pre-requisites
 
 Before starting manual verification:
