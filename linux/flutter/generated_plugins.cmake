@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  disk_usage
   flutter_gemma
   flutter_secure_storage_linux
   sqlite3_flutter_libs
