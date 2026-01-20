@@ -41,9 +41,6 @@ on:
         required: false
         type: string
         default: ""
-    branches:
-      - main
-      - no-sync
 env:
   FLUTTER_VERSION: "3.38.x"
   FLAVOR: ${{ github.event.inputs.flavor }}
