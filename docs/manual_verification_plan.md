@@ -104,20 +104,20 @@ The following areas have **limited or no automated tests** and require manual ve
 
 Before starting manual verification:
 
-- [ ] Ensure Flutter SDK is installed and up to date (`flutter doctor`)
-- [ ] Ensure target device/emulator is available
-- [ ] Run `flutter pub get` to install dependencies
-- [ ] Run `flutter analyze` to ensure no lint errors
-- [ ] Run `flutter test` to ensure all unit tests pass
-- [ ] Have sample documents ready for testing:
-  - [ ] PDF file (small, <1MB)
-  - [ ] PDF file (large, >5MB)
-  - [ ] DOCX file
-  - [ ] EPUB file
-  - [ ] Markdown (.md) file
-  - [ ] Plain text (.txt) file
-  - [ ] Unsupported file format (e.g., .xlsx)
-- [ ] Have a valid HuggingFace access token available (starts with `hf_`)
+- [x] Ensure Flutter SDK is installed and up to date (`flutter doctor`)
+- [x] Ensure target device/emulator is available
+- [x] Run `flutter pub get` to install dependencies
+- [x] Run `flutter analyze` to ensure no lint errors
+- [x] Run `flutter test` to ensure all unit tests pass
+- [x] Have sample documents ready for testing:
+  - [x] PDF file (small, <1MB)
+  - [x] PDF file (large, >5MB)
+  - [x] DOCX file
+  - [x] EPUB file
+  - [x] Markdown (.md) file
+  - [x] Plain text (.txt) file
+  - [x] Unsupported file format (e.g., .xlsx)
+- [x] Have a valid HuggingFace access token available (starts with `hf_`)
 
 ---
 
