@@ -27,6 +27,15 @@ on:
         options:
           - release
           - debug
+      flavor:
+        description: "App flavor"
+        required: true
+        type: choice
+        default: "production"
+        options:
+          - development
+          - staging
+          - production
       version:
         description: "Version tag (e.g., v1.0.0). Used in artifact filenames."
         required: false
@@ -37,6 +46,8 @@ on:
       - no-sync
 env:
   FLUTTER_VERSION: "3.35.x"
+  FLAVOR: ${{ github.event.inputs.flavor }}
+  TARGET: lib/main_${{ github.event.inputs.flavor }}.dart
   VERSION_SUFFIX: ${{ github.event.inputs.version != '' && format('-{0}', github.event.inputs.version) || '' }}
 
 jobs:
@@ -64,24 +75,24 @@ jobs:
         run: flutter pub get
 
       - name: Build Android APK
-        run: flutter build apk --${{ github.event.inputs.build_type }}
+        run: flutter build apk --${{ github.event.inputs.build_type }} --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }}
 
       - name: Build Android App Bundle
         if: ${{ github.event.inputs.build_type == 'release' }}
-        run: flutter build appbundle --release
+        run: flutter build appbundle --release --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }}
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          name: android-${{ env.FLAVOR }}-apk-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/app/outputs/flutter-apk/*.apk
 
       - name: Upload App Bundle artifact
         if: ${{ github.event.inputs.build_type == 'release' }}
         uses: actions/upload-artifact@v4
         with:
-          name: android-aab-release${{ env.VERSION_SUFFIX }}
-          path: build/app/outputs/bundle/release/*.aab
+          name: android-${{ env.FLAVOR }}-aab-release${{ env.VERSION_SUFFIX }}
+          path: build/app/outputs/bundle/${{ env.FLAVOR }}Release/*.aab
 
   build-ios:
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'ios' }}
@@ -101,7 +112,7 @@ jobs:
         run: flutter pub get
 
       - name: Build iOS (no codesign)
-        run: flutter build ios --${{ github.event.inputs.build_type }} --no-codesign
+        run: flutter build ios --${{ github.event.inputs.build_type }} --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }} --no-codesign
 
       - name: Create IPA directory
         run: mkdir -p build/ios/ipa
@@ -116,7 +127,7 @@ jobs:
       - name: Upload iOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ios-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          name: ios-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/ios/ipa/*.ipa
 
   build-linux:
@@ -142,7 +153,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Linux
-        run: flutter build linux --${{ github.event.inputs.build_type }}
+        run: flutter build linux --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }}
 
       - name: Create tarball
         run: |
@@ -152,7 +163,7 @@ jobs:
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
-          name: linux-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          name: linux-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/offline_sync-linux-${{ github.event.inputs.build_type }}.tar.gz
 
   build-macos:
@@ -173,7 +184,7 @@ jobs:
         run: flutter pub get
 
       - name: Build macOS
-        run: flutter build macos --${{ github.event.inputs.build_type }}
+        run: flutter build macos --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }}
 
       - name: Create DMG
         run: |
@@ -183,7 +194,7 @@ jobs:
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          name: macos-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/offline_sync-macos-${{ github.event.inputs.build_type }}.dmg
 
   build-windows:
@@ -204,7 +215,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows
-        run: flutter build windows --${{ github.event.inputs.build_type }}
+        run: flutter build windows --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }}
 
       - name: Create ZIP archive
         run: |
@@ -213,7 +224,7 @@ jobs:
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          name: windows-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/offline_sync-windows-${{ github.event.inputs.build_type }}.zip
 
   build-web:
@@ -241,7 +252,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Web
-        run: flutter build web --${{ github.event.inputs.build_type }} --base-href "/${{ github.event.repository.name }}/"
+        run: flutter build web --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }} --base-href "/${{ github.event.repository.name }}/"
 
       - name: Setup Pages
         if: ${{ github.event.inputs.platform == 'web' }}
@@ -261,5 +272,5 @@ jobs:
       - name: Upload Web build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: web-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          name: web-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/web
