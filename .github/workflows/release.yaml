@@ -6,9 +6,6 @@ concurrency:
 
 on:
   workflow_dispatch:
-    branches:
-      - main
-      - no-sync  
     inputs:
       platform:
         description: "Target platform to build"
