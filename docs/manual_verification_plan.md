@@ -172,6 +172,8 @@ Before starting manual verification:
 - [x] Progress updates smoothly during download
 - [x] Upon completion, status changes to "DOWNLOADED"
 - [x] Download button disappears for successfully downloaded model
+- [ ] Download a inference model and activate it
+- [ ] Verify that the activated inference model is used for chat
 
 ### 2.3 Model Download - Embedding Model
 
@@ -179,6 +181,8 @@ Before starting manual verification:
 - [x] If token required, Token Input Dialog appears
 - [x] Download progress bar appears after valid token entry
 - [x] Upon completion, embedding model status is "DOWNLOADED"
+- [ ] Download a embedding model and activate it
+- [ ] Verify that the activated embedding model is used for querying and indexing
 
 ### 2.4 Model Download - Token Required
 
