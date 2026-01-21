@@ -9,6 +9,7 @@ environment:
 
 dependencies:
   archive: ^4.0.7
+  background_downloader: ^9.5.2
   crypto: ^3.0.7
   device_info_plus: ^12.3.0
   disk_usage: ^1.0.0
