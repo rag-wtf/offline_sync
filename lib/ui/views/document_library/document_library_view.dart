@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:offline_sync/models/document.dart';
+import 'package:offline_sync/services/document_management_service.dart';
 import 'package:offline_sync/services/document_parser_service.dart';
 import 'package:offline_sync/ui/views/document_library/document_library_viewmodel.dart';
 import 'package:stacked/stacked.dart';
@@ -22,20 +23,6 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
         title: const Text('Knowledge Base'),
         elevation: 0,
         scrolledUnderElevation: 4,
-        actions: [
-          if (viewModel.isIngesting)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: colorScheme.primary,
-                ),
-              ),
-            ),
-        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: viewModel.pickAndIngestFile,
@@ -123,100 +110,242 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-      itemCount: viewModel.documents.length,
-      itemBuilder: (context, index) {
-        final doc = viewModel.documents[index];
-        return Dismissible(
-          key: Key(doc.id),
-          direction: DismissDirection.endToStart,
-          background: Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(
-              color: colorScheme.error,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            alignment: Alignment.centerRight,
-            padding: const EdgeInsets.only(right: 24),
-            child: Icon(
-              Icons.delete_rounded,
-              color: colorScheme.onError,
-            ),
+    return Column(
+      children: [
+        // Show ingestion progress cards at the top
+        if (viewModel.activeIngestions.isNotEmpty)
+          ...viewModel.activeIngestions.values.map(
+            (progress) => _buildIngestionProgressCard(context, progress),
           ),
-          confirmDismiss: (direction) async {
-            await viewModel.deleteDocument(doc);
-            return false;
-          },
-          child: Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            child: InkWell(
-              onTap: () => viewModel.showDocumentDetails(doc),
-              borderRadius: BorderRadius.circular(16),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    _buildFormatIcon(context, doc.format),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+        // Document list
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+            itemCount: viewModel.documents.length,
+            itemBuilder: (context, index) {
+              final doc = viewModel.documents[index];
+              return Dismissible(
+                key: Key(doc.id),
+                direction: DismissDirection.endToStart,
+                background: Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  decoration: BoxDecoration(
+                    color: colorScheme.error,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  alignment: Alignment.centerRight,
+                  padding: const EdgeInsets.only(right: 24),
+                  child: Icon(
+                    Icons.delete_rounded,
+                    color: colorScheme.onError,
+                  ),
+                ),
+                confirmDismiss: (direction) async {
+                  await viewModel.deleteDocument(doc);
+                  return false;
+                },
+                child: Card(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  child: InkWell(
+                    onTap: () => viewModel.showDocumentDetails(doc),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
                         children: [
-                          Text(
-                            doc.title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              _buildStatusBadge(context, doc.status),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  '${doc.chunkCount} chunks • '
-                                  '${DateFormat.yMMMd().format(
-                                    doc.ingestedAt,
-                                  )}',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: colorScheme.onSurfaceVariant,
-                                  ),
+                          _buildFormatIcon(context, doc.format),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  doc.title,
+                                  maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
+                                  style: theme.textTheme.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
-                              ),
-                            ],
-                          ),
-                          if (doc.errorMessage != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 6),
-                              child: Text(
-                                doc.errorMessage!,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: colorScheme.error,
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    _buildStatusBadge(context, doc.status),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        '${doc.chunkCount} chunks • '
+                                        '${DateFormat.yMMMd().format(
+                                          doc.ingestedAt,
+                                        )}',
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color:
+                                                  colorScheme.onSurfaceVariant,
+                                            ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                                if (doc.errorMessage != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 6),
+                                    child: Text(
+                                      doc.errorMessage!,
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                            color: colorScheme.error,
+                                          ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                              ],
                             ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: colorScheme.outline,
+                          ),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Icon(
-                      Icons.chevron_right_rounded,
-                      color: colorScheme.outline,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildIngestionProgressCard(
+    BuildContext context,
+    IngestionProgress progress,
+  ) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    // Determine stage display properties
+    var stageLabel = '';
+    var stageIcon = Icons.sync_rounded;
+    var stageColor = colorScheme.primary;
+    var showProgress = false;
+    var progressValue = 0.0;
+
+    switch (progress.stage) {
+      case 'parsing':
+        stageLabel = 'Parsing and chunking...';
+        stageIcon = Icons.description_rounded;
+        stageColor = Colors.purple;
+      case 'contextualizing':
+        stageLabel = 'Contextualizing...';
+        stageIcon = Icons.auto_awesome_rounded;
+        stageColor = Colors.orange;
+        if (progress.totalChunks > 0) {
+          showProgress = true;
+          progressValue = progress.currentChunk / progress.totalChunks;
+        }
+      case 'embedding':
+        stageLabel = 'Generating embeddings...';
+        stageIcon = Icons.auto_awesome_rounded;
+        stageColor = Colors.teal;
+        if (progress.totalChunks > 0) {
+          showProgress = true;
+          progressValue = progress.currentChunk / progress.totalChunks;
+        }
+      case 'complete':
+        stageLabel = 'Complete!';
+        stageIcon = Icons.check_circle_rounded;
+        stageColor = Colors.green;
+      case 'error':
+        stageLabel = 'Failed';
+        stageIcon = Icons.error_rounded;
+        stageColor = colorScheme.error;
+      default:
+        stageLabel = 'Processing...';
+        stageIcon = Icons.sync_rounded;
+        stageColor = colorScheme.primary;
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: stageColor.withValues(alpha: 0.3),
+          width: 2,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: stageColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  stageIcon,
+                  color: stageColor,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      progress.documentTitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      stageLabel,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: stageColor,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
               ),
-            ),
+            ],
           ),
-        );
-      },
+          if (showProgress) const SizedBox(height: 12),
+          if (showProgress)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: progressValue,
+                backgroundColor: stageColor.withValues(alpha: 0.1),
+                valueColor: AlwaysStoppedAnimation<Color>(stageColor),
+                minHeight: 6,
+              ),
+            ),
+          if (showProgress) const SizedBox(height: 6),
+          if (showProgress)
+            Text(
+              '${progress.currentChunk}/${progress.totalChunks} chunks',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+        ],
+      ),
     );
   }
 

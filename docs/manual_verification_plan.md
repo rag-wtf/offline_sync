@@ -218,16 +218,29 @@ Before starting manual verification:
 - [x] Tap FAB to add document
 - [x] File picker opens
 - [x] Select a PDF file
-- [x] Ingestion progress shows:
-  - [ ] "Reading file..." stage
-  - [ ] "Parsing document..." stage
-  - [ ] "Chunking text..." stage
-  - [ ] "Generating embeddings..." stage with progress (X/Y chunks)
-  - [ ] "Saving to database..." stage
-  - [ ] "Complete" stage
-- [ ] Document appears in library list
+- [ ] **Verify ingestion progress card appears** at the top of the document list
+- [ ] **Progress card shows document title/filename**
+- [ ] **Verify stages display in sequence:**
+  - [ ] **"Parsing and chunking..."** stage
+    - [ ] Purple icon (description icon)
+    - [ ] No progress bar (indeterminate)
+  - [ ] **"Generating embeddings..."** stage
+    - [ ] Teal icon (sparkle icon)
+    - [ ] Linear progress bar appears
+    - [ ] Progress bar fills as chunks are processed
+    - [ ] **"X/Y chunks" text displays and updates** (e.g., "5/20 chunks")
+  - [ ] **"Complete!"** stage
+    - [ ] Green icon (check circle)
+    - [ ] Shows briefly (2 seconds) before card disappears
+- [ ] **Progress card disappears** after completion
+- [ ] Document appears in library list below
 - [ ] Document shows correct title, format icon, and status badge
-- [ ] Green "Complete" status badge displays
+- [ ] Green "Ready" status badge displays
+
+**Note:** If Contextual Retrieval is enabled in settings, an additional stage will appear:
+- [ ] **"Contextualizing..."** stage (between parsing and embedding)
+  - [ ] Orange icon (sparkle icon)
+  - [ ] Progress bar with "X/Y chunks" if applicable
 
 ### 3.3 Document Addition - Multiple Formats
 
@@ -240,14 +253,23 @@ Before starting manual verification:
 ### 3.4 Document Addition - Batch Upload
 
 - [ ] Use file picker to select multiple files at once
-- [ ] All files begin ingestion
-- [ ] Progress shown for each file
+- [ ] **Verify multiple progress cards appear** stacked vertically at the top
+- [ ] **Each progress card shows its own document name**
+- [ ] **Each card tracks progress independently:**
+  - [ ] Cards may be at different stages simultaneously
+  - [ ] Each shows its own progress bar and chunk count
+  - [ ] Each completes and disappears independently
 - [ ] All successfully ingested documents appear in library
 
 ### 3.5 Document Addition - Unsupported Format
 
-- [ ] Attempt to add unsupported file format
-- [ ] Error message displays appropriately
+- [ ] Attempt to add unsupported file format (e.g., .xlsx)
+- [ ] **Progress card appears** showing the file name
+- [ ] **"Failed" stage displays:**
+  - [ ] Red icon (error icon)
+  - [ ] "Failed" label in red
+- [ ] **Error dialog appears** with failure message
+- [ ] **Progress card remains visible briefly** (2 seconds) then disappears
 - [ ] App does not crash
 
 ### 3.6 Document Addition - Duplicate Detection

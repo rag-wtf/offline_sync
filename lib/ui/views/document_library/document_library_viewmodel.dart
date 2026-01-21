@@ -15,8 +15,11 @@ class DocumentLibraryViewModel extends BaseViewModel {
   List<Document> _documents = [];
   List<Document> get documents => _documents;
 
-  bool _isIngesting = false;
-  bool get isIngesting => _isIngesting;
+  // Track active ingestion progress per document
+  final Map<String, IngestionProgress> _activeIngestions = {};
+  Map<String, IngestionProgress> get activeIngestions => _activeIngestions;
+
+  bool get isIngesting => _activeIngestions.isNotEmpty;
 
   Future<void> initialize() async {
     setBusy(true);
@@ -25,7 +28,16 @@ class DocumentLibraryViewModel extends BaseViewModel {
 
     // Listen to progress stream to update UI in real-time
     _documentService.ingestionProgressStream.listen((event) async {
+      // Update active ingestion tracking
       if (event.stage == 'complete' || event.stage == 'error') {
+        // Keep the final state briefly before removing
+        _activeIngestions[event.documentId] = event;
+        notifyListeners();
+
+        // Wait a moment to show completion/error, then remove
+        await Future<void>.delayed(const Duration(seconds: 2));
+        _activeIngestions.remove(event.documentId);
+
         await _refreshDocuments();
         if (event.stage == 'error') {
           await _dialogService.showDialog(
@@ -33,7 +45,11 @@ class DocumentLibraryViewModel extends BaseViewModel {
             description: 'Failed to process ${event.documentTitle}.',
           );
         }
+      } else {
+        // Update progress for ongoing ingestion
+        _activeIngestions[event.documentId] = event;
       }
+      notifyListeners();
     });
   }
 
@@ -50,9 +66,6 @@ class DocumentLibraryViewModel extends BaseViewModel {
     );
 
     if (result != null && result.files.isNotEmpty) {
-      _isIngesting = true;
-      notifyListeners();
-
       for (final file in result.files) {
         if (file.path != null) {
           try {
@@ -67,8 +80,6 @@ class DocumentLibraryViewModel extends BaseViewModel {
       }
 
       await _refreshDocuments();
-      _isIngesting = false;
-      notifyListeners();
     }
   }
 
