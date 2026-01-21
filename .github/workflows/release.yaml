@@ -71,14 +71,14 @@ jobs:
         run: flutter build appbundle --release
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: android-apk-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/app/outputs/flutter-apk/*.apk
 
       - name: Upload App Bundle artifact
         if: ${{ github.event.inputs.build_type == 'release' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: android-aab-release${{ env.VERSION_SUFFIX }}
           path: build/app/outputs/bundle/release/*.aab
@@ -114,7 +114,7 @@ jobs:
           zip -r ../ipa/offline_sync-${{ github.event.inputs.build_type }}.ipa Payload
 
       - name: Upload iOS artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ios-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/ios/ipa/*.ipa
@@ -150,7 +150,7 @@ jobs:
           tar -czvf ../../../../../offline_sync-linux-${{ github.event.inputs.build_type }}.tar.gz .
 
       - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: linux-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/offline_sync-linux-${{ github.event.inputs.build_type }}.tar.gz
@@ -181,7 +181,7 @@ jobs:
           hdiutil create -volname "Offline Sync" -srcfolder "offline_sync.app" -ov -format UDZO "../../../../../offline_sync-macos-${{ github.event.inputs.build_type }}.dmg"
 
       - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: macos-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/offline_sync-macos-${{ github.event.inputs.build_type }}.dmg
@@ -211,7 +211,7 @@ jobs:
           Compress-Archive -Path "build\windows\x64\runner\${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}\*" -DestinationPath "build\offline_sync-windows-${{ github.event.inputs.build_type }}.zip"
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/offline_sync-windows-${{ github.event.inputs.build_type }}.zip
@@ -259,7 +259,7 @@ jobs:
         uses: actions/deploy-pages@v4
 
       - name: Upload Web build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: web-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/web
