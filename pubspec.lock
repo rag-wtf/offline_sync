@@ -305,10 +305,11 @@ packages:
   flutter_gemma:
     dependency: "direct main"
     description:
-      name: flutter_gemma
-      sha256: "2f90dabd83a16b8f38f3bb38c9ac1d0669f1f6f4a07585341f41682825e03ba4"
-      url: "https://pub.dev"
-    source: hosted
+      path: "."
+      ref: main
+      resolved-ref: "8feb418a5a0fb1a85d96c7954edd4323211a1c96"
+      url: "https://github.com/limcheekin/flutter_gemma.git"
+    source: git
     version: "0.12.2"
   flutter_localizations:
     dependency: "direct main"
