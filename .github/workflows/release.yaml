@@ -153,6 +153,12 @@ jobs:
       - name: Build Linux
         run: flutter build linux --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }}
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
       - name: Create AppImage
         run: |
           # Install dependencies
@@ -162,6 +168,17 @@ jobs:
           wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           wget https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
           chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-appimage-x86_64.AppImage
+
+          # Find libjvm.so and set LD_LIBRARY_PATH
+          JAVA_HOME=${{ steps.setup-java.outputs.path }}
+          LIBJVM_PATH=$(find $JAVA_HOME -name libjvm.so | head -n 1)
+          if [ -n "$LIBJVM_PATH" ]; then
+            LIBJVM_DIR=$(dirname "$LIBJVM_PATH")
+            export LD_LIBRARY_PATH="$LIBJVM_DIR:$LD_LIBRARY_PATH"
+            echo "Added $LIBJVM_DIR to LD_LIBRARY_PATH"
+          else
+            echo "Warning: libjvm.so not found"
+          fi
 
           # Setup AppDir
           mkdir -p AppDir/usr/bin
