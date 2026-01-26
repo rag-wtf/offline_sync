@@ -153,16 +153,57 @@ jobs:
       - name: Build Linux
         run: flutter build linux --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }}
 
+      - name: Create AppImage
+        run: |
+          # Install dependencies
+          sudo apt-get install -y libfuse2 file
+
+          # Download linuxdeploy and plugin
+          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-appimage-x86_64.AppImage
+
+          # Setup AppDir
+          mkdir -p AppDir/usr/bin
+          cp -r build/linux/x64/${{ github.event.inputs.build_type }}/bundle/* AppDir/usr/bin/
+          
+          # Create Desktop file
+          mkdir -p AppDir/usr/share/applications
+          cat > AppDir/usr/share/applications/offline_sync.desktop <<EOF
+          [Desktop Entry]
+          Name=Offline Sync
+          Exec=offline_sync
+          Icon=offline_sync
+          Type=Application
+          Categories=Utility;
+          Terminal=false
+          EOF
+
+          # Copy icon
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          cp android/app/src/main/res/mipmap-xhdpi/ic_launcher.png AppDir/usr/share/icons/hicolor/256x256/apps/offline_sync.png
+
+          # Generate AppImage
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage \
+            --desktop-file AppDir/usr/share/applications/offline_sync.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/offline_sync.png \
+            --executable AppDir/usr/bin/offline_sync
+
+          # Move AppImage to build directory
+          mv Offline_Sync-*.AppImage build/offline_sync-linux-${{ github.event.inputs.build_type }}.AppImage
+
       - name: Create tarball
         run: |
           cd build/linux/x64/${{ github.event.inputs.build_type }}/bundle
           tar -czvf ../../../../../offline_sync-linux-${{ github.event.inputs.build_type }}.tar.gz .
-
+      
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: linux-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
-          path: build/offline_sync-linux-${{ github.event.inputs.build_type }}.tar.gz
+          path: |
+            build/offline_sync-linux-${{ github.event.inputs.build_type }}.tar.gz
+            build/offline_sync-linux-${{ github.event.inputs.build_type }}.AppImage
 
   build-macos:
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos' }}
