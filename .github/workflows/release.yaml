@@ -223,11 +223,11 @@ jobs:
         run: flutter pub get
 
       - name: Build macOS
-        run: flutter build macos --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }}
+        run: flutter build macos --${{ github.event.inputs.build_type }} --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }}
 
       - name: Create DMG
         run: |
-          cd build/macos/Build/Products/${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}
+          cd build/macos/Build/Products/${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}-${{ env.FLAVOR }}
           hdiutil create -volname "Offline Sync" -srcfolder "offline_sync.app" -ov -format UDZO "../../../../../offline_sync-macos-${{ github.event.inputs.build_type }}.dmg"
 
       - name: Upload macOS artifact
