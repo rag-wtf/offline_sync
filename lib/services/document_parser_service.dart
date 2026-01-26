@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:epub_plus/epub_plus.dart';
@@ -25,9 +27,9 @@ class ParsedDocument {
 
 /// Service to parse various document formats into plain text
 class DocumentParserService {
-  /// Detect format from file path extension
-  DocumentFormat detectFormat(String filePath) {
-    final ext = filePath.split('.').last.toLowerCase();
+  /// Detect format from file name or path
+  DocumentFormat detectFormat(String fileName) {
+    final ext = fileName.split('.').last.toLowerCase();
     switch (ext) {
       case 'pdf':
         return DocumentFormat.pdf;
@@ -53,30 +55,38 @@ class DocumentParserService {
     if (!file.existsSync()) {
       throw const FileSystemException('File not found');
     }
-
-    final format = detectFormat(filePath);
+    final bytes = await file.readAsBytes();
     final fileName = filePath.split(Platform.pathSeparator).last;
+    return parseDocumentFromBytes(bytes, fileName);
+  }
+
+  /// Parse document from bytes and return structured content
+  Future<ParsedDocument> parseDocumentFromBytes(
+    Uint8List bytes,
+    String fileName,
+  ) async {
+    final format = detectFormat(fileName);
     String content;
     final metadata = <String, dynamic>{
       'fileName': fileName,
-      'fileSize': await file.length(),
+      'fileSize': bytes.length,
       'extension': format.name,
     };
 
     switch (format) {
       case DocumentFormat.pdf:
-        content = await _parsePdf(file);
+        content = await _parsePdf(bytes);
       case DocumentFormat.docx:
-        content = await _parseDocx(file);
+        content = await _parseDocx(bytes);
       case DocumentFormat.epub:
-        content = await _parseEpub(file);
+        content = await _parseEpub(bytes);
       case DocumentFormat.markdown:
       case DocumentFormat.plainText:
-        content = await file.readAsString();
+        content = utf8.decode(bytes, allowMalformed: true);
       case DocumentFormat.unknown:
         // Try reading as text, fallback to error
         try {
-          content = await file.readAsString();
+          content = utf8.decode(bytes, allowMalformed: true);
           // If it looks binary (contains null bytes), abort
           if (content.contains('\u0000')) {
             throw Exception('Unsupported binary file format');
@@ -102,9 +112,8 @@ class DocumentParserService {
     );
   }
 
-  Future<String> _parsePdf(File file) async {
+  Future<String> _parsePdf(Uint8List bytes) async {
     try {
-      final bytes = await file.readAsBytes();
       final document = PdfDocument(inputBytes: bytes);
       final text = PdfTextExtractor(document).extractText();
       document.dispose();
@@ -114,9 +123,8 @@ class DocumentParserService {
     }
   }
 
-  Future<String> _parseDocx(File file) async {
+  Future<String> _parseDocx(Uint8List bytes) async {
     try {
-      final bytes = await file.readAsBytes();
       final archive = ZipDecoder().decodeBytes(bytes);
 
       // Verify it's a valid docx by checking for word/document.xml
@@ -148,9 +156,8 @@ class DocumentParserService {
     }
   }
 
-  Future<String> _parseEpub(File file) async {
+  Future<String> _parseEpub(Uint8List bytes) async {
     try {
-      final bytes = await file.readAsBytes();
       final epubBook = await EpubReader.readBook(bytes);
 
       final buffer = StringBuffer();

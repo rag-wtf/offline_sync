@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -103,14 +106,70 @@ class DocumentManagementService {
     final hash = await _calculateFileHash(file);
 
     if (!skipDuplicateCheck) {
-      final existingDiv = _vectorStore.findByHash(hash);
-      if (existingDiv != null) {
-        return existingDiv;
+      final existingDoc = await _vectorStore.findByHash(hash);
+      if (existingDoc != null) {
+        return existingDoc;
       }
     }
 
     final docId = const Uuid().v4();
     final fileName = filePath.split(Platform.pathSeparator).last;
+
+    return _processIngestion(
+      docId: docId,
+      fileName: fileName,
+      filePath: filePath,
+      hash: hash,
+      parseParams: {'filePath': filePath},
+    );
+  }
+
+  Future<Document> addDocumentFromPlatformFile(PlatformFile file) async {
+    if (file.bytes == null) {
+      if (file.path != null) {
+        return addDocument(file.path!);
+      }
+      throw Exception('File content is not available (no path, no bytes)');
+    }
+
+    // Byte-based ingestion (Web or generic)
+    final bytes = file.bytes!;
+    final fileSizeMB = bytes.length / (1024 * 1024);
+    if (fileSizeMB > _settingsService.maxDocumentSizeMB) {
+      throw Exception(
+        'File size ($fileSizeMB MB) exceeds limit of '
+        '${_settingsService.maxDocumentSizeMB} MB',
+      );
+    }
+
+    final hash = sha256.convert(bytes).toString();
+
+    final existingDoc = await _vectorStore.findByHash(hash);
+    if (existingDoc != null) {
+      return existingDoc;
+    }
+
+    final docId = const Uuid().v4();
+
+    return _processIngestion(
+      docId: docId,
+      fileName: file.name,
+      filePath: file.path, // May be null on web, which is fine
+      hash: hash,
+      parseParams: {
+        'bytes': bytes,
+        'fileName': file.name,
+      },
+    );
+  }
+
+  Future<Document> _processIngestion({
+    required String docId,
+    required String fileName,
+    required String? filePath,
+    required String hash,
+    required Map<String, dynamic> parseParams,
+  }) async {
     final job = IngestionJob(documentId: docId);
     _activeJobs[docId] = job;
 
@@ -118,8 +177,8 @@ class DocumentManagementService {
     var doc = Document(
       id: docId,
       title: fileName,
-      filePath: filePath,
-      format: _parserService.detectFormat(filePath),
+      filePath: filePath ?? fileName, // Fallback to name if path missing
+      format: _parserService.detectFormat(fileName),
       chunkCount: 0,
       totalCharacters: 0,
       contentHash: hash,
@@ -134,7 +193,7 @@ class DocumentManagementService {
       if (job.isCancelled) throw Exception('Ingestion cancelled');
 
       // 3. Parse & Chunk (in Isolate)
-      final parseResult = await compute(_parseAndChunk, filePath);
+      final parseResult = await compute(_parseAndChunk, parseParams);
 
       if (job.isCancelled) throw Exception('Ingestion cancelled');
 
@@ -151,21 +210,21 @@ class DocumentManagementService {
         _emitProgress(docId, fileName, 'contextualizing', 0, chunks.length);
 
         if (await _contextualRetrievalService.isSupported) {
-          final contextualized = await _contextualRetrievalService
-              .contextualizeDocument(
-                documentContent: content,
-                chunks: chunks,
-                onProgress: (current, total) {
-                  if (job.isCancelled) throw Exception('Ingestion cancelled');
-                  _emitProgress(
-                    docId,
-                    fileName,
-                    'contextualizing',
-                    current,
-                    total,
-                  );
-                },
+          final contextualized =
+              await _contextualRetrievalService.contextualizeDocument(
+            documentContent: content,
+            chunks: chunks,
+            onProgress: (current, total) {
+              if (job.isCancelled) throw Exception('Ingestion cancelled');
+              _emitProgress(
+                docId,
+                fileName,
+                'contextualizing',
+                current,
+                total,
               );
+            },
+          );
 
           chunksToEmbed = contextualized.map((c) => c.combinedContent).toList();
           contextMetadata = contextualized
@@ -205,7 +264,7 @@ class DocumentManagementService {
           final metadata = {
             'documentId': docId,
             'documentTitle': title,
-            'documentPath': filePath,
+            'documentPath': filePath ?? fileName,
             'seq': globalIndex,
             'totalChunks': chunks.length,
           };
@@ -237,7 +296,7 @@ class DocumentManagementService {
       doc = Document(
         id: docId,
         title: title,
-        filePath: filePath,
+        filePath: filePath ?? fileName,
         format: format,
         chunkCount: chunks.length,
         totalCharacters: content.length,
@@ -259,7 +318,7 @@ class DocumentManagementService {
       final errorDoc = Document(
         id: docId,
         title: fileName,
-        filePath: filePath,
+        filePath: filePath ?? fileName,
         format: doc.format,
         chunkCount: 0,
         totalCharacters: 0,
@@ -362,11 +421,22 @@ class DocumentManagementService {
   }
 }
 
-Future<Map<String, dynamic>> _parseAndChunk(String filePath) async {
+Future<Map<String, dynamic>> _parseAndChunk(
+    Map<String, dynamic> params,
+) async {
   final parser = DocumentParserService();
   final chunker = SmartChunker();
 
-  final parsed = await parser.parseDocument(filePath);
+  ParsedDocument parsed;
+  if (params.containsKey('bytes')) {
+    final bytes = params['bytes'] as Uint8List;
+    final fileName = params['fileName'] as String;
+    parsed = await parser.parseDocumentFromBytes(bytes, fileName);
+  } else {
+    final filePath = params['filePath'] as String;
+    parsed = await parser.parseDocument(filePath);
+  }
+
   final chunks = chunker.chunk(parsed.content);
 
   return {

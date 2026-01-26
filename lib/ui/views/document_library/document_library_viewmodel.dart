@@ -67,15 +67,13 @@ class DocumentLibraryViewModel extends BaseViewModel {
 
     if (result != null && result.files.isNotEmpty) {
       for (final file in result.files) {
-        if (file.path != null) {
-          try {
-            await _documentService.addDocument(file.path!);
-          } on Exception catch (e) {
-            await _dialogService.showDialog(
-              title: 'Error',
-              description: 'Failed to add ${file.name}: $e',
-            );
-          }
+        try {
+          await _documentService.addDocumentFromPlatformFile(file);
+        } on Exception catch (e) {
+          await _dialogService.showDialog(
+            title: 'Error',
+            description: 'Failed to add ${file.name}: $e',
+          );
         }
       }
 

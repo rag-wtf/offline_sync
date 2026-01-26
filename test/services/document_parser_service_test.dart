@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/services/document_parser_service.dart';
@@ -83,6 +85,22 @@ void main() {
 
         // Cleanup
         await tempDir.delete(recursive: true);
+      });
+    });
+
+    group('parseDocumentFromBytes -', () {
+      test('should parse plain text bytes correctly', () async {
+        final content = 'Hello Bytes';
+        final bytes = utf8.encode(content);
+        final result = await service.parseDocumentFromBytes(
+          Uint8List.fromList(bytes),
+          'test.txt',
+        );
+
+        expect(result.content, content);
+        expect(result.format, DocumentFormat.plainText);
+        expect(result.title, 'test.txt');
+        expect(result.estimatedTokens, 3);
       });
     });
   });
