@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'dart:developer';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
@@ -152,6 +153,19 @@ class StartupViewModel extends BaseViewModel {
         await _modelService.downloadModel(embeddingModel.id);
       }
 
+      // Ensure they are active (Critically important for Web where initialize() skipped it)
+      if (_modelService.activeInferenceModel == null &&
+          inferenceModel.status == ModelStatus.downloaded) {
+        log('Activating recommended inference model: ${inferenceModel.name}');
+        await _modelService.switchInferenceModel(inferenceModel.id);
+      }
+
+      if (_modelService.activeEmbeddingModel == null &&
+          embeddingModel.status == ModelStatus.downloaded) {
+        log('Activating recommended embedding model: ${embeddingModel.name}');
+        await _modelService.switchEmbeddingModel(embeddingModel.id);
+      }
+
       // Check if any critical errors occurred during downloads
       final errors = _modelService.models.where(
         (m) => m.status == ModelStatus.error,
@@ -189,8 +203,17 @@ class StartupViewModel extends BaseViewModel {
       name: 'StartupViewModel',
     );
 
-    if (inferenceModel.status == ModelStatus.downloaded &&
-        embeddingModel.status == ModelStatus.downloaded) {
+    // On Web, checking persistence via isModelInstalled is unreliable.
+    // If we have reached this point without errors, and we attempted
+    // to download (which loads the model on Web), we should proceed.
+    // We check for 'downloaded' OR if we are on Web and just finished 'downloading'.
+    if ((inferenceModel.status == ModelStatus.downloaded &&
+            embeddingModel.status == ModelStatus.downloaded) ||
+        (kIsWeb && !hasError)) {
+      log(
+        'Models ready (or Web load complete). Navigating to ChatView.',
+        name: 'StartupViewModel',
+      );
       await Future<void>.delayed(const Duration(milliseconds: 500));
       await _navigationService.replaceWithChatView();
     } else {
