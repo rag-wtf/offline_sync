@@ -24,7 +24,7 @@ Future<void> bootstrap(
   // WorkManager from cancelling downloads on network state changes. This must
   // be called before FlutterGemma.initialize() which uses the downloader.
   // IMPORTANT: Foreground mode requires a notification to be configured!
-  if (defaultTargetPlatform == TargetPlatform.android) {
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
     // Configure foreground mode for files >= 0 MB (all files)
     await FileDownloader().configure(
       androidConfig: (Config.runInForegroundIfFileLargerThan, 0),
