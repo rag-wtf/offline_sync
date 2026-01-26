@@ -167,6 +167,12 @@ jobs:
           mkdir -p AppDir/usr/bin
           cp -r build/linux/x64/${{ github.event.inputs.build_type }}/bundle/* AppDir/usr/bin/
           
+          # Setup Libraries
+          mkdir -p AppDir/usr/lib
+          cp -r build/linux/x64/${{ github.event.inputs.build_type }}/bundle/lib/* AppDir/usr/lib/
+          # Fix for sqlite3: Create symlink as expected by the dart package
+          ln -s libsqlite3.so AppDir/usr/lib/libsqlite3.x64.linux.so
+
           # Create Desktop file
           mkdir -p AppDir/usr/share/applications
           cat > AppDir/usr/share/applications/offline_sync.desktop <<EOF
