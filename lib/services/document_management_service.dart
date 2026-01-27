@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
-
-import 'package:file_picker/file_picker.dart';
 
 import 'package:crypto/crypto.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/models/document.dart';
@@ -106,7 +104,7 @@ class DocumentManagementService {
     final hash = await _calculateFileHash(file);
 
     if (!skipDuplicateCheck) {
-      final existingDoc = await _vectorStore.findByHash(hash);
+      final existingDoc = _vectorStore.findByHash(hash);
       if (existingDoc != null) {
         return existingDoc;
       }
@@ -144,7 +142,7 @@ class DocumentManagementService {
 
     final hash = sha256.convert(bytes).toString();
 
-    final existingDoc = await _vectorStore.findByHash(hash);
+    final existingDoc = _vectorStore.findByHash(hash);
     if (existingDoc != null) {
       return existingDoc;
     }
@@ -210,21 +208,21 @@ class DocumentManagementService {
         _emitProgress(docId, fileName, 'contextualizing', 0, chunks.length);
 
         if (await _contextualRetrievalService.isSupported) {
-          final contextualized =
-              await _contextualRetrievalService.contextualizeDocument(
-            documentContent: content,
-            chunks: chunks,
-            onProgress: (current, total) {
-              if (job.isCancelled) throw Exception('Ingestion cancelled');
-              _emitProgress(
-                docId,
-                fileName,
-                'contextualizing',
-                current,
-                total,
+          final contextualized = await _contextualRetrievalService
+              .contextualizeDocument(
+                documentContent: content,
+                chunks: chunks,
+                onProgress: (current, total) {
+                  if (job.isCancelled) throw Exception('Ingestion cancelled');
+                  _emitProgress(
+                    docId,
+                    fileName,
+                    'contextualizing',
+                    current,
+                    total,
+                  );
+                },
               );
-            },
-          );
 
           chunksToEmbed = contextualized.map((c) => c.combinedContent).toList();
           contextMetadata = contextualized
@@ -422,7 +420,7 @@ class DocumentManagementService {
 }
 
 Future<Map<String, dynamic>> _parseAndChunk(
-    Map<String, dynamic> params,
+  Map<String, dynamic> params,
 ) async {
   final parser = DocumentParserService();
   final chunker = SmartChunker();

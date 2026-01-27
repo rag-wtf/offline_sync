@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'dart:developer';
+
+import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
-
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
@@ -153,7 +153,8 @@ class StartupViewModel extends BaseViewModel {
         await _modelService.downloadModel(embeddingModel.id);
       }
 
-      // Ensure they are active (Critically important for Web where initialize() skipped it)
+      // Ensure they are active (Critically important for Web where initialize()
+      // skipped it)
       if (_modelService.activeInferenceModel == null &&
           inferenceModel.status == ModelStatus.downloaded) {
         log('Activating recommended inference model: ${inferenceModel.name}');
@@ -206,7 +207,8 @@ class StartupViewModel extends BaseViewModel {
     // On Web, checking persistence via isModelInstalled is unreliable.
     // If we have reached this point without errors, and we attempted
     // to download (which loads the model on Web), we should proceed.
-    // We check for 'downloaded' OR if we are on Web and just finished 'downloading'.
+    // We check for 'downloaded' OR if we are on Web and just finished
+    // 'downloading'.
     if ((inferenceModel.status == ModelStatus.downloaded &&
             embeddingModel.status == ModelStatus.downloaded) ||
         (kIsWeb && !hasError)) {

@@ -90,7 +90,7 @@ void main() {
 
     group('parseDocumentFromBytes -', () {
       test('should parse plain text bytes correctly', () async {
-        final content = 'Hello Bytes';
+        const content = 'Hello Bytes';
         final bytes = utf8.encode(content);
         final result = await service.parseDocumentFromBytes(
           Uint8List.fromList(bytes),
