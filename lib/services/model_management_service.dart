@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:developer';
 import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
 import 'package:offline_sync/services/model_config.dart';
+import 'package:offline_sync/services/rag_settings_service.dart';
 
 enum ModelStatus { notDownloaded, downloading, downloaded, error }
 
@@ -43,6 +45,8 @@ class ModelManagementService {
         ),
       )
       .toList();
+
+  final RagSettingsService _ragSettings = locator<RagSettingsService>();
 
   final _statusController = StreamController<List<ModelInfo>>.broadcast();
   Stream<List<ModelInfo>> get modelStatusStream => _statusController.stream;
@@ -104,18 +108,35 @@ class ModelManagementService {
         model
           ..status = ModelStatus.downloaded
           ..progress = 1.0;
-
-        // Only activate if this is set as active model
-        if (model.type == AppModelType.embedding) {
-          _activeEmbeddingModelId = model.id;
-          await _activateEmbeddingModel(model);
-        } else if (model.type == AppModelType.inference) {
-          _activeInferenceModelId = model.id;
-          await _activateInferenceModel(model);
-        }
       }
-      // Don't auto-download - let startup handle recommended model selection
     }
+
+    // Now restore active models from persistence
+    final savedInferenceId = _ragSettings.activeInferenceModelId;
+    final savedEmbeddingId = _ragSettings.activeEmbeddingModelId;
+
+    if (savedInferenceId != null) {
+      final model = _models.firstWhere(
+        (m) => m.id == savedInferenceId,
+        orElse: () => _models.first,
+      );
+      if (model.status == ModelStatus.downloaded) {
+        _activeInferenceModelId = model.id;
+        await _activateInferenceModel(model);
+      }
+    }
+
+    if (savedEmbeddingId != null) {
+      final model = _models.firstWhere(
+        (m) => m.id == savedEmbeddingId,
+        orElse: () => _models.first,
+      );
+      if (model.status == ModelStatus.downloaded) {
+        _activeEmbeddingModelId = model.id;
+        await _activateEmbeddingModel(model);
+      }
+    }
+
     log('DEBUG: initialize() completed, calling _notify()');
     _notify();
     log('DEBUG: initialize() fully completed');
@@ -197,6 +218,14 @@ class ModelManagementService {
       ..progress = 0.0;
     _notify();
 
+    // Capture currently active model of the same type to restore later
+    String? previousActiveId;
+    if (model.type == AppModelType.inference) {
+      previousActiveId = _activeInferenceModelId;
+    } else {
+      previousActiveId = _activeEmbeddingModelId;
+    }
+
     try {
       final token = await AuthTokenService.loadToken();
       log('DEBUG: Token loaded for ${model.id}');
@@ -239,6 +268,37 @@ class ModelManagementService {
       model
         ..status = ModelStatus.downloaded
         ..progress = 1.0;
+
+      // AUTO-ACTIVATION LOGIC
+      if (previousActiveId == null) {
+        // No model was active, so this is the "First Download".
+        // Auto-activate it to help the user get started.
+        log('First download detected. Auto-activating ${model.id}');
+        if (model.type == AppModelType.inference) {
+          await switchInferenceModel(model.id);
+        } else {
+          await switchEmbeddingModel(model.id);
+        }
+      } else if (previousActiveId != model.id) {
+        // A model was already active, and it wasn't this one.
+        // Downloading typically implicitly loads the new model (side effect of
+        // install()).
+        // We must restore the user's previous active model.
+        log(
+          'Restoring previously active model $previousActiveId after download '
+          'of ${model.id}',
+        );
+
+        final previousModel = _models.firstWhere(
+          (m) => m.id == previousActiveId,
+        );
+        if (model.type == AppModelType.inference) {
+          await _activateInferenceModel(previousModel);
+        } else {
+          await _activateEmbeddingModel(previousModel);
+        }
+      }
+
       _notify();
       log('DEBUG: _performDownload fully completed for ${model.id}');
     } on Exception catch (e) {
@@ -290,6 +350,7 @@ class ModelManagementService {
     }
     log('Switching to inference model $modelId');
     _activeInferenceModelId = modelId;
+    await _ragSettings.setActiveInferenceModelId(modelId);
     await _activateInferenceModel(model);
     _notify();
   }
@@ -307,6 +368,7 @@ class ModelManagementService {
     }
     log('Switching to embedding model $modelId');
     _activeEmbeddingModelId = modelId;
+    await _ragSettings.setActiveEmbeddingModelId(modelId);
     await _activateEmbeddingModel(model);
     _notify();
   }

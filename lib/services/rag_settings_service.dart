@@ -10,6 +10,8 @@ class RagSettingsService {
   static const _keySearchTopK = 'rag_search_top_k';
   static const _keyMaxHistoryMessages = 'rag_max_history_messages';
   static const _keyMaxTokens = 'rag_max_tokens';
+  static const _keyActiveInferenceModel = 'active_inference_model_id';
+  static const _keyActiveEmbeddingModel = 'active_embedding_model_id';
 
   // Feature toggles - defaults to OFF for performance
   bool _queryExpansionEnabled = false;
@@ -22,6 +24,8 @@ class RagSettingsService {
   int _searchTopK = 2; // Number of chunks to retrieve (conservative)
   int _maxHistoryMessages = 2; // Max conversation history (conservative)
   int? _maxTokens; // User override for max tokens (null = use model default)
+  String? _activeInferenceModelId;
+  String? _activeEmbeddingModelId;
 
   bool get queryExpansionEnabled => _queryExpansionEnabled;
   bool get rerankingEnabled => _rerankingEnabled;
@@ -31,6 +35,8 @@ class RagSettingsService {
   int get searchTopK => _searchTopK;
   int get maxHistoryMessages => _maxHistoryMessages;
   int? get maxTokens => _maxTokens; // null means use model default
+  String? get activeInferenceModelId => _activeInferenceModelId;
+  String? get activeEmbeddingModelId => _activeEmbeddingModelId;
 
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();
@@ -43,6 +49,8 @@ class RagSettingsService {
     _searchTopK = prefs.getInt(_keySearchTopK) ?? 2;
     _maxHistoryMessages = prefs.getInt(_keyMaxHistoryMessages) ?? 2;
     _maxTokens = prefs.getInt(_keyMaxTokens); // null if not set
+    _activeInferenceModelId = prefs.getString(_keyActiveInferenceModel);
+    _activeEmbeddingModelId = prefs.getString(_keyActiveEmbeddingModel);
 
     // Document Management Settings (Issue #17 fix)
     _maxDocumentSizeMB = prefs.getInt(_keyMaxDocumentSizeMB) ?? 10;
@@ -102,6 +110,18 @@ class RagSettingsService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_keyMaxTokens, _maxTokens!);
     }
+  }
+
+  Future<void> setActiveInferenceModelId(String id) async {
+    _activeInferenceModelId = id;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyActiveInferenceModel, id);
+  }
+
+  Future<void> setActiveEmbeddingModelId(String id) async {
+    _activeEmbeddingModelId = id;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyActiveEmbeddingModel, id);
   }
 
   // Document Management Settings
