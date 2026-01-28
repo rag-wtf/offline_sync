@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 
+import '../helpers/test_helpers.dart';
+
 // Note: ModelManagementService depends heavily on FlutterGemma native plugin
 // which cannot be easily mocked. These tests focus on state management,
 // API contracts, and error handling rather than deep integration.
@@ -11,11 +13,13 @@ void main() {
     late ModelManagementService service;
 
     setUp(() {
+      getAndRegisterMockRagSettingsService();
       service = ModelManagementService();
     });
 
-    tearDown(() {
+    tearDown(() async {
       service.dispose();
+      await unregisterTestHelpers();
     });
 
     group('Initialization -', () {
