@@ -1,66 +1,11 @@
 import 'package:flutter_gemma/flutter_gemma.dart';
-import 'package:offline_sync/services/auth_token_service.dart';
-import 'package:offline_sync/services/exceptions.dart';
-import 'package:offline_sync/services/logging_service.dart';
-import 'package:offline_sync/services/model_config.dart';
 
 class EmbeddingService {
-  bool _isInitialized = false;
-
-  Future<void> _ensureInitialized() async {
-    if (_isInitialized) return;
-
-    try {
-      // Check if an embedder is already active.
-      // If this call succeeds, we are good.
-      await FlutterGemma.getActiveEmbedder();
-      _isInitialized = true;
-    } on Object {
-      // If it fails, we need to install one.
-      LoggingService.info(
-        'No active embedder found. Initializing default...',
-        name: 'EmbeddingService',
-      );
-
-      const config = EmbeddingModels.embeddingGemma256;
-
-      try {
-        final token = await AuthTokenService.loadToken();
-
-        await FlutterGemma.installEmbedder()
-            .modelFromNetwork(config.modelUrl, token: token)
-            .tokenizerFromNetwork(config.tokenizerUrl!, token: token)
-            .install();
-
-        _isInitialized = true;
-        LoggingService.info(
-          'Default embedder initialized. ✅',
-          name: 'EmbeddingService',
-        );
-      } catch (e, stack) {
-        LoggingService.error(
-          'Failed to initialize default embedder',
-          name: 'EmbeddingService',
-          error: e,
-          stackTrace: stack,
-        );
-
-        // Check if it's an authentication error
-        final errorMsg = e.toString();
-        if (errorMsg.contains('401') || errorMsg.contains('Unauthorized')) {
-          throw AuthenticationRequiredException(
-            'Hugging Face authentication required. '
-            'Please provide a valid token.',
-          );
-        }
-
-        rethrow;
-      }
-    }
-  }
-
   Future<List<double>> generateEmbedding(String text) async {
-    await _ensureInitialized();
+    // Rely on explicit initialization from ModelManagementService/Startup
+    // (Settings > Select Model or Startup Auto-Load)
+    // This avoids race conditions where multiple chunks try to conflictingly
+    // lazy-initialize the model at the same time.
     final embedder = await FlutterGemma.getActiveEmbedder();
 
     // Note: getEmbedding might return a List<double> or a proprietary object
