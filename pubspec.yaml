@@ -23,7 +23,7 @@ dev_dependencies:
     sdk: flutter
   mocktail: ^1.0.4
   stacked_generator:
-  very_good_analysis: ^10.0.0
+  very_good_analysis: ^10.1.0
 
 flutter:
   generate: true
