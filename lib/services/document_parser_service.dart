@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:epub_plus/epub_plus.dart';
+import 'package:path/path.dart' as p;
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 import 'package:xml/xml.dart';
 
@@ -56,7 +57,7 @@ class DocumentParserService {
       throw const FileSystemException('File not found');
     }
     final bytes = await file.readAsBytes();
-    final fileName = filePath.split(Platform.pathSeparator).last;
+    final fileName = p.basename(filePath);
     return parseDocumentFromBytes(bytes, fileName);
   }
 

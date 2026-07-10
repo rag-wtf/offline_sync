@@ -6,11 +6,11 @@ list(APPEND FLUTTER_PLUGIN_LIST
   disk_usage
   flutter_gemma
   flutter_secure_storage_windows
-  sqlite3_flutter_libs
   url_launcher_windows
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  jni
 )
 
 set(PLUGIN_BUNDLED_LIBRARIES)

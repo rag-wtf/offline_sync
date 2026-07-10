@@ -59,10 +59,9 @@ class DocumentLibraryViewModel extends BaseViewModel {
   }
 
   Future<void> pickAndIngestFile() async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'docx', 'txt', 'md', 'epub', 'json'],
-      allowMultiple: true,
     );
 
     if (result != null && result.files.isNotEmpty) {

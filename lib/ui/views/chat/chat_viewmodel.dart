@@ -248,8 +248,7 @@ class ChatViewModel extends BaseViewModel {
     final docService = locator<DocumentManagementService>();
     // ... use docService.addDocument ...
 
-    final result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'docx', 'txt', 'md', 'epub', 'json'],
     );
