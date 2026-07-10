@@ -75,6 +75,7 @@ jobs:
         run: flutter pub get
 
       - name: Decode Android keystore
+        if: ${{ github.event.inputs.build_type == 'release' }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
@@ -94,6 +95,7 @@ jobs:
           ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD }}
 
       - name: Verify APK signature
+        if: ${{ github.event.inputs.build_type == 'release' }}
         run: |
           APK=$(find build/app/outputs/flutter-apk -name "*-release.apk" | head -n 1)
           echo "Verifying $APK"
