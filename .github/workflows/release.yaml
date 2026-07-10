@@ -43,7 +43,7 @@ on:
         default: ""
 
 env:
-  FLUTTER_VERSION: "3.38.x"
+  FLUTTER_VERSION: "3.35.x"
   FLAVOR: ${{ github.event.inputs.app_flavor }}
   TARGET: lib/main_${{ github.event.inputs.app_flavor }}.dart
   BUILD_NUMBER: ${{ github.run_number }}
