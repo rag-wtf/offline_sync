@@ -35,15 +35,13 @@
 
   <script src="coi-serviceworker.js"></script>
 
-  <!-- Load flutter_gemma web dependencies from CDN -->
-  <script src="https://cdn.jsdelivr.net/gh/DenisovAV/flutter_gemma@0.12.0/web/cache_api.js"></script>
-  <script type="module"
-    src="https://cdn.jsdelivr.net/gh/DenisovAV/flutter_gemma@0.12.0/web/litert_embeddings.js"></script>
-  <script type="module"
-    src="https://cdn.jsdelivr.net/gh/DenisovAV/flutter_gemma@0.12.0/web/sqlite_vector_store.js"></script>
-  <!-- MediaPipe GenAI for LLM inference -->
+  <!-- flutter_gemma web runtime -->
+  <script src="cache_api.js"></script>
+  <script type="module" src="litert_embeddings.js"></script>
+
+  <!-- MediaPipe GenAI for .task inference models -->
   <script type="module">
-    import { FilesetResolver, LlmInference } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai@0.10.25';
+    import { FilesetResolver, LlmInference } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai@0.10.27';
     window.FilesetResolver = FilesetResolver;
     window.LlmInference = LlmInference;
   </script>
