@@ -56,5 +56,7 @@
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>This app requires local network access for model inference services.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
