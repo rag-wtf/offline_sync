@@ -145,3 +145,9 @@ to generate the vendored browser assets copied into this repo's `web/` directory
 
 1. The remaining web inference CDN dependency is `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai@0.10.27`. If jsDelivr is blocked or unavailable, `.task` inference on web will fail.
 2. The `flutter build web` command succeeded, but it surfaced pre-existing wasm dry-run and `CupertinoIcons` warnings that are outside this task's ownership.
+
+## Reviewer follow-up: base-href-safe WASM path
+
+- Fixed the vendored `web/litert_embeddings.js` defaults that hardcoded `"/wasm/"`.
+- Both loader entry points now derive the runtime root with `new URL("wasm/", document.baseURI).toString()`.
+- This keeps the self-hosted WASM assets working at site root and under GitHub Pages subpaths built with a non-root `--base-href`.

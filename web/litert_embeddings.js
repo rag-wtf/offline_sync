@@ -5,6 +5,9 @@ const z = "task: search result | query: ", F = "title: none | text: ", p = 2, T 
 let c = 256;
 const g = 768;
 let s = null, d = null, u = !1, m = !1;
+function P() {
+  return new URL("wasm/", document.baseURI).toString();
+}
 async function x(o) {
   try {
     const n = await fetch(o);
@@ -33,7 +36,7 @@ async function x(o) {
     throw new Error("Failed to load SentencePiece tokenizer: " + n.message);
   }
 }
-async function C(o, n = "/wasm/") {
+async function C(o, n = P()) {
   try {
     console.log(`[LiteRT] Loading model from: ${o}`), console.log(`[LiteRT] WASM loaded flag: ${m}`), await A("webgl"), await S(), m ? console.log("[LiteRT] WASM runtime already loaded, reusing") : (console.log(`[LiteRT] Loading WASM runtime from: ${n}`), await k(n), m = !0, console.log("[LiteRT] WASM runtime loaded successfully"));
     try {
@@ -136,7 +139,7 @@ window.loadLiteRtEmbeddings = async function(o, n, r) {
         console.warn("[LiteRT] Non-fatal cleanup error (will reinitialize anyway):", e), s = null, d = null, m = !1, u = !1;
       }
     }
-    const t = r ?? "/wasm/";
+    const t = r ?? P();
     await x(n), await C(o, t), u = !0;
   } catch (t) {
     throw u = !1, new Error("Failed to initialize LiteRT embeddings: " + t.message);
