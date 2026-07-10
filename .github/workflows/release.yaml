@@ -37,7 +37,7 @@ on:
           - staging
           - production
       version:
-        description: "Version tag (e.g., v1.0.0). Used in artifact filenames."
+        description: "Numeric version, e.g. 1.0.0 (NO leading 'v'). Used for build-name and artifact filenames."
         required: false
         type: string
         default: ""
@@ -46,6 +46,8 @@ env:
   FLUTTER_VERSION: "3.38.x"
   FLAVOR: ${{ github.event.inputs.app_flavor }}
   TARGET: lib/main_${{ github.event.inputs.app_flavor }}.dart
+  BUILD_NUMBER: ${{ github.run_number }}
+  BUILD_NAME: ${{ github.event.inputs.version != '' && github.event.inputs.version || '1.0.0' }}
   VERSION_SUFFIX: ${{ github.event.inputs.version != '' && format('-{0}', github.event.inputs.version) || '' }}
 
 jobs:
@@ -87,7 +89,7 @@ jobs:
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
       - name: Build Android APK
-        run: flutter build apk --${{ github.event.inputs.build_type }} --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }}
+        run: flutter build apk --${{ github.event.inputs.build_type }} --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
         env:
           ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
           ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
@@ -103,7 +105,7 @@ jobs:
 
       - name: Build Android App Bundle
         if: ${{ github.event.inputs.build_type == 'release' }}
-        run: flutter build appbundle --release --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }}
+        run: flutter build appbundle --release --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
         env:
           ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
           ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
@@ -141,7 +143,7 @@ jobs:
         run: flutter pub get
 
       - name: Build iOS (no codesign)
-        run: flutter build ios --${{ github.event.inputs.build_type }} --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }} --no-codesign
+        run: flutter build ios --${{ github.event.inputs.build_type }} --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }} --no-codesign --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
 
       - name: Create IPA directory
         run: mkdir -p build/ios/ipa
@@ -183,7 +185,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Linux
-        run: flutter build linux --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }}
+        run: flutter build linux --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -294,7 +296,7 @@ jobs:
           fi
 
       - name: Build macOS
-        run: flutter build macos --${{ github.event.inputs.build_type }} --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }}
+        run: flutter build macos --${{ github.event.inputs.build_type }} --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
 
       - name: Create DMG
         run: |
@@ -325,7 +327,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows
-        run: flutter build windows --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }}
+        run: flutter build windows --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
 
       - name: Create ZIP archive
         run: |
@@ -362,7 +364,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Web
-        run: flutter build web --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }} --base-href "/${{ github.event.repository.name }}/"
+        run: flutter build web --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }} --base-href "/${{ github.event.repository.name }}/" --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
 
       - name: Setup Pages
         if: ${{ github.event.inputs.platform == 'web' }}
