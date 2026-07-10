@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required for model downloads from HuggingFace (release builds) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 13+: required to show download-progress foreground notification -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- For User Initiated Data Transfer (Android 14+) -->
     <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
     
