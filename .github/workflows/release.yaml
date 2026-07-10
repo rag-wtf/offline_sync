@@ -146,17 +146,18 @@ jobs:
       - name: Create IPA directory
         run: mkdir -p build/ios/ipa
 
-      - name: Create unsigned IPA
+      - name: Create unsigned IPA (INSPECTION ONLY — not installable)
         run: |
+          echo "::warning::This IPA is unsigned and cannot be installed or submitted. For distribution, configure Apple signing secrets and use Option A."
           cd build/ios/iphoneos
           mkdir Payload
           cp -r Runner.app Payload/
-          zip -r ../ipa/offline_sync-${{ github.event.inputs.build_type }}.ipa Payload
+          zip -r ../ipa/offline_sync-${{ github.event.inputs.build_type }}-UNSIGNED.ipa Payload
 
       - name: Upload iOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ios-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          name: ios-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}-UNSIGNED-inspection-only${{ env.VERSION_SUFFIX }}
           path: build/ios/ipa/*.ipa
 
   build-linux:
