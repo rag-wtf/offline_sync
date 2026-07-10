@@ -51,7 +51,26 @@ env:
   VERSION_SUFFIX: ${{ github.event.inputs.version != '' && format('-{0}', github.event.inputs.version) || '' }}
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+
   build-android:
+    needs: verify
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'android' }}
     # Requires repo secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
     # ANDROID_KEYSTORE_ALIAS, ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD.
@@ -126,6 +145,7 @@ jobs:
           path: build/app/outputs/bundle/${{ env.FLAVOR }}Release/*.aab
 
   build-ios:
+    needs: verify
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'ios' }}
     runs-on: macos-latest
     steps:
@@ -163,6 +183,7 @@ jobs:
           path: build/ios/ipa/*.ipa
 
   build-linux:
+    needs: verify
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux' }}
     runs-on: ubuntu-latest
     steps:
@@ -261,6 +282,7 @@ jobs:
             build/offline_sync-linux-${{ github.event.inputs.build_type }}.AppImage
 
   build-macos:
+    needs: verify
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos' }}
     runs-on: macos-latest
     steps:
@@ -310,6 +332,7 @@ jobs:
           path: build/offline_sync-macos-${{ github.event.inputs.build_type }}.dmg
 
   build-windows:
+    needs: verify
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows' }}
     runs-on: windows-latest
     steps:
@@ -340,6 +363,7 @@ jobs:
           path: build/offline_sync-windows-${{ github.event.inputs.build_type }}.zip
 
   build-web:
+    needs: verify
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'web' }}
     runs-on: ubuntu-latest
     permissions:
