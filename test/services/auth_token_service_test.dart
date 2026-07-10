@@ -16,7 +16,7 @@ void main() {
 
       // Mock FlutterSecureStorage via MethodChannel
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-          .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+          .setMockMethodCallHandler(channel, (methodCall) async {
             final args = methodCall.arguments as Map<dynamic, dynamic>? ?? {};
             final key = args['key'] as String?;
             final value = args['value'] as String?;

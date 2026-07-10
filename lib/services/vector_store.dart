@@ -226,7 +226,7 @@ class VectorStore {
     // Convert to a format suitable for compute (plain data)
     final data = rows
         .map(
-          (Row row) => {
+          (row) => {
             'id': row['id'],
             'content': row['content'],
             'embedding': row['embedding'] as String,
@@ -271,7 +271,7 @@ class VectorStore {
 
       return results
           .map(
-            (Row row) => SearchResult(
+            (row) => SearchResult(
               id: row['id'] as String,
               content: row['content'] as String,
               score: -(row['score'] as double),
@@ -330,7 +330,7 @@ class VectorStore {
 
     return results
         .map(
-          (Row row) => SearchResult(
+          (row) => SearchResult(
             id: row['id'] as String,
             content: row['content'] as String,
             score: 0.5,

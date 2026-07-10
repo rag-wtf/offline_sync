@@ -240,7 +240,7 @@ class ModelManagementService {
       if (model.type == AppModelType.inference) {
         await FlutterGemma.installModel(
           modelType: ModelType.gemmaIt,
-        ).fromNetwork(downloadUrl, token: token).withProgress((int progress) {
+        ).fromNetwork(downloadUrl, token: token).withProgress((progress) {
           log('Download progress for ${model.id}: $progress%');
           model.progress = progress / 100.0;
           _notify();
@@ -255,7 +255,7 @@ class ModelManagementService {
         await FlutterGemma.installEmbedder()
             .modelFromNetwork(downloadUrl, token: token)
             .tokenizerFromNetwork(model.tokenizerUrl!, token: token)
-            .withModelProgress((int progress) {
+            .withModelProgress((progress) {
               log('Download progress for ${model.id}: $progress%');
               model.progress = progress / 100.0;
               _notify();
