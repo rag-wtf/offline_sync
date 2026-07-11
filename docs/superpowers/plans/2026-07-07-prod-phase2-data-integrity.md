@@ -30,7 +30,7 @@ See master plan. Phase-specific:
 **Interfaces:**
 - Produces: `static const int schemaVersion = 1;` on `VectorStore`; a private `void _migrate(int from)` invoked from `initialize()`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `test/services/vector_store_test.dart` inside `group('VectorStore Tests', …)`:
 ```dart
@@ -45,7 +45,7 @@ test('stamps user_version to current schemaVersion on init', () {
 });
 ```
 
-- [ ] **Step 2: Run it to confirm it fails**
+- [x] **Step 2: Run it to confirm it fails**
 
 Run: `flutter test test/services/vector_store_test.dart`
 Expected: FAIL — `user_version` is `0` (default) and `VectorStore.schemaVersion` is undefined (compile error until Step 3).
@@ -135,7 +135,7 @@ test('parses non-ASCII DOCX text without corruption', () async {
 Run: `flutter test test/services/document_parser_service_test.dart`
 Expected: FAIL — the accented/CJK/emoji assertions fail (mojibake) with the current `String.fromCharCodes`.
 
-- [ ] **Step 3: Implement the fix**
+- [x] **Step 3: Implement the fix**
 
 In `lib/services/document_parser_service.dart:137`, replace:
 ```dart
@@ -150,12 +150,12 @@ with:
 ```
 (`dart:convert` is already imported at `:1`.)
 
-- [ ] **Step 4: Run the test to confirm it passes**
+- [x] **Step 4: Run the test to confirm it passes**
 
 Run: `flutter test test/services/document_parser_service_test.dart`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lib/services/document_parser_service.dart test/services/document_parser_service_test.dart
@@ -174,7 +174,7 @@ git commit -m "fix(parser): decode DOCX document.xml as UTF-8"
 
 **Why:** `_calculateSimilarities` iterates `i < queryEmbedding.length` indexing `storedEmbedding[i]` with no length check (`:568-571`). Rows embedded by a different model (different dim) throw `RangeError` and break **all** search after a model switch.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `test/services/vector_store_test.dart`:
 ```dart
@@ -193,7 +193,7 @@ test('semantic search skips rows with mismatched embedding dimension', () async 
 });
 ```
 
-- [ ] **Step 2: Run it to confirm it fails**
+- [x] **Step 2: Run it to confirm it fails**
 
 Run: `flutter test test/services/vector_store_test.dart`
 Expected: FAIL — a `RangeError` propagates out of the `compute` isolate (or the test errors), because `storedEmbedding[2]` is out of range for the 2-dim row.
@@ -292,7 +292,7 @@ void main() {
 Run: `flutter test test/models/document_test.dart`
 Expected: FAIL — `type 'Null' is not a subtype of type 'String'`/`int` on the hard casts.
 
-- [ ] **Step 3: Implement null-safe casts**
+- [x] **Step 3: Implement null-safe casts**
 
 In `lib/models/document.dart`, change the `fromJson` field reads (`:23-32`) to:
 ```dart
@@ -309,12 +309,12 @@ In `lib/models/document.dart`, change the `fromJson` field reads (`:23-32`) to:
 ```
 (Leave `ingested_at` reading as-is — it is central to ordering; if it can be null in drift scenarios, guard with `(json['ingested_at'] as int?) ?? 0`.)
 
-- [ ] **Step 4: Run the test to confirm it passes**
+- [x] **Step 4: Run the test to confirm it passes**
 
 Run: `flutter test test/models/document_test.dart`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lib/models/document.dart test/models/document_test.dart
@@ -484,7 +484,7 @@ git commit -m "feat(models): declare per-model sha256 and verify downloads (fail
 
 **Why:** `const FlutterSecureStorage()` uses no platform options, though the project's own `docs/implementation_plan_v3.md:1218-1219` specifies `AndroidOptions(encryptedSharedPreferences: true)` and `IOSOptions(accessibility: KeychainAccessibility.first_unlock)`. Default iOS keychain accessibility can leak the HF token into device backups.
 
-- [ ] **Step 1: Replace the storage instance with hardened options**
+- [x] **Step 1: Replace the storage instance with hardened options**
 
 > **Version note:** the installed `flutter_secure_storage` is **10.3.1**, where `AndroidOptions(encryptedSharedPreferences: true)` is **deprecated and ignored** (v10 auto-migrates to custom ciphers; passing it emits a `deprecated_member_use` warning and does nothing). Do **not** pass it — that would violate the "analyze clean" constraint. The iOS `accessibility` option is the meaningful hardening on the shipped version.
 
@@ -500,12 +500,12 @@ with:
 ```
 (`FlutterSecureStorage`, `IOSOptions`, `KeychainAccessibility` come from the already-imported `package:flutter_secure_storage/flutter_secure_storage.dart` at `:1`. On v10, Android encryption is automatic; if the project later upgrades to v11 or downgrades to v9, revisit the Android options.)
 
-- [ ] **Step 2: Verify it compiles and existing token tests pass**
+- [x] **Step 2: Verify it compiles and existing token tests pass**
 
 Run: `flutter analyze lib/services/auth_token_service.dart && flutter test test/services/auth_token_service_test.dart`
 Expected: analyze clean (0 warnings — the deprecated param is intentionally omitted); token tests green.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add lib/services/auth_token_service.dart
@@ -524,7 +524,7 @@ git commit -m "fix(security): harden secure-storage options (encrypted prefs, fi
 
 **Why:** Syncfusion is not free for general commercial distribution; no `registerLicense` call exists anywhere (audit grep: 0 hits). The non-UI PDF package runs without a key, so nothing fails at runtime — the exposure is **legal, not technical**.
 
-- [ ] **Step 1: Determine eligibility and record the decision**
+- [x] **Step 1: Determine eligibility and record the decision**
 
 Assess against Syncfusion's Community License limits (revenue/headcount). Create `docs/licensing.md` recording one of:
   - **Community License eligible** → note the eligibility basis and that no key is required for the non-UI package, OR
@@ -533,7 +533,7 @@ Assess against Syncfusion's Community License limits (revenue/headcount). Create
 
 This is a maintainer decision — surface it and do not guess. Default action if unresolved: document the open risk explicitly in `docs/licensing.md` so it is tracked, and flag for the maintainer.
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add docs/licensing.md
