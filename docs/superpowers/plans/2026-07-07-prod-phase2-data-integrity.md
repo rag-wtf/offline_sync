@@ -50,7 +50,7 @@ test('stamps user_version to current schemaVersion on init', () {
 Run: `flutter test test/services/vector_store_test.dart`
 Expected: FAIL — `user_version` is `0` (default) and `VectorStore.schemaVersion` is undefined (compile error until Step 3).
 
-- [ ] **Step 3: Implement version stamping + migration hook**
+- [x] **Step 3: Implement version stamping + migration hook**
 
 In `lib/services/vector_store.dart`, add the constant to the `VectorStore` class (near `:66`):
 ```dart
@@ -79,12 +79,12 @@ Add the method near `_onCreate` (`:170`):
   }
 ```
 
-- [ ] **Step 4: Run the test to confirm it passes**
+- [x] **Step 4: Run the test to confirm it passes**
 
 Run: `flutter test test/services/vector_store_test.dart`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lib/services/vector_store.dart test/services/vector_store_test.dart
@@ -198,7 +198,7 @@ test('semantic search skips rows with mismatched embedding dimension', () async 
 Run: `flutter test test/services/vector_store_test.dart`
 Expected: FAIL — a `RangeError` propagates out of the `compute` isolate (or the test errors), because `storedEmbedding[2]` is out of range for the 2-dim row.
 
-- [ ] **Step 3: Implement the guard**
+- [x] **Step 3: Implement the guard**
 
 In `lib/services/vector_store.dart`, inside `_calculateSimilarities` (`:559`), change the `.map` body so it skips mismatched rows. Replace the `data.map((item) { … }).toList();` block (`:559-584`) with a length-checked version:
 ```dart
@@ -237,12 +237,12 @@ In `lib/services/vector_store.dart`, inside `_calculateSimilarities` (`:559`), c
 ```
 (The trailing `return (scored..sort(...)).take(limit).toList();` at `:586-588` stays as-is.)
 
-- [ ] **Step 4: Run the test to confirm it passes**
+- [x] **Step 4: Run the test to confirm it passes**
 
 Run: `flutter test test/services/vector_store_test.dart`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lib/services/vector_store.dart test/services/vector_store_test.dart
@@ -261,7 +261,7 @@ git commit -m "fix(search): skip embedding rows whose dimension != query dimensi
 
 **Why:** `Document.fromJson` hard-casts `id`/`title`/`file_path` as `String` and `chunk_count`/`total_characters` as `int` (`:23-32`). Current DDL declares those columns `NOT NULL`, so only legacy/schema-drift rows trigger it — but that becomes real the moment an H-13 migration adds a nullable column or an older row survives. Make the casts null-safe with defaults.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `test/models/document_test.dart`:
 ```dart
@@ -287,7 +287,7 @@ void main() {
 }
 ```
 
-- [ ] **Step 2: Run it to confirm it fails**
+- [x] **Step 2: Run it to confirm it fails**
 
 Run: `flutter test test/models/document_test.dart`
 Expected: FAIL — `type 'Null' is not a subtype of type 'String'`/`int` on the hard casts.
@@ -357,7 +357,7 @@ test('content_hash has a UNIQUE index', () {
 Run: `flutter test test/services/vector_store_test.dart`
 Expected: FAIL — the current index (`idx_documents_hash`) is not UNIQUE.
 
-- [ ] **Step 3: Make the index UNIQUE and bump schema**
+- [x] **Step 3: Make the index UNIQUE and bump schema**
 
 In `lib/services/vector_store.dart`, change the documents hash index (`:143-145`) to:
 ```dart
@@ -384,7 +384,7 @@ Bump `schemaVersion` to `2` and add the migration branch inside `_migrate` (from
 ```
 Also update Task 1's `schemaVersion` test expectation if it pinned `1` (it asserts `>= 1`, so it stays green).
 
-- [ ] **Step 4: Harden the service insert against the race**
+- [x] **Step 4: Harden the service insert against the race**
 
 In `lib/services/document_management_service.dart`, the insert now relies on DB enforcement, but keep the app responsive: in `_processIngestion` the initial `insertDocument` (`:187`) uses `INSERT OR REPLACE` (`vector_store.dart:404`) which would clobber on hash collision. Add an in-flight guard set to the service so concurrent same-hash ingestions coalesce. Add a field near `_activeJobs` (`:68`):
 ```dart
@@ -403,12 +403,12 @@ And in `_processIngestion`'s `finally` (`:331-333`), add:
 ```
 (Pass `hash` into `_processIngestion` — it is already a parameter at `:168`.)
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `flutter test test/services/vector_store_test.dart test/services/document_management_service_test.dart`
 Expected: PASS (all). If the document_management test mocks `VectorStore`, the in-flight guard is exercised via existing/added tests; add a targeted test only if the mock allows simulating concurrency.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lib/services/vector_store.dart lib/services/document_management_service.dart test/services/vector_store_test.dart

@@ -66,6 +66,7 @@ class DocumentManagementService {
 
   // Job management for cancellation
   final Map<String, IngestionJob> _activeJobs = {};
+  final Set<String> _inFlightHashes = {};
 
   Future<IngestionResult> addMultipleDocuments(List<String> filePaths) async {
     final succeeded = <Document>[];
@@ -110,6 +111,11 @@ class DocumentManagementService {
       }
     }
 
+    if (_inFlightHashes.contains(hash)) {
+      throw Exception('This document is already being ingested');
+    }
+    _inFlightHashes.add(hash);
+
     final docId = const Uuid().v4();
     final fileName = filePath.split(Platform.pathSeparator).last;
 
@@ -146,6 +152,11 @@ class DocumentManagementService {
     if (existingDoc != null) {
       return existingDoc;
     }
+
+    if (_inFlightHashes.contains(hash)) {
+      throw Exception('This document is already being ingested');
+    }
+    _inFlightHashes.add(hash);
 
     final docId = const Uuid().v4();
 
@@ -184,10 +195,10 @@ class DocumentManagementService {
       status: IngestionStatus.processing,
       contextualRetrievalEnabled: _settingsService.contextualRetrievalEnabled,
     );
-    _vectorStore.insertDocument(doc);
-    _emitProgress(docId, fileName, 'parsing');
-
     try {
+      _vectorStore.insertDocument(doc);
+      _emitProgress(docId, fileName, 'parsing');
+
       if (job.isCancelled) throw Exception('Ingestion cancelled');
 
       // 3. Parse & Chunk (in Isolate)
@@ -330,6 +341,7 @@ class DocumentManagementService {
       rethrow;
     } finally {
       _activeJobs.remove(docId);
+      _inFlightHashes.remove(hash);
     }
   }
 

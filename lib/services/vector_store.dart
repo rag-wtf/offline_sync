@@ -63,6 +63,10 @@ class EmbeddingData {
 }
 
 class VectorStore {
+  /// Current on-disk schema version. Bump when the schema changes and add a
+  /// matching branch in [_migrate].
+  static const int schemaVersion = 2;
+
   CommonDatabase? _db;
   bool _hasFts5 = true;
 
@@ -79,9 +83,17 @@ class VectorStore {
     _db = sqlite3.open(dbPath);
     _onCreate();
 
+    final currentVersion =
+        _db!.select('PRAGMA user_version').first.values.first as int;
+    if (currentVersion < schemaVersion) {
+      _migrate(currentVersion);
+      _db!.execute('PRAGMA user_version = $schemaVersion');
+    }
+
     // Check FTS5 support
     try {
       _db!.select("SELECT fts5('test')");
+      _createFtsObjects();
     } on Exception catch (_) {
       _hasFts5 = false;
     }
@@ -139,33 +151,53 @@ class VectorStore {
       )
     ''');
 
-    // Index for hash-based duplicate detection (NEW)
-    _db!.execute('''
-      CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(content_hash)
-    ''');
+  }
 
-    if (_hasFts5) {
-      try {
-        _db!.execute('''
-          CREATE VIRTUAL TABLE IF NOT EXISTS vectors_fts 
-          USING fts5(content, content=vectors, content_rowid=rowid)
-        ''');
+  void _createFtsObjects() {
+    try {
+      _db!.execute('''
+        CREATE VIRTUAL TABLE IF NOT EXISTS vectors_fts 
+        USING fts5(content, content=vectors, content_rowid=rowid)
+      ''');
 
-        _db!.execute('''
-          CREATE TRIGGER IF NOT EXISTS vectors_ai AFTER INSERT ON vectors BEGIN
-            INSERT INTO vectors_fts(rowid, content) VALUES (new.rowid, new.content);
-          END
-        ''');
+      _db!.execute('''
+        CREATE TRIGGER IF NOT EXISTS vectors_ai AFTER INSERT ON vectors BEGIN
+          INSERT INTO vectors_fts(rowid, content) VALUES (new.rowid, new.content);
+        END
+      ''');
 
-        _db!.execute('''
-          CREATE TRIGGER IF NOT EXISTS vectors_ad AFTER DELETE ON vectors BEGIN
-            INSERT INTO vectors_fts(vectors_fts, rowid, content) 
-            VALUES ('delete', old.rowid, old.content);
-          END
-        ''');
-      } on Exception catch (_) {
-        _hasFts5 = false;
-      }
+      _db!.execute('''
+        CREATE TRIGGER IF NOT EXISTS vectors_ad AFTER DELETE ON vectors BEGIN
+          INSERT INTO vectors_fts(vectors_fts, rowid, content) 
+          VALUES ('delete', old.rowid, old.content);
+        END
+      ''');
+    } on Exception catch (_) {
+      _hasFts5 = false;
+    }
+  }
+
+  /// Applies ordered, gated migrations from [fromVersion] to [schemaVersion].
+  void _migrate(int fromVersion) {
+    // v0 -> v1: baseline. Tables already created by _onCreate().
+    if (fromVersion < 2) {
+      _db!.execute('''
+        DELETE FROM vectors WHERE document_id IN (
+          SELECT id FROM documents WHERE rowid NOT IN (
+            SELECT MIN(rowid) FROM documents GROUP BY content_hash
+          )
+        )
+      ''');
+      _db!.execute('''
+        DELETE FROM documents WHERE rowid NOT IN (
+          SELECT MIN(rowid) FROM documents GROUP BY content_hash
+        )
+      ''');
+      _db!.execute('DROP INDEX IF EXISTS idx_documents_hash');
+      _db!.execute('''
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_hash
+        ON documents(content_hash)
+      ''');
     }
   }
 
@@ -556,11 +588,16 @@ List<SearchResult> _calculateSimilarities(Map<String, dynamic> params) {
   final data = params['data'] as List<Map<String, dynamic>>;
   final limit = params['limit'] as int;
 
-  final scored = data.map((item) {
+  final scored = <SearchResult>[];
+  for (final item in data) {
     final storedEmbeddingJson = item['embedding'] as String;
     final storedEmbedding = (jsonDecode(storedEmbeddingJson) as List)
         .map((e) => (e as num).toDouble())
         .toList();
+
+    if (storedEmbedding.length != queryEmbedding.length) {
+      continue;
+    }
 
     var dotProduct = 0.0;
     var normA = 0.0;
@@ -573,15 +610,15 @@ List<SearchResult> _calculateSimilarities(Map<String, dynamic> params) {
     final divisor = sqrt(normA) * sqrt(normB);
     final score = divisor == 0 ? 0.0 : dotProduct / divisor;
 
-    return SearchResult(
+    scored.add(SearchResult(
       id: item['id'] as String,
       content: item['content'] as String,
       score: score,
       metadata:
           jsonDecode(item['metadata'] as String? ?? '{}')
               as Map<String, dynamic>,
-    );
-  }).toList();
+    ));
+  }
 
   return (scored..sort((a, b) => b.score.compareTo(a.score)))
       .take(limit)

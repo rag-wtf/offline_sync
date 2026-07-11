@@ -185,6 +185,32 @@ void main() {
       await file.delete();
     });
 
+    test('cleans in-flight hash when initial insert fails', () async {
+      final file = File('insert_failure.txt');
+      await file.writeAsString('Insert failure content');
+
+      when(
+        () => mockParserService.detectFormat(any<String>()),
+      ).thenReturn(DocumentFormat.plainText);
+      when(() => mockVectorStore.findByHash(any<String>())).thenReturn(null);
+      when(
+        () => mockVectorStore.insertDocument(any<Document>()),
+      ).thenThrow(Exception('insert failed'));
+
+      await expectLater(
+        service.addDocument(file.path),
+        throwsA(isA<Exception>()),
+      );
+      await expectLater(
+        service.addDocument(file.path),
+        throwsA(isA<Exception>()),
+      );
+
+      verify(() => mockVectorStore.insertDocument(any<Document>())).called(2);
+
+      await file.delete();
+    });
+
     test('addDocument respects size limit', () async {
       final file = File('large_file.txt');
       // Create a dummy file, but we mock the size check by calling a file
