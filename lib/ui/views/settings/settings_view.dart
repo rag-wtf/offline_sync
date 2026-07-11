@@ -17,9 +17,9 @@ class SettingsView extends StackedView<SettingsViewModel> {
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final semanticWeightPct = (viewModel.semanticWeight * 100).toStringAsFixed(
-      0,
-    );
+    final semanticWeightPct = (
+      viewModel.semanticWeightDisplay * 100
+    ).toStringAsFixed(0);
 
     return Scaffold(
       appBar: AppBar(
@@ -295,16 +295,17 @@ class SettingsView extends StackedView<SettingsViewModel> {
                   _SliderSetting(
                     title: 'Chunk Overlap',
                     value:
-                        '${viewModel.chunkOverlapPercent.toStringAsFixed(0)}%',
+                        '${viewModel.chunkOverlapDisplay.toStringAsFixed(0)}%',
                     subtitle: 'Context continuity between text chunks',
                     slider: Slider(
-                      value: viewModel.chunkOverlapPercent,
+                      value: viewModel.chunkOverlapDisplay,
                       max: 30,
                       divisions: 6,
                       label:
-                          '${viewModel.chunkOverlapPercent.toStringAsFixed(0)}'
+                          '${viewModel.chunkOverlapDisplay.toStringAsFixed(0)}'
                           '%',
-                      onChanged: viewModel.setChunkOverlap,
+                      onChanged: viewModel.onChunkOverlapChanged,
+                      onChangeEnd: viewModel.onChunkOverlapChangeEnd,
                     ),
                   ),
                   const Divider(height: 24),
@@ -313,10 +314,11 @@ class SettingsView extends StackedView<SettingsViewModel> {
                     value: '$semanticWeightPct%',
                     subtitle: 'Balance between search methods',
                     slider: Slider(
-                      value: viewModel.semanticWeight,
+                      value: viewModel.semanticWeightDisplay,
                       divisions: 10,
                       label: '$semanticWeightPct%',
-                      onChanged: viewModel.setSemanticWeight,
+                      onChanged: viewModel.onSemanticWeightChanged,
+                      onChangeEnd: viewModel.onSemanticWeightChangeEnd,
                     ),
                   ),
                 ],
@@ -341,46 +343,49 @@ class SettingsView extends StackedView<SettingsViewModel> {
                 children: [
                   _SliderSetting(
                     title: 'Search Top K',
-                    value: '${viewModel.searchTopK}',
+                    value: '${viewModel.searchTopKDisplay.round()}',
                     subtitle: 'Context chunks retrieved from vector search',
                     slider: Slider(
-                      value: viewModel.searchTopK.toDouble(),
+                      value: viewModel.searchTopKDisplay,
                       min: 1,
                       max: 5,
                       divisions: 4,
-                      label: '${viewModel.searchTopK}',
-                      onChanged: viewModel.setSearchTopK,
+                      label: '${viewModel.searchTopKDisplay.round()}',
+                      onChanged: viewModel.onSearchTopKChanged,
+                      onChangeEnd: viewModel.onSearchTopKChangeEnd,
                     ),
                   ),
                   const Divider(height: 24),
                   _SliderSetting(
                     title: 'Max History Messages',
-                    value: '${viewModel.maxHistoryMessages}',
+                    value: '${viewModel.maxHistoryMessagesDisplay.round()}',
                     subtitle: 'Conversation history included in context',
                     slider: Slider(
-                      value: viewModel.maxHistoryMessages.toDouble(),
+                      value: viewModel.maxHistoryMessagesDisplay,
                       max: 5,
                       divisions: 5,
-                      label: '${viewModel.maxHistoryMessages}',
-                      onChanged: viewModel.setMaxHistoryMessages,
+                      label: '${viewModel.maxHistoryMessagesDisplay.round()}',
+                      onChanged: viewModel.onMaxHistoryMessagesChanged,
+                      onChangeEnd: viewModel.onMaxHistoryMessagesChangeEnd,
                     ),
                   ),
                   const Divider(height: 24),
                   _SliderSetting(
                     title: 'Max Tokens',
-                    value: viewModel.isMaxTokensCustom
-                        ? '${viewModel.maxTokens} (Custom)'
-                        : '${viewModel.maxTokens}',
-                    subtitle: viewModel.isMaxTokensCustom
+                    value: viewModel.isMaxTokensCustomDisplay
+                        ? '${viewModel.maxTokensDisplay.round()} (Custom)'
+                        : '${viewModel.maxTokensDisplay.round()}',
+                    subtitle: viewModel.isMaxTokensCustomDisplay
                         ? 'Default: ${viewModel.modelDefaultMaxTokens}'
                         : 'Maximum context window (input + output)',
                     slider: Slider(
-                      value: viewModel.maxTokens.toDouble(),
+                      value: viewModel.maxTokensDisplay,
                       min: 512,
                       max: 8192,
                       divisions: 15,
-                      label: '${viewModel.maxTokens}',
-                      onChanged: viewModel.setMaxTokens,
+                      label: '${viewModel.maxTokensDisplay.round()}',
+                      onChanged: viewModel.onMaxTokensChanged,
+                      onChangeEnd: viewModel.onMaxTokensChangeEnd,
                     ),
                   ),
                 ],

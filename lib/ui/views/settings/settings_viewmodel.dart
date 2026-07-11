@@ -16,6 +16,12 @@ class SettingsViewModel extends BaseViewModel {
   final DeviceCapabilityService _deviceService = DeviceCapabilityService();
 
   DeviceCapabilities? _capabilities;
+  double? _pendingChunkOverlap;
+  double? _pendingSemanticWeight;
+  double? _pendingSearchTopK;
+  double? _pendingMaxHistoryMessages;
+  double? _pendingMaxTokens;
+
   DeviceCapabilities? get capabilities => _capabilities;
 
   List<ModelInfo> get models => _modelService.models;
@@ -33,10 +39,15 @@ class SettingsViewModel extends BaseViewModel {
   bool get rerankingEnabled => _ragSettings.rerankingEnabled;
   bool get contextualRetrievalEnabled =>
       _ragSettings.contextualRetrievalEnabled;
-  double get chunkOverlapPercent => _ragSettings.chunkOverlapPercent * 100;
-  double get semanticWeight => _ragSettings.semanticWeight;
-  int get searchTopK => _ragSettings.searchTopK;
-  int get maxHistoryMessages => _ragSettings.maxHistoryMessages;
+  double get chunkOverlapDisplay =>
+      _pendingChunkOverlap ?? (_ragSettings.chunkOverlapPercent * 100);
+  double get semanticWeightDisplay =>
+      _pendingSemanticWeight ?? _ragSettings.semanticWeight;
+  double get searchTopKDisplay =>
+      _pendingSearchTopK ?? _ragSettings.searchTopK.toDouble();
+  double get maxHistoryMessagesDisplay =>
+      _pendingMaxHistoryMessages ?? _ragSettings.maxHistoryMessages.toDouble();
+  double get maxTokensDisplay => _pendingMaxTokens ?? maxTokens.toDouble();
 
   // Get user-configured maxTokens or model default
   int get maxTokens {
@@ -64,6 +75,14 @@ class SettingsViewModel extends BaseViewModel {
 
   // Whether user has overridden the default
   bool get isMaxTokensCustom => _ragSettings.maxTokens != null;
+  bool get isMaxTokensCustomDisplay {
+    final pendingValue = _pendingMaxTokens;
+    if (pendingValue != null) {
+      return pendingValue.round() != modelDefaultMaxTokens;
+    }
+
+    return isMaxTokensCustom;
+  }
 
   StreamSubscription<List<ModelInfo>>? _modelStatusSubscription;
 
@@ -124,29 +143,56 @@ class SettingsViewModel extends BaseViewModel {
     notifyListeners();
   }
 
-  Future<void> setChunkOverlap(double value) async {
-    await _ragSettings.setChunkOverlapPercent(
-      value / 100,
-    ); // Convert % to decimal
+  void onChunkOverlapChanged(double value) {
+    _pendingChunkOverlap = value;
     notifyListeners();
   }
 
-  Future<void> setSemanticWeight(double value) async {
+  Future<void> onChunkOverlapChangeEnd(double value) async {
+    await _ragSettings.setChunkOverlapPercent(value / 100);
+    _pendingChunkOverlap = null;
+    notifyListeners();
+  }
+
+  void onSemanticWeightChanged(double value) {
+    _pendingSemanticWeight = value;
+    notifyListeners();
+  }
+
+  Future<void> onSemanticWeightChangeEnd(double value) async {
     await _ragSettings.setSemanticWeight(value);
+    _pendingSemanticWeight = null;
     notifyListeners();
   }
 
-  Future<void> setSearchTopK(double value) async {
+  void onSearchTopKChanged(double value) {
+    _pendingSearchTopK = value;
+    notifyListeners();
+  }
+
+  Future<void> onSearchTopKChangeEnd(double value) async {
     await _ragSettings.setSearchTopK(value.round());
+    _pendingSearchTopK = null;
     notifyListeners();
   }
 
-  Future<void> setMaxHistoryMessages(double value) async {
+  void onMaxHistoryMessagesChanged(double value) {
+    _pendingMaxHistoryMessages = value;
+    notifyListeners();
+  }
+
+  Future<void> onMaxHistoryMessagesChangeEnd(double value) async {
     await _ragSettings.setMaxHistoryMessages(value.round());
+    _pendingMaxHistoryMessages = null;
     notifyListeners();
   }
 
-  Future<void> setMaxTokens(double value) async {
+  void onMaxTokensChanged(double value) {
+    _pendingMaxTokens = value;
+    notifyListeners();
+  }
+
+  Future<void> onMaxTokensChangeEnd(double value) async {
     final intValue = value.round();
     // If it matches model default, clear the override
     if (intValue == modelDefaultMaxTokens) {
@@ -154,6 +200,7 @@ class SettingsViewModel extends BaseViewModel {
     } else {
       await _ragSettings.setMaxTokens(intValue);
     }
+    _pendingMaxTokens = null;
     notifyListeners();
   }
 
