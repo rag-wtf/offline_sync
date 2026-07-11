@@ -21,6 +21,11 @@ class SettingsViewModel extends BaseViewModel {
   double? _pendingSearchTopK;
   double? _pendingMaxHistoryMessages;
   double? _pendingMaxTokens;
+  int _chunkOverlapDragToken = 0;
+  int _semanticWeightDragToken = 0;
+  int _searchTopKDragToken = 0;
+  int _maxHistoryMessagesDragToken = 0;
+  int _maxTokensDragToken = 0;
 
   DeviceCapabilities? get capabilities => _capabilities;
 
@@ -144,55 +149,73 @@ class SettingsViewModel extends BaseViewModel {
   }
 
   void onChunkOverlapChanged(double value) {
+    _chunkOverlapDragToken++;
     _pendingChunkOverlap = value;
     notifyListeners();
   }
 
   Future<void> onChunkOverlapChangeEnd(double value) async {
+    final dragToken = _chunkOverlapDragToken;
     await _ragSettings.setChunkOverlapPercent(value / 100);
-    _pendingChunkOverlap = null;
+    if (_chunkOverlapDragToken == dragToken) {
+      _pendingChunkOverlap = null;
+    }
     notifyListeners();
   }
 
   void onSemanticWeightChanged(double value) {
+    _semanticWeightDragToken++;
     _pendingSemanticWeight = value;
     notifyListeners();
   }
 
   Future<void> onSemanticWeightChangeEnd(double value) async {
+    final dragToken = _semanticWeightDragToken;
     await _ragSettings.setSemanticWeight(value);
-    _pendingSemanticWeight = null;
+    if (_semanticWeightDragToken == dragToken) {
+      _pendingSemanticWeight = null;
+    }
     notifyListeners();
   }
 
   void onSearchTopKChanged(double value) {
+    _searchTopKDragToken++;
     _pendingSearchTopK = value;
     notifyListeners();
   }
 
   Future<void> onSearchTopKChangeEnd(double value) async {
+    final dragToken = _searchTopKDragToken;
     await _ragSettings.setSearchTopK(value.round());
-    _pendingSearchTopK = null;
+    if (_searchTopKDragToken == dragToken) {
+      _pendingSearchTopK = null;
+    }
     notifyListeners();
   }
 
   void onMaxHistoryMessagesChanged(double value) {
+    _maxHistoryMessagesDragToken++;
     _pendingMaxHistoryMessages = value;
     notifyListeners();
   }
 
   Future<void> onMaxHistoryMessagesChangeEnd(double value) async {
+    final dragToken = _maxHistoryMessagesDragToken;
     await _ragSettings.setMaxHistoryMessages(value.round());
-    _pendingMaxHistoryMessages = null;
+    if (_maxHistoryMessagesDragToken == dragToken) {
+      _pendingMaxHistoryMessages = null;
+    }
     notifyListeners();
   }
 
   void onMaxTokensChanged(double value) {
+    _maxTokensDragToken++;
     _pendingMaxTokens = value;
     notifyListeners();
   }
 
   Future<void> onMaxTokensChangeEnd(double value) async {
+    final dragToken = _maxTokensDragToken;
     final intValue = value.round();
     // If it matches model default, clear the override
     if (intValue == modelDefaultMaxTokens) {
@@ -200,7 +223,9 @@ class SettingsViewModel extends BaseViewModel {
     } else {
       await _ragSettings.setMaxTokens(intValue);
     }
-    _pendingMaxTokens = null;
+    if (_maxTokensDragToken == dragToken) {
+      _pendingMaxTokens = null;
+    }
     notifyListeners();
   }
 

@@ -23,3 +23,12 @@
 
 ### Concerns
 - None.
+
+### Review Fix Follow-Up
+- Fixed the slider `onChangeEnd` race in `lib/ui/views/settings/settings_viewmodel.dart` by adding a per-slider drag token and clearing each pending display value only when the completing async write still belongs to the latest drag.
+- This preserves the Task 10 persist-on-release behavior while preventing an earlier write completion from clobbering a newer in-progress drag across chunk overlap, semantic weight, search top K, max history messages, and max tokens.
+- No targeted settings viewmodel test was added because there is no existing `test/ui/views/settings/` harness in this worktree; creating one would require new test scaffolding outside the requested narrow settings-file scope.
+
+### Verification Summary
+- `rtk flutter analyze lib/ui/views/settings/` -> passed, `No issues found!`
+- `rtk flutter test` -> passed, `All tests passed!` (141 tests)
