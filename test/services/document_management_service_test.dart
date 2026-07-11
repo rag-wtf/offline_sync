@@ -1,6 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -27,19 +25,6 @@ class MockEmbeddingService extends Mock implements EmbeddingService {}
 
 class MockContextualRetrievalService extends Mock
     implements ContextualRetrievalService {}
-
-class ThrowingPathBackedPlatformFile extends PlatformFile {
-  ThrowingPathBackedPlatformFile({
-    required super.path,
-    required super.name,
-    required super.size,
-  });
-
-  @override
-  Future<Uint8List> readAsBytes() {
-    throw StateError('readAsBytes should not be called for path-backed files');
-  }
-}
 
 void main() {
   late DocumentManagementService service;
@@ -239,7 +224,7 @@ void main() {
 
         when(() => mockSettingsService.maxDocumentSizeMB).thenReturn(0);
 
-        final platformFile = ThrowingPathBackedPlatformFile(
+        final platformFile = PlatformFile(
           path: file.path,
           name: 'oversized_platform_file.txt',
           size: await file.length(),

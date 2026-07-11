@@ -4,6 +4,7 @@
 
 ## Deployment notes
 
+- iOS privacy decision: `UIFileSharingEnabled` is intentionally unset in `ios/Runner/Info.plist`, and `LSSupportsOpeningDocumentsInPlace` is not enabled. The app stores its local database under the documents directory today, so Finder/iTunes file sharing stays disabled unless product requirements explicitly call for user-visible file export.
 - `web/coi-serviceworker.js` must be served from the same origin as `index.html` and loaded as the first script in `<head>`.
 - `web/flutter_bootstrap.js` intentionally omits Flutter `serviceWorkerSettings`, which prevents Flutter from registering `flutter_service_worker.js` and leaves `coi-serviceworker.js` as the sole app-scope service worker.
 - The shim is for static hosting scenarios such as GitHub Pages. HTTPS or `localhost` is still required for service worker registration.
