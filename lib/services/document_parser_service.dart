@@ -134,7 +134,10 @@ class DocumentParserService {
         throw Exception('Invalid DOCX file: missing word/document.xml');
       }
 
-      final content = String.fromCharCodes(documentEntry.content as List<int>);
+      final content = utf8.decode(
+        documentEntry.content as List<int>,
+        allowMalformed: true,
+      );
       final document = XmlDocument.parse(content);
 
       // Extract text from <w:t> tags

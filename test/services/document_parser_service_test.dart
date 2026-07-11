@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/services/document_parser_service.dart';
 
@@ -101,6 +102,35 @@ void main() {
         expect(result.format, DocumentFormat.plainText);
         expect(result.title, 'test.txt');
         expect(result.estimatedTokens, 3);
+      });
+
+      test('parses non-ASCII DOCX text without corruption', () async {
+        const text = 'Café — 日本語 — 😀 — “smart quotes”';
+        final documentXml =
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+            '<w:body><w:p><w:r><w:t>$text</w:t></w:r></w:p></w:body></w:document>';
+        final documentBytes = utf8.encode(documentXml);
+        final archive = Archive()
+          ..addFile(
+            ArchiveFile(
+              'word/document.xml',
+              documentBytes.length,
+              documentBytes,
+            ),
+          );
+        final encoded = ZipEncoder().encode(archive);
+        expect(encoded, isNotNull);
+
+        final parsed = await service.parseDocumentFromBytes(
+          Uint8List.fromList(encoded!),
+          'sample.docx',
+        );
+
+        expect(parsed.content, contains('Café'));
+        expect(parsed.content, contains('日本語'));
+        expect(parsed.content, contains('😀'));
+        expect(parsed.content, contains('“smart quotes”'));
       });
     });
   });
