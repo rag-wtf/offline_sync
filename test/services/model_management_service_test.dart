@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
@@ -218,6 +220,72 @@ void main() {
     });
 
     group('Integration constraints -', () {
+      test('Gecko 64 declares the verified SHA-256 digest', () {
+        expect(
+          EmbeddingModels.gecko64.sha256,
+          equals(
+            '19f04c9397c814c293d8c6caa045b89da298c77064d65e90d8f85f4c02ad466f',
+          ),
+        );
+      });
+
+      test('verifyFileSha256 fails closed on mismatch', () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'model-sha256-test-',
+        );
+        addTearDown(() async {
+          if (tempDir.existsSync()) {
+            tempDir.deleteSync(recursive: true);
+          }
+        });
+
+        final file = File('${tempDir.path}/sample-model.bin');
+        await file.writeAsBytes(const [1, 2, 3, 4]);
+
+        final isVerified = await ModelManagementService.verifyFileSha256(
+          file,
+          '0000000000000000000000000000000000000000000000000000000000000000',
+        );
+
+        expect(isVerified, isFalse);
+      });
+
+      test(
+        'initialize fails closed when checksum path is unavailable',
+        () async {
+          final service = ModelManagementService(
+            installedModelPathResolver: (_) async => null,
+            modelInstalledChecker: (filename) async =>
+                filename == EmbeddingModels.gecko64.fileName,
+          );
+          addTearDown(service.dispose);
+
+          final errors = <Object>[];
+          final subscription = service.modelStatusStream.listen(
+            (_) {},
+            onError: errors.add,
+          );
+          addTearDown(subscription.cancel);
+
+          await service.initialize();
+
+          final gecko = service.models.firstWhere(
+            (model) => model.id == EmbeddingModels.gecko64.id,
+          );
+          expect(gecko.status, ModelStatus.error);
+          expect(gecko.progress, 0);
+          expect(
+            gecko.errorMessage,
+            contains('Checksum verification unavailable'),
+          );
+          await Future<void>.delayed(Duration.zero);
+          expect(
+            errors,
+            contains('Checksum verification unavailable for gecko-64.'),
+          );
+        },
+      );
+
       test('should have at least one inference model', () {
         final inferenceModels = service.models.where(
           (m) => m.type == AppModelType.inference,

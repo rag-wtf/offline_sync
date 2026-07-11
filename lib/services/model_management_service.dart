@@ -1,5 +1,8 @@
 import 'dart:async';
 import 'dart:developer';
+import 'dart:io';
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
@@ -33,6 +36,21 @@ class ModelInfo {
 }
 
 class ModelManagementService {
+  ModelManagementService({
+    Future<String?> Function(ModelDefinition definition)?
+    installedModelPathResolver,
+    Future<bool> Function(String filename)? modelInstalledChecker,
+  }) : _installedModelPathResolver = installedModelPathResolver,
+       _modelInstalledChecker = modelInstalledChecker;
+
+  static final Map<String, ModelDefinition> _modelDefinitionsById = {
+    for (final model in ModelConfig.allModels) model.id: model,
+  };
+
+  final Future<String?> Function(ModelDefinition definition)?
+  _installedModelPathResolver;
+  final Future<bool> Function(String filename)? _modelInstalledChecker;
+
   // Initialize models from ModelConfig
   final List<ModelInfo> _models = ModelConfig.allModels
       .map(
@@ -83,7 +101,8 @@ class ModelManagementService {
       var isDownloaded = false;
       try {
         log('DEBUG: Calling FlutterGemma.isModelInstalled for $filename');
-        isDownloaded = await FlutterGemma.isModelInstalled(filename);
+        final checker = _modelInstalledChecker ?? FlutterGemma.isModelInstalled;
+        isDownloaded = await checker(filename);
         log('DEBUG: FlutterGemma.isModelInstalled returned: $isDownloaded');
       } on Object catch (e) {
         log('Error checking model status for $filename: $e');
@@ -105,6 +124,10 @@ class ModelManagementService {
       }
 
       if (isDownloaded) {
+        final isVerified = await _verifyDeclaredChecksum(model);
+        if (!isVerified) {
+          continue;
+        }
         model
           ..status = ModelStatus.downloaded
           ..progress = 1.0;
@@ -264,6 +287,12 @@ class ModelManagementService {
       }
       log('DEBUG: FlutterGemma install completed for ${model.id}');
 
+      final isVerified = await _verifyDeclaredChecksum(model);
+      if (!isVerified) {
+        _notify();
+        return;
+      }
+
       log('Download complete for ${model.id}');
       model
         ..status = ModelStatus.downloaded
@@ -386,5 +415,115 @@ class ModelManagementService {
 
   void dispose() {
     unawaited(_statusController.close());
+  }
+
+  Future<bool> _verifyDeclaredChecksum(ModelInfo model) async {
+    final definition = _modelDefinitionsById[model.id];
+    final expectedSha256 = definition?.sha256;
+    if (definition == null || expectedSha256 == null) {
+      return true;
+    }
+
+    // M-1: Checksum enforcement depends on flutter_gemma resolving the
+    // installed model back to an on-disk path. If path lookup fails, we cannot
+    // prove integrity and therefore fail closed for models with declared
+    // digests rather than treating them as downloaded.
+    final installedModelPath = await _resolveInstalledModelPath(definition);
+    if (installedModelPath == null) {
+      model
+        ..status = ModelStatus.error
+        ..progress = 0.0
+        ..errorMessage =
+            'Checksum verification unavailable: '
+            'installed file path not exposed';
+      _statusController.addError(
+        'Checksum verification unavailable for ${model.id}.',
+      );
+      return false;
+    }
+
+    final modelFile = File(installedModelPath);
+    final isVerified = await verifyFileSha256(modelFile, expectedSha256);
+    if (isVerified) {
+      return true;
+    }
+
+    if (modelFile.existsSync()) {
+      modelFile.deleteSync();
+    }
+    model
+      ..status = ModelStatus.error
+      ..progress = 0.0
+      ..errorMessage = 'Checksum mismatch for ${model.id}';
+    _statusController.addError('Checksum mismatch for ${model.id}.');
+    return false;
+  }
+
+  @visibleForTesting
+  Future<bool> verifyDeclaredChecksumForTest(ModelInfo model) {
+    return _verifyDeclaredChecksum(model);
+  }
+
+  Future<String?> _resolveInstalledModelPath(ModelDefinition definition) async {
+    final resolver = _installedModelPathResolver;
+    if (resolver != null) {
+      return resolver(definition);
+    }
+
+    try {
+      final filePaths = await FlutterGemmaPlugin.instance.modelManager
+          .getModelFilePaths(_buildModelSpec(definition));
+      if (filePaths == null) {
+        return null;
+      }
+
+      for (final installedPath in filePaths.values) {
+        if (installedPath.split(RegExp(r'[/\\]')).last == definition.fileName) {
+          return installedPath;
+        }
+      }
+    } on Object catch (e) {
+      log('Error resolving installed model path for ${definition.id}: $e');
+    }
+
+    return null;
+  }
+
+  ModelSpec _buildModelSpec(ModelDefinition definition) {
+    if (definition.type == AppModelType.embedding) {
+      final tokenizerUrl = definition.tokenizerUrl;
+      if (tokenizerUrl == null) {
+        throw StateError(
+          'Tokenizer URL is required for embedding model ${definition.id}',
+        );
+      }
+      return EmbeddingModelSpec.fromLegacyUrl(
+        name: definition.name,
+        modelUrl: definition.modelUrl,
+        tokenizerUrl: tokenizerUrl,
+      );
+    }
+
+    return InferenceModelSpec.fromLegacyUrl(
+      name: definition.name,
+      modelUrl: definition.modelUrl,
+      modelType: ModelType.gemmaIt,
+    );
+  }
+
+  static Future<bool> verifyFileSha256(
+    File file,
+    String expectedSha256,
+  ) async {
+    try {
+      if (!file.existsSync()) {
+        return false;
+      }
+
+      final digest = await sha256.bind(file.openRead()).first;
+      return digest.toString() == expectedSha256.toLowerCase();
+    } on Object {
+      return false;
+    }
   }
 }

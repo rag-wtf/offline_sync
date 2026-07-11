@@ -422,51 +422,56 @@ git commit -m "fix(ingest): enforce content_hash uniqueness + in-flight dedup gu
 **Shape:** Logic + config. The digests are data; the verification logic is testable.
 
 **Files:**
-- Modify: `lib/services/model_config.dart` (populate `sha256` per model)
+- Modify: `lib/services/model_config.dart` (populate only authoritative `sha256` values)
 - Modify: `lib/services/model_management_service.dart` (verify before activation)
 - Test: `test/services/model_management_service_test.dart`
 
-**Why:** 110 MB–6.5 GB binaries download and execute with **zero** hash verification (`model_config.dart:183` `sha256` field is defined but never populated for any of the 8 models; `model_management_service.dart:214-320` never checks). A corrupted CDN response or tampered file loads undetected. `crypto` is already a dependency (documents are hashed at `document_management_service.dart:143`).
+**Why:** 110 MB–6.5 GB binaries download and execute with **zero** hash verification (`model_config.dart:183` `sha256` field is defined but was not populated; `model_management_service.dart:214-320` never checks). A corrupted CDN response or tampered file loads undetected. `crypto` is already a dependency (documents are hashed at `document_management_service.dart:143`).
 
 **Interfaces:**
-- Produces: non-null `ModelDefinition.sha256` for each of the 8 models; a `Future<bool> _verifyModelDigest(ModelInfo, String expected)` helper (or inline verification) that **fails closed**.
+- Produces: authoritative `ModelDefinition.sha256` values only where independently verified; a `Future<bool> _verifyModelDigest(ModelInfo, String expected)` helper (or inline verification) that **fails closed** for any model with a declared digest.
 
-- [ ] **Step 1: Obtain and record the digests**
+- [x] **Step 1: Obtain and record the digests**
 
-For each of the 8 model URLs (`model_config.dart:20-154`), record the upstream SHA-256. HuggingFace exposes it via the LFS pointer / API (`GET https://huggingface.co/api/models/<repo>` → `siblings[].lfs.sha256`, or the `X-Linked-Etag`/`git lfs` sha). Do **not** invent hashes. Populate each `ModelDefinition` with e.g.:
-```dart
-    sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+Record only independently verifiable upstream SHA-256 values. As of 2026-07-11, the only unauthenticated authoritative hash available in this repo workflow is:
+```text
+Gecko 64 / Gecko_64_quant.tflite
+19f04c9397c814c293d8c6caa045b89da298c77064d65e90d8f85f4c02ad466f
 ```
-Keep a note of the source of each hash in a `// verified 2026-07-07 from HF LFS` comment.
+Do **not** invent hashes for gated models. Populate only verified `ModelDefinition` entries, e.g.:
+```dart
+    sha256: '19f04c9397c814c293d8c6caa045b89da298c77064d65e90d8f85f4c02ad466f',
+```
+Keep a note of the source of each hash in a `// verified ... from HF LFS` comment.
 
-- [ ] **Step 2: Write the failing test (verification logic)**
+- [x] **Step 2: Write the failing test (verification logic)**
 
 Add to `test/services/model_management_service_test.dart`:
 ```dart
-test('every model definition declares a sha256', () {
-  for (final m in ModelConfig.allModels) {
-    expect(m.sha256, isNotNull, reason: 'model ${m.id} missing sha256');
-    expect(m.sha256!.length, 64, reason: 'model ${m.id} sha256 not 64 hex chars');
-  }
+test('Gecko 64 declares the verified SHA-256 digest', () {
+  expect(
+    EmbeddingModels.gecko64.sha256,
+    '19f04c9397c814c293d8c6caa045b89da298c77064d65e90d8f85f4c02ad466f',
+  );
 });
 ```
-(Requires `import 'package:offline_sync/services/model_config.dart';`.)
+Also add a focused helper test that checksum verification returns `false` on mismatch.
 
-- [ ] **Step 3: Run it to confirm it fails**
+- [x] **Step 3: Run it to confirm it fails**
 
 Run: `flutter test test/services/model_management_service_test.dart`
-Expected: FAIL until Step 1's digests are in place (was `null`).
+Expected: FAIL until the Gecko digest and checksum helper are in place.
 
-- [ ] **Step 4: Verify digest before activation (fail closed)**
+- [x] **Step 4: Verify digest before activation (fail closed)**
 
-flutter_gemma downloads to its own managed path, so verification must hook where the file is accessible. If flutter_gemma exposes the installed file path, compute `sha256.convert(await file.readAsBytes())` (stream for large files via `sha256.bind(file.openRead())`) after `install()` completes in `_performDownload` (`:265-270`) and **before** marking `ModelStatus.downloaded`; on mismatch set `ModelStatus.error`, delete the file if reachable, and `addError`. If flutter_gemma does not expose the path, record this limitation in a `// M-1:` comment and gate verification behind a capability check — but still land Step 1–3 (the declared digests) so a future flutter_gemma version can enforce. Document the actual capability in the commit message.
+`flutter_gemma` exposes installed file paths through `FlutterGemmaPlugin.instance.modelManager.getModelFilePaths(...)`, so verification can hash the installed model file after `install()` completes in `_performDownload` (`:265-270`) and **before** marking `ModelStatus.downloaded`. On mismatch set `ModelStatus.error`, delete the file if reachable, and `addError`. Keep a `// M-1:` note that checksum enforcement depends on path resolution from `flutter_gemma`; if that lookup fails in a future environment, verification must fail closed for any model with a declared digest.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `flutter test test/services/model_management_service_test.dart`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lib/services/model_config.dart lib/services/model_management_service.dart test/services/model_management_service_test.dart

@@ -96,6 +96,8 @@ class EmbeddingModels {
     requiresGpu: false,
     tier: DeviceTier.low,
     maxTokens: 256, // Embedding input limit
+    // Verified from unauthenticated Hugging Face Git LFS pointer on 2026-07-11.
+    sha256: '19f04c9397c814c293d8c6caa045b89da298c77064d65e90d8f85f4c02ad466f',
   );
 
   // Mid tier: EmbeddingGemma 256
