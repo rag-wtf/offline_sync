@@ -103,7 +103,7 @@ git commit -m "feat(db): stamp PRAGMA user_version=1 and add gated migration hoo
 
 **Why:** `String.fromCharCodes(documentEntry.content as List<int>)` treats UTF-8 bytes as raw code units; `word/document.xml` is UTF-8, so accented/CJK/emoji/smart-quote content is mangled before chunking and embedding. Markdown/plaintext already use `utf8.decode(..., allowMalformed: true)` (`:86`) — DOCX must too.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `test/services/document_parser_service_test.dart` inside `group('parseDocument -', …)` (imports `dart:convert`, `dart:typed_data`, `package:archive/archive.dart`):
 ```dart
@@ -130,7 +130,7 @@ test('parses non-ASCII DOCX text without corruption', () async {
 });
 ```
 
-- [ ] **Step 2: Run it to confirm it fails**
+- [x] **Step 2: Run it to confirm it fails**
 
 Run: `flutter test test/services/document_parser_service_test.dart`
 Expected: FAIL — the accented/CJK/emoji assertions fail (mojibake) with the current `String.fromCharCodes`.
@@ -337,7 +337,7 @@ git commit -m "fix(model): null-safe Document.fromJson with sensible defaults"
 **Interfaces:**
 - Consumes: `VectorStore.schemaVersion` and `_migrate` from Task 1.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Add to `test/services/vector_store_test.dart`:
 ```dart
@@ -352,7 +352,7 @@ test('content_hash has a UNIQUE index', () {
 });
 ```
 
-- [ ] **Step 2: Run it to confirm it fails**
+- [x] **Step 2: Run it to confirm it fails**
 
 Run: `flutter test test/services/vector_store_test.dart`
 Expected: FAIL — the current index (`idx_documents_hash`) is not UNIQUE.

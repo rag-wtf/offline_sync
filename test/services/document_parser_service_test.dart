@@ -106,10 +106,11 @@ void main() {
 
       test('parses non-ASCII DOCX text without corruption', () async {
         const text = 'Café — 日本語 — 😀 — “smart quotes”';
-        final documentXml =
-            '<?xml version="1.0" encoding="UTF-8"?>'
-            '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
-            '<w:body><w:p><w:r><w:t>$text</w:t></w:r></w:p></w:body></w:document>';
+        final documentXml = [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">',
+          '<w:body><w:p><w:r><w:t>$text</w:t></w:r></w:p></w:body></w:document>',
+        ].join();
         final documentBytes = utf8.encode(documentXml);
         final archive = Archive()
           ..addFile(
@@ -123,7 +124,7 @@ void main() {
         expect(encoded, isNotNull);
 
         final parsed = await service.parseDocumentFromBytes(
-          Uint8List.fromList(encoded!),
+          Uint8List.fromList(encoded),
           'sample.docx',
         );
 

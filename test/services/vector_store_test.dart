@@ -57,11 +57,10 @@ void main() {
 
   group('VectorStore Tests', () {
     test('stamps user_version to current schemaVersion on init', () {
-      final version = vectorStore.db!
-          .select('PRAGMA user_version')
-          .first
-          .values
-          .first as int;
+      final version =
+          vectorStore.db!.select('PRAGMA user_version').first.values.first
+              as int? ??
+          0;
       expect(version, VectorStore.schemaVersion);
       expect(VectorStore.schemaVersion, greaterThanOrEqualTo(1));
     });
@@ -128,18 +127,18 @@ void main() {
         expect(hasUnique, isTrue);
       });
 
-      test('v2 migration removes duplicate documents and their vectors',
-          () async {
-        vectorStore.close();
+      test(
+        'v2 migration removes duplicate documents and their vectors',
+        () async {
+          vectorStore.close();
 
-        final dbFile = File('vectors.db');
-        if (dbFile.existsSync()) {
-          dbFile.deleteSync();
-        }
+          final dbFile = File('vectors.db');
+          if (dbFile.existsSync()) {
+            dbFile.deleteSync();
+          }
 
-        final oldDb = sqlite3.open('vectors.db');
-        oldDb
-          ..execute('''
+          sqlite3.open('vectors.db')
+            ..execute('''
             CREATE TABLE vectors (
               id TEXT PRIMARY KEY,
               document_id TEXT NOT NULL,
@@ -149,7 +148,7 @@ void main() {
               created_at INTEGER NOT NULL
             )
           ''')
-          ..execute('''
+            ..execute('''
             CREATE TABLE documents (
               id TEXT PRIMARY KEY,
               title TEXT NOT NULL,
@@ -165,10 +164,10 @@ void main() {
               error_message TEXT
             )
           ''')
-          ..execute(
-            'CREATE INDEX idx_documents_hash ON documents(content_hash)',
-          )
-          ..execute('''
+            ..execute(
+              'CREATE INDEX idx_documents_hash ON documents(content_hash)',
+            )
+            ..execute('''
             INSERT INTO documents (
               id, title, file_path, format, chunk_count, total_characters,
               content_hash, ingested_at
@@ -176,30 +175,31 @@ void main() {
               ('keep', 'Keep', '/keep.txt', 'plainText', 1, 4, 'same', 1),
               ('drop', 'Drop', '/drop.txt', 'plainText', 1, 4, 'same', 2)
           ''')
-          ..execute('''
+            ..execute('''
             INSERT INTO vectors (
               id, document_id, content, embedding, metadata, created_at
             ) VALUES
               ('vec_keep', 'keep', 'kept', '[1.0]', '{}', 1),
               ('vec_drop', 'drop', 'dropped', '[1.0]', '{}', 2)
           ''')
-          ..execute('PRAGMA user_version = 1')
-          ..close();
+            ..execute('PRAGMA user_version = 1')
+            ..close();
 
-        vectorStore = VectorStore();
-        await vectorStore.initialize();
+          vectorStore = VectorStore();
+          await vectorStore.initialize();
 
-        expect(vectorStore.getDocument('keep'), isNotNull);
-        expect(vectorStore.getDocument('drop'), isNull);
-        expect(vectorStore.getChunksForDocument('keep'), hasLength(1));
-        expect(vectorStore.getChunksForDocument('drop'), isEmpty);
+          expect(vectorStore.getDocument('keep'), isNotNull);
+          expect(vectorStore.getDocument('drop'), isNull);
+          expect(vectorStore.getChunksForDocument('keep'), hasLength(1));
+          expect(vectorStore.getChunksForDocument('drop'), isEmpty);
 
-        final rows = vectorStore.db!.select(
-          "SELECT sql FROM sqlite_master WHERE type='index' "
-          "AND name='idx_documents_hash'",
-        );
-        expect(rows.single['sql'] as String, contains('UNIQUE'));
-      });
+          final rows = vectorStore.db!.select(
+            "SELECT sql FROM sqlite_master WHERE type='index' "
+            "AND name='idx_documents_hash'",
+          );
+          expect(rows.single['sql'] as String, contains('UNIQUE'));
+        },
+      );
 
       test('CRUD operations', () async {
         final doc = Document(
@@ -280,30 +280,32 @@ void main() {
       });
     });
 
-    test('semantic search skips rows with mismatched embedding dimension',
-        () async {
-      vectorStore.insertEmbedding(
-        id: 'ok',
-        documentId: 'd',
-        content: 'good row',
-        embedding: [0.1, 0.2, 0.3],
-      );
-      vectorStore.insertEmbedding(
-        id: 'bad',
-        documentId: 'd',
-        content: 'wrong dim',
-        embedding: [0.1, 0.2],
-      );
+    test(
+      'semantic search skips rows with mismatched embedding dimension',
+      () async {
+        vectorStore
+          ..insertEmbedding(
+            id: 'ok',
+            documentId: 'd',
+            content: 'good row',
+            embedding: [0.1, 0.2, 0.3],
+          )
+          ..insertEmbedding(
+            id: 'bad',
+            documentId: 'd',
+            content: 'wrong dim',
+            embedding: [0.1, 0.2],
+          );
 
-      final results = await vectorStore.hybridSearch(
-        'query',
-        [0.1, 0.2, 0.3],
-        limit: 5,
-        semanticWeight: 1,
-      );
+        final results = await vectorStore.hybridSearch(
+          'query',
+          [0.1, 0.2, 0.3],
+          semanticWeight: 1,
+        );
 
-      expect(results.map((r) => r.id), contains('ok'));
-      expect(results.map((r) => r.id), isNot(contains('bad')));
-    });
+        expect(results.map((r) => r.id), contains('ok'));
+        expect(results.map((r) => r.id), isNot(contains('bad')));
+      },
+    );
   });
 }

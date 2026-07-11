@@ -84,7 +84,7 @@ class VectorStore {
     _onCreate();
 
     final currentVersion =
-        _db!.select('PRAGMA user_version').first.values.first as int;
+        _db!.select('PRAGMA user_version').first.values.first as int? ?? 0;
     if (currentVersion < schemaVersion) {
       _migrate(currentVersion);
       _db!.execute('PRAGMA user_version = $schemaVersion');
@@ -150,7 +150,6 @@ class VectorStore {
         error_message TEXT
       )
     ''');
-
   }
 
   void _createFtsObjects() {
@@ -610,14 +609,16 @@ List<SearchResult> _calculateSimilarities(Map<String, dynamic> params) {
     final divisor = sqrt(normA) * sqrt(normB);
     final score = divisor == 0 ? 0.0 : dotProduct / divisor;
 
-    scored.add(SearchResult(
-      id: item['id'] as String,
-      content: item['content'] as String,
-      score: score,
-      metadata:
-          jsonDecode(item['metadata'] as String? ?? '{}')
-              as Map<String, dynamic>,
-    ));
+    scored.add(
+      SearchResult(
+        id: item['id'] as String,
+        content: item['content'] as String,
+        score: score,
+        metadata:
+            jsonDecode(item['metadata'] as String? ?? '{}')
+                as Map<String, dynamic>,
+      ),
+    );
   }
 
   return (scored..sort((a, b) => b.score.compareTo(a.score)))
