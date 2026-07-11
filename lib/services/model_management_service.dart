@@ -1,11 +1,16 @@
 import 'dart:async';
 import 'dart:developer';
 import 'dart:io';
+
+// Constructor parameters keep public names while assigning private test hooks.
+// ignore_for_file: prefer_initializing_formals
+
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
+import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 
@@ -40,8 +45,12 @@ class ModelManagementService {
     Future<String?> Function(ModelDefinition definition)?
     installedModelPathResolver,
     Future<bool> Function(String filename)? modelInstalledChecker,
+    Future<void> Function(ModelInfo model)? inferenceModelActivator,
+    Future<void> Function(ModelInfo model)? embeddingModelActivator,
   }) : _installedModelPathResolver = installedModelPathResolver,
-       _modelInstalledChecker = modelInstalledChecker;
+       _modelInstalledChecker = modelInstalledChecker,
+       _inferenceModelActivator = inferenceModelActivator,
+       _embeddingModelActivator = embeddingModelActivator;
 
   static final Map<String, ModelDefinition> _modelDefinitionsById = {
     for (final model in ModelConfig.allModels) model.id: model,
@@ -50,6 +59,8 @@ class ModelManagementService {
   final Future<String?> Function(ModelDefinition definition)?
   _installedModelPathResolver;
   final Future<bool> Function(String filename)? _modelInstalledChecker;
+  final Future<void> Function(ModelInfo model)? _inferenceModelActivator;
+  final Future<void> Function(ModelInfo model)? _embeddingModelActivator;
 
   // Initialize models from ModelConfig
   final List<ModelInfo> _models = ModelConfig.allModels
@@ -91,22 +102,26 @@ class ModelManagementService {
   }
 
   Future<void> initialize() async {
-    log('DEBUG: ModelManagementService.initialize() called');
+    LoggingService.debug('ModelManagementService.initialize() called');
     log('Initializing ModelManagementService');
     for (final model in _models) {
-      log('DEBUG: Processing model ${model.id}');
+      LoggingService.debug('Processing model ${model.id}');
       final filename = model.effectiveFileName;
       log('Checking if model ${model.id} ($filename) is installed...');
 
       var isDownloaded = false;
       try {
-        log('DEBUG: Calling FlutterGemma.isModelInstalled for $filename');
+        LoggingService.debug(
+          'Calling FlutterGemma.isModelInstalled for $filename',
+        );
         final checker = _modelInstalledChecker ?? FlutterGemma.isModelInstalled;
         isDownloaded = await checker(filename);
-        log('DEBUG: FlutterGemma.isModelInstalled returned: $isDownloaded');
+        LoggingService.debug(
+          'FlutterGemma.isModelInstalled returned: $isDownloaded',
+        );
       } on Object catch (e) {
         log('Error checking model status for $filename: $e');
-        log('DEBUG: Error checking model status: $e');
+        LoggingService.debug('Error checking model status: $e');
         // Assume not downloaded if check fails
       }
 
@@ -144,8 +159,9 @@ class ModelManagementService {
         orElse: () => _models.first,
       );
       if (model.status == ModelStatus.downloaded) {
-        _activeInferenceModelId = model.id;
-        await _activateInferenceModel(model);
+        if (await _activateInferenceModel(model)) {
+          _activeInferenceModelId = model.id;
+        }
       }
     }
 
@@ -155,19 +171,26 @@ class ModelManagementService {
         orElse: () => _models.first,
       );
       if (model.status == ModelStatus.downloaded) {
-        _activeEmbeddingModelId = model.id;
-        await _activateEmbeddingModel(model);
+        if (await _activateEmbeddingModel(model)) {
+          _activeEmbeddingModelId = model.id;
+        }
       }
     }
 
-    log('DEBUG: initialize() completed, calling _notify()');
+    LoggingService.debug('initialize() completed, calling _notify()');
     _notify();
-    log('DEBUG: initialize() fully completed');
+    LoggingService.debug('initialize() fully completed');
   }
 
-  Future<void> _activateEmbeddingModel(ModelInfo model) async {
+  Future<bool> _activateEmbeddingModel(ModelInfo model) async {
     log('Activating embedding model ${model.id}');
     try {
+      final activator = _embeddingModelActivator;
+      if (activator != null) {
+        await activator(model);
+        log('Embedding model activated');
+        return true;
+      }
       // Embedding model requires both model and tokenizer
       if (model.tokenizerUrl == null) {
         throw Exception(
@@ -179,63 +202,77 @@ class ModelManagementService {
           .tokenizerFromNetwork(model.tokenizerUrl!)
           .install();
       log('Embedding model activated');
+      return true;
     } on Exception catch (e) {
       log('Error activating embedding model: $e');
-      model.status = ModelStatus.error;
+      model
+        ..status = ModelStatus.error
+        ..errorMessage = e.toString();
       _statusController.addError('Activation error: $e');
+      return false;
     }
   }
 
-  Future<void> _activateInferenceModel(ModelInfo model) async {
+  Future<bool> _activateInferenceModel(ModelInfo model) async {
     log('Activating inference model ${model.id}');
     try {
+      final activator = _inferenceModelActivator;
+      if (activator != null) {
+        await activator(model);
+        log('Inference model activated');
+        return true;
+      }
       // Re-install/activate the inference model from the cached download
       await FlutterGemma.installModel(
         modelType: ModelType.gemmaIt,
       ).fromNetwork(model.url).install();
       log('Inference model activated');
+      return true;
     } on Exception catch (e) {
       log('Error activating inference model: $e');
-      model.status = ModelStatus.error;
+      model
+        ..status = ModelStatus.error
+        ..errorMessage = e.toString();
       _statusController.addError('Activation error: $e');
+      return false;
     }
   }
 
   Future<void> downloadModel(String modelId) async {
-    log('DEBUG: downloadModel called for $modelId');
+    LoggingService.debug('downloadModel called for $modelId');
     // If a download is already in progress for this model, wait for it.
     if (_activeDownloads.containsKey(modelId)) {
       log('Joining existing download for $modelId');
-      log('DEBUG: Joining existing download for $modelId');
+      LoggingService.debug('Joining existing download for $modelId');
       return _activeDownloads[modelId];
     }
 
     final model = _models.firstWhere((m) => m.id == modelId);
     if (model.status == ModelStatus.downloaded) {
       log('Model $modelId already downloaded');
-      log('DEBUG: Model $modelId already downloaded');
+      LoggingService.debug('Model $modelId already downloaded');
       return;
     }
 
     log('Starting download for $modelId from ${model.url}');
-    log('DEBUG: Starting download for $modelId from ${model.url}');
+    LoggingService.debug('Starting download for $modelId from ${model.url}');
 
     // Create and store the download future
     final downloadFuture = _performDownload(model);
     _activeDownloads[modelId] = downloadFuture;
-    log('DEBUG: Added $modelId to _activeDownloads, now waiting...');
+    LoggingService.debug('Added $modelId to _activeDownloads, now waiting...');
 
     try {
       await downloadFuture;
-      log('DEBUG: downloadFuture completed for $modelId');
+      LoggingService.debug('downloadFuture completed for $modelId');
     } finally {
       unawaited(_activeDownloads.remove(modelId));
-      log('DEBUG: Removed $modelId from _activeDownloads');
+      LoggingService.debug('Removed $modelId from _activeDownloads');
     }
   }
 
   Future<void> _performDownload(ModelInfo model) async {
-    log('DEBUG: _performDownload started for ${model.id}');
+    LoggingService.debug('_performDownload started for ${model.id}');
     model
       ..status = ModelStatus.downloading
       ..progress = 0.0;
@@ -251,15 +288,17 @@ class ModelManagementService {
 
     try {
       final token = await AuthTokenService.loadToken();
-      log('DEBUG: Token loaded for ${model.id}');
+      LoggingService.debug('Token loaded for ${model.id}');
       final downloadUrl = model.url;
 
       if (token != null && token.isNotEmpty) {
         log('Using authentication token for download');
-        log('DEBUG: Using authentication token');
+        LoggingService.debug('Using authentication token');
       }
 
-      log('DEBUG: About to call FlutterGemma install for ${model.id}');
+      LoggingService.debug(
+        'About to call FlutterGemma install for ${model.id}',
+      );
       if (model.type == AppModelType.inference) {
         await FlutterGemma.installModel(
           modelType: ModelType.gemmaIt,
@@ -285,7 +324,7 @@ class ModelManagementService {
             })
             .install();
       }
-      log('DEBUG: FlutterGemma install completed for ${model.id}');
+      LoggingService.debug('FlutterGemma install completed for ${model.id}');
 
       final isVerified = await _verifyDeclaredChecksum(model);
       if (!isVerified) {
@@ -329,10 +368,10 @@ class ModelManagementService {
       }
 
       _notify();
-      log('DEBUG: _performDownload fully completed for ${model.id}');
+      LoggingService.debug('_performDownload fully completed for ${model.id}');
     } on Exception catch (e) {
       log('Download failed for ${model.id}: $e');
-      log('DEBUG: Download failed for ${model.id}: $e');
+      LoggingService.debug('Download failed for ${model.id}: $e');
       final errorMsg = e.toString();
       model.errorMessage = errorMsg;
       if (errorMsg.contains('401')) {
@@ -378,9 +417,14 @@ class ModelManagementService {
       return;
     }
     log('Switching to inference model $modelId');
+    final previousActiveId = _activeInferenceModelId;
+    if (!await _activateInferenceModel(model)) {
+      _activeInferenceModelId = previousActiveId;
+      _notify();
+      return;
+    }
     _activeInferenceModelId = modelId;
     await _ragSettings.setActiveInferenceModelId(modelId);
-    await _activateInferenceModel(model);
     _notify();
   }
 
@@ -396,9 +440,14 @@ class ModelManagementService {
       return;
     }
     log('Switching to embedding model $modelId');
+    final previousActiveId = _activeEmbeddingModelId;
+    if (!await _activateEmbeddingModel(model)) {
+      _activeEmbeddingModelId = previousActiveId;
+      _notify();
+      return;
+    }
     _activeEmbeddingModelId = modelId;
     await _ragSettings.setActiveEmbeddingModelId(modelId);
-    await _activateEmbeddingModel(model);
     _notify();
   }
 
@@ -411,6 +460,18 @@ class ModelManagementService {
 
   void _notify() {
     _statusController.add(List.from(_models));
+  }
+
+  void resetErroredModels() {
+    for (final model in _models) {
+      if (model.status == ModelStatus.error) {
+        model
+          ..status = ModelStatus.notDownloaded
+          ..progress = 0.0
+          ..errorMessage = null;
+      }
+    }
+    _notify();
   }
 
   void dispose() {

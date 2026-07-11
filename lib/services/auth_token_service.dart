@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -37,7 +38,7 @@ class AuthTokenService {
     }
 
     // Fallback to environment variable if not in storage
-    if (token == null || token.isEmpty) {
+    if (kDebugMode && (token == null || token.isEmpty)) {
       const envToken = String.fromEnvironment('HUGGINGFACE_TOKEN');
       if (envToken.isNotEmpty) {
         // Auto-save environment token for persistence

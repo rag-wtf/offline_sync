@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/app/app_theme.dart';
 import 'package:offline_sync/l10n/l10n.dart';
+import 'package:offline_sync/services/vector_store.dart';
 import 'package:stacked_services/stacked_services.dart';
 
 class MainApp extends StatelessWidget {
@@ -9,15 +11,57 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Offline RAG Sync',
-      theme: AppTheme.lightTheme,
-      darkTheme: AppTheme.darkTheme,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      initialRoute: Routes.startupView,
-      onGenerateRoute: StackedRouter().onGenerateRoute,
-      navigatorKey: StackedService.navigatorKey,
+    return AppLifecycleRoot(
+      child: MaterialApp(
+        title: 'Offline RAG Sync',
+        theme: AppTheme.lightTheme,
+        darkTheme: AppTheme.darkTheme,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        initialRoute: Routes.startupView,
+        onGenerateRoute: StackedRouter().onGenerateRoute,
+        navigatorKey: StackedService.navigatorKey,
+      ),
     );
   }
+}
+
+class AppLifecycleRoot extends StatefulWidget {
+  const AppLifecycleRoot({
+    required this.child,
+    this.onDetached,
+    super.key,
+  });
+
+  final Widget child;
+  final VoidCallback? onDetached;
+
+  @override
+  State<AppLifecycleRoot> createState() => _AppLifecycleRootState();
+}
+
+class _AppLifecycleRootState extends State<AppLifecycleRoot> {
+  late final AppLifecycleListener _listener;
+
+  @override
+  void initState() {
+    super.initState();
+    _listener = AppLifecycleListener(
+      onDetach: () {
+        widget.onDetached?.call();
+        if (locator.isRegistered<VectorStore>()) {
+          locator<VectorStore>().close();
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _listener.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

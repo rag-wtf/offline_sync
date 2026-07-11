@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
@@ -38,9 +39,13 @@ class StartupViewModel extends BaseViewModel {
   String? _recommendedEmbeddingModelId;
 
   Future<void> runStartupLogic() async {
-    log('DEBUG: runStartupLogic called');
+    LoggingService.debug('runStartupLogic called');
     log('runStartupLogic called', name: 'StartupViewModel');
 
+    final previousSubscription = _subscription;
+    if (previousSubscription != null) {
+      await previousSubscription.cancel();
+    }
     _subscription = _modelService.modelStatusStream.listen(
       (models) {
         final downloading = models.where(
@@ -124,10 +129,10 @@ class StartupViewModel extends BaseViewModel {
       _recommendedEmbeddingModelId = recommended.embeddingModel.id;
 
       // 4. Initialize model service (checks existing models)
-      log('DEBUG: About to call _modelService.initialize()');
+      LoggingService.debug('About to call _modelService.initialize()');
       log('About to call _modelService.initialize()', name: 'StartupViewModel');
       await _modelService.initialize();
-      log('DEBUG: _modelService.initialize() completed');
+      LoggingService.debug('_modelService.initialize() completed');
       log('_modelService.initialize() completed', name: 'StartupViewModel');
 
       // 4.5. Initialize RAG settings service
@@ -183,7 +188,7 @@ class StartupViewModel extends BaseViewModel {
 
       await _checkAndNavigate();
     } on Object catch (e) {
-      log('DEBUG: Exception in runStartupLogic: $e');
+      LoggingService.debug('Exception in runStartupLogic: $e');
       log('Exception in runStartupLogic: $e', name: 'StartupViewModel');
       setError(e.toString());
     }
@@ -236,16 +241,7 @@ class StartupViewModel extends BaseViewModel {
     _statusMessage = 'Retrying...';
     notifyListeners();
 
-    // Reset any models that are in error state back to notDownloaded
-    // so they can be retried
-    for (final model in _modelService.models) {
-      if (model.status == ModelStatus.error) {
-        model
-          ..status = ModelStatus.notDownloaded
-          ..progress = 0.0
-          ..errorMessage = null;
-      }
-    }
+    _modelService.resetErroredModels();
 
     await runStartupLogic();
   }
