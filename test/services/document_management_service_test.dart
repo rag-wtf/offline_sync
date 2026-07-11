@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -25,6 +27,19 @@ class MockEmbeddingService extends Mock implements EmbeddingService {}
 
 class MockContextualRetrievalService extends Mock
     implements ContextualRetrievalService {}
+
+class ThrowingPathBackedPlatformFile extends PlatformFile {
+  ThrowingPathBackedPlatformFile({
+    required super.path,
+    required super.name,
+    required super.size,
+  });
+
+  @override
+  Future<Uint8List> readAsBytes() {
+    throw StateError('readAsBytes should not be called for path-backed files');
+  }
+}
 
 void main() {
   late DocumentManagementService service;
@@ -188,5 +203,35 @@ void main() {
 
       await file.delete();
     });
+
+    test(
+      'addDocumentFromPlatformFile uses path-backed size validation '
+      'before reading bytes',
+      () async {
+        final file = File('oversized_platform_file.txt');
+        await file.writeAsString('oversized content');
+
+        when(() => mockSettingsService.maxDocumentSizeMB).thenReturn(0);
+
+        final platformFile = ThrowingPathBackedPlatformFile(
+          path: file.path,
+          name: 'oversized_platform_file.txt',
+          size: await file.length(),
+        );
+
+        await expectLater(
+          service.addDocumentFromPlatformFile(platformFile),
+          throwsA(
+            isA<Exception>().having(
+              (error) => error.toString(),
+              'message',
+              contains('exceeds limit'),
+            ),
+          ),
+        );
+
+        await file.delete();
+      },
+    );
   });
 }

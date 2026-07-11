@@ -123,21 +123,21 @@ class DocumentManagementService {
   }
 
   Future<Document> addDocumentFromPlatformFile(PlatformFile file) async {
-    if (file.bytes == null) {
-      if (file.path != null) {
-        return addDocument(file.path!);
-      }
-      throw Exception('File content is not available (no path, no bytes)');
+    if (file.path != null) {
+      return addDocument(file.path!);
     }
 
-    // Byte-based ingestion (Web or generic)
-    final bytes = file.bytes!;
-    final fileSizeMB = bytes.length / (1024 * 1024);
+    final fileSizeMB = (await file.length()) / (1024 * 1024);
     if (fileSizeMB > _settingsService.maxDocumentSizeMB) {
       throw Exception(
         'File size ($fileSizeMB MB) exceeds limit of '
         '${_settingsService.maxDocumentSizeMB} MB',
       );
+    }
+
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) {
+      throw Exception('File content is not available (no path, no bytes)');
     }
 
     final hash = sha256.convert(bytes).toString();
