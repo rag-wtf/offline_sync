@@ -20,18 +20,18 @@ class Document {
 
   factory Document.fromJson(Map<String, dynamic> json) {
     return Document(
-      id: json['id'] as String,
-      title: json['title'] as String,
-      filePath: json['file_path'] as String,
+      id: json['id'] as String? ?? '',
+      title: json['title'] as String? ?? 'Untitled',
+      filePath: json['file_path'] as String? ?? '',
       format: DocumentFormat.values.firstWhere(
         (e) => e.name == json['format'],
         orElse: () => DocumentFormat.unknown,
       ),
-      chunkCount: json['chunk_count'] as int,
-      totalCharacters: json['total_characters'] as int,
-      contentHash: json['content_hash'] as String,
+      chunkCount: json['chunk_count'] as int? ?? 0,
+      totalCharacters: json['total_characters'] as int? ?? 0,
+      contentHash: json['content_hash'] as String? ?? '',
       ingestedAt: DateTime.fromMillisecondsSinceEpoch(
-        json['ingested_at'] as int,
+        (json['ingested_at'] as int?) ?? 0,
       ),
       status: IngestionStatus.values.firstWhere(
         (e) => e.name == (json['status'] ?? 'complete'),
