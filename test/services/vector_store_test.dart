@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/document_parser_service.dart';
+import 'package:offline_sync/services/rag_constants.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -110,8 +111,55 @@ void main() {
 
     group('Hybrid Search Merging', () {
       test('combines scores correctly', () {
-        // This is harder to test without exposing internals,
-        // but we can verify behavior through results ordering.
+        final semantic = [
+          SearchResult(
+            id: 'semantic-first',
+            content: 'Semantic first',
+            score: 0.9,
+            metadata: const {'source': 'semantic'},
+          ),
+          SearchResult(
+            id: 'shared',
+            content: 'Shared semantic result',
+            score: 0.8,
+            metadata: const {'source': 'semantic'},
+          ),
+        ];
+        final keyword = [
+          SearchResult(
+            id: 'shared',
+            content: 'Shared keyword result',
+            score: 0.7,
+            metadata: const {'source': 'keyword'},
+          ),
+          SearchResult(
+            id: 'keyword-only',
+            content: 'Keyword only',
+            score: 0.6,
+            metadata: const {'source': 'keyword'},
+          ),
+        ];
+
+        final results = vectorStore.mergeResults(
+          semantic,
+          keyword,
+          semanticWeight: 0.7,
+          limit: 3,
+        );
+
+        const k = RagConstants.rrfConstant;
+        final expectedShared = (0.7 / (k + 2)) + (0.3 / (k + 1));
+        final expectedSemanticOnly = 0.7 / (k + 1);
+        final expectedKeywordOnly = 0.3 / (k + 2);
+
+        expect(
+          results.map((result) => result.id).toList(),
+          ['shared', 'semantic-first', 'keyword-only'],
+        );
+        expect(results[0].score, closeTo(expectedShared, 0.0000001));
+        expect(results[1].score, closeTo(expectedSemanticOnly, 0.0000001));
+        expect(results[2].score, closeTo(expectedKeywordOnly, 0.0000001));
+        expect(results[0].metadata, const {'source': 'semantic'});
       });
     });
 
