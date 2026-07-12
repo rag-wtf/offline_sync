@@ -16,6 +16,25 @@ class MockModelRecommendationService extends Mock
 
 class MockRagSettingsService extends Mock implements RagSettingsService {}
 
+class TestContextualRetrievalService extends ContextualRetrievalService {
+  TestContextualRetrievalService({Map<String, String>? contexts})
+    : _contexts = contexts ?? const {};
+
+  final Map<String, String> _contexts;
+  final List<String> capturedDocumentContent = [];
+  final List<String> capturedChunks = [];
+
+  @override
+  Future<String> generateChunkContext({
+    required String documentContent,
+    required String chunk,
+  }) async {
+    capturedDocumentContent.add(documentContent);
+    capturedChunks.add(chunk);
+    return _contexts[chunk] ?? '';
+  }
+}
+
 void main() {
   group('ContextualRetrievalService Tests -', () {
     late ContextualRetrievalService service;
@@ -197,20 +216,23 @@ void main() {
     });
 
     group('contextualizeDocument -', () {
-      test('should process all chunks and call progress callback', () async {
-        final chunks = ['Chunk 1', 'Chunk 2', 'Chunk 3'];
-        const documentContent = 'Full document content here.';
+      test(
+        'should contextualize chunks with full document context and report progress',
+        () async {
+          final testService = TestContextualRetrievalService(
+            contexts: {
+              'Chunk 1': 'Context for chunk 1',
+              'Chunk 2': 'Context for chunk 2',
+            },
+          );
+          final chunks = ['Chunk 1', 'Chunk 2'];
+          const documentContent = 'Full document content here.';
 
-        var progressCalls = 0;
-        var lastCompleted = 0;
-        var lastTotal = 0;
+          var progressCalls = 0;
+          var lastCompleted = 0;
+          var lastTotal = 0;
 
-        // Mock FlutterGemma to avoid actual model calls
-        // Since we can't easily mock FlutterGemma static methods,
-        // we expect this test to gracefully handle errors
-
-        try {
-          final results = await service.contextualizeDocument(
+          final results = await testService.contextualizeDocument(
             documentContent: documentContent,
             chunks: chunks,
             onProgress: (completed, total) {
@@ -220,55 +242,104 @@ void main() {
             },
           );
 
-          // Progress should be called for each chunk
           expect(progressCalls, equals(chunks.length));
           expect(lastCompleted, equals(chunks.length));
           expect(lastTotal, equals(chunks.length));
-
-          // Results should match chunk count
+          expect(testService.capturedChunks, equals(chunks));
+          expect(
+            testService.capturedDocumentContent,
+            everyElement(equals(documentContent)),
+          );
           expect(results.length, equals(chunks.length));
-        } on Object catch (e) {
-          // If FlutterGemma is not available in test, catch and
-          // verify structure
-          expect(e, isNotNull);
-        }
-      });
+          expect(results[0].originalContent, 'Chunk 1');
+          expect(results[0].context, 'Context for chunk 1');
+          expect(results[0].combinedContent, 'Context for chunk 1\n\nChunk 1');
+          expect(results[1].combinedContent, 'Context for chunk 2\n\nChunk 2');
+        },
+      );
+
+      test(
+        'should preserve original chunk when contextual generation returns empty',
+        () async {
+          final testService = TestContextualRetrievalService();
+          final results = await testService.contextualizeDocument(
+            documentContent: 'Full document content here.',
+            chunks: const ['Chunk 1'],
+          );
+
+          expect(results.single.originalContent, 'Chunk 1');
+          expect(results.single.context, isEmpty);
+          expect(results.single.combinedContent, 'Chunk 1');
+        },
+      );
 
       test('should use sliding window for large documents', () async {
-        final chunks = ['Chunk A', 'Chunk B'];
-        // Large document that exceeds model context window
-        final largeDocument = 'x' * 50000;
+        final testService = TestContextualRetrievalService(
+          contexts: {'Target chunk': 'Windowed context'},
+        );
+        final largePrefix = 'A' * 25000;
+        final largeSuffix = 'B' * 25000;
+        final largeDocument = '$largePrefix\nTarget chunk\n$largeSuffix';
 
-        try {
-          final results = await service.contextualizeDocument(
-            documentContent: largeDocument,
-            chunks: chunks,
-          );
+        final results = await testService.contextualizeDocument(
+          documentContent: largeDocument,
+          chunks: const ['Target chunk'],
+        );
 
-          // Should still process all chunks
-          expect(results.length, equals(chunks.length));
-        } on Object catch (e) {
-          // If FlutterGemma not available, that's expected
-          expect(e, isNotNull);
-        }
+        expect(results.single.combinedContent, 'Windowed context\n\nTarget chunk');
+        expect(testService.capturedDocumentContent.single, isNot(largeDocument));
+        expect(
+          testService.capturedDocumentContent.single.length,
+          lessThan(largeDocument.length),
+        );
+        expect(
+          testService.capturedDocumentContent.single,
+          contains('Target chunk'),
+        );
       });
 
-      test('should preserve original chunk content', () async {
-        final chunks = ['Original content 1', 'Original content 2'];
-        const documentContent = 'Document context';
+      test(
+        'should use the leading window when chunk is absent from a large document',
+        () async {
+          final testService = TestContextualRetrievalService();
+          final largeDocument = '${'Lead' * 3000}${'Tail' * 3000}';
 
-        try {
-          final results = await service.contextualizeDocument(
-            documentContent: documentContent,
-            chunks: chunks,
+          await testService.contextualizeDocument(
+            documentContent: largeDocument,
+            chunks: const ['Missing chunk'],
           );
 
-          for (var i = 0; i < results.length; i++) {
-            expect(results[i].originalContent, equals(chunks[i]));
-          }
-        } on Object catch (e) {
-          // Expected if FlutterGemma not available
-          expect(e, isNotNull);
+          final captured = testService.capturedDocumentContent.single;
+          expect(captured.length, lessThan(largeDocument.length));
+          expect(captured, equals(largeDocument.substring(0, captured.length)));
+        },
+      );
+
+      test('should process all chunks and call progress callback', () async {
+        final chunks = ['Chunk 1', 'Chunk 2', 'Chunk 3'];
+        const documentContent = 'Full document content here.';
+
+        var progressCalls = 0;
+        var lastCompleted = 0;
+        var lastTotal = 0;
+        final testService = TestContextualRetrievalService();
+
+        final results = await testService.contextualizeDocument(
+          documentContent: documentContent,
+          chunks: chunks,
+          onProgress: (completed, total) {
+            progressCalls++;
+            lastCompleted = completed;
+            lastTotal = total;
+          },
+        );
+
+        expect(progressCalls, equals(chunks.length));
+        expect(lastCompleted, equals(chunks.length));
+        expect(lastTotal, equals(chunks.length));
+        expect(results.length, equals(chunks.length));
+        for (var i = 0; i < results.length; i++) {
+          expect(results[i].originalContent, equals(chunks[i]));
         }
       });
     });
@@ -301,31 +372,24 @@ void main() {
 
     group('Edge cases -', () {
       test('should handle empty chunks list', () async {
-        try {
-          final results = await service.contextualizeDocument(
-            documentContent: 'Some content',
-            chunks: [],
-          );
+        final testService = TestContextualRetrievalService();
+        final results = await testService.contextualizeDocument(
+          documentContent: 'Some content',
+          chunks: [],
+        );
 
-          expect(results, isEmpty);
-        } on Object catch (e) {
-          expect(e, isNotNull);
-        }
+        expect(results, isEmpty);
       });
 
       test('should handle empty document content', () async {
-        final chunks = ['Chunk 1'];
+        final testService = TestContextualRetrievalService();
+        final results = await testService.contextualizeDocument(
+          documentContent: '',
+          chunks: const ['Chunk 1'],
+        );
 
-        try {
-          final results = await service.contextualizeDocument(
-            documentContent: '',
-            chunks: chunks,
-          );
-
-          expect(results.length, equals(1));
-        } on Object catch (e) {
-          expect(e, isNotNull);
-        }
+        expect(results.length, equals(1));
+        expect(testService.capturedDocumentContent.single, isEmpty);
       });
     });
   });

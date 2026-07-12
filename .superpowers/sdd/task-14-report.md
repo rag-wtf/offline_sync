@@ -80,3 +80,63 @@ Result: passed (`163` tests total)
 ## Concerns
 
 None.
+
+---
+
+## Review Fix Follow-up (2026-07-12)
+
+### Scope
+
+Addressed the reviewer's follow-up findings without touching production code:
+
+- Added real contextual-retrieval coverage in
+  `test/services/contextual_retrieval_service_test.dart`.
+- Re-checked whether `test/services/inference_model_provider_test.dart` exists
+  in this workspace and whether a minimal provider test is feasible.
+
+### Why the contextual-retrieval fix lives here
+
+`RagService` in the current workspace has no contextual-retrieval branch or
+dependency. The observable contextual-retrieval path is
+`ContextualRetrievalService.contextualizeDocument`, so the missing brief item is
+most accurately satisfied there.
+
+The new tests avoid mock-only assertions by overriding
+`generateChunkContext(...)` in a test subclass and verifying:
+
+- full-document context is forwarded for small documents
+- chunk context is combined into `combinedContent`
+- progress callbacks reflect actual processing
+- large documents switch to a reduced sliding-window context
+- missing chunks in large documents fall back to the leading window
+- empty generated context preserves the original chunk as-is
+
+### Inference model provider check
+
+`test/services/inference_model_provider_test.dart` is absent from this
+workspace.
+
+I did not add a new provider test in this follow-up because
+`InferenceModelProvider.getModel()` is currently hard-wired to the static
+`FlutterGemma.getActiveModel(...)` API with no injectable seam. A meaningful
+test would either need plugin/runtime availability or a production-code seam,
+and the task explicitly limits production edits unless required for test
+compilation.
+
+### Verification
+
+#### Focused test run
+
+```bash
+rtk flutter test test/services/contextual_retrieval_service_test.dart
+```
+
+Result: passed (`17` tests)
+
+#### Full suite
+
+```bash
+rtk flutter test
+```
+
+Result: passed (`165` tests total)
