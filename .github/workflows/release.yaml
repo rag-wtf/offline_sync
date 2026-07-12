@@ -43,7 +43,7 @@ on:
         default: ""
 
 env:
-  FLUTTER_VERSION: "3.35.x"
+  FLUTTER_VERSION: "3.44.x"
   FLAVOR: ${{ github.event.inputs.app_flavor }}
   TARGET: lib/main_${{ github.event.inputs.app_flavor }}.dart
   BUILD_NUMBER: ${{ github.run_number }}
@@ -225,8 +225,8 @@ jobs:
           chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-appimage-x86_64.AppImage
 
           # Find libjvm.so and set LD_LIBRARY_PATH
-          JAVA_HOME=${{ steps.setup-java.outputs.path }}
-          LIBJVM_PATH=$(find $JAVA_HOME -name libjvm.so | head -n 1)
+          JAVA_HOME="${JAVA_HOME:?JAVA_HOME is not set}"
+          LIBJVM_PATH=$(find "$JAVA_HOME" -name libjvm.so | head -n 1)
           if [ -n "$LIBJVM_PATH" ]; then
             LIBJVM_DIR=$(dirname "$LIBJVM_PATH")
             export LD_LIBRARY_PATH="$LIBJVM_DIR:$LD_LIBRARY_PATH"
@@ -327,7 +327,7 @@ jobs:
       - name: Create DMG
         run: |
           cd build/macos/Build/Products/${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}-${{ env.FLAVOR }}
-          hdiutil create -volname "Offline Sync" -srcfolder "offline_sync.app" -ov -format UDZO "../../../../../offline_sync-macos-${{ github.event.inputs.build_type }}.dmg"
+          hdiutil create -volname "Offline Sync" -srcfolder "Offline Sync.app" -ov -format UDZO "../../../../../offline_sync-macos-${{ github.event.inputs.build_type }}.dmg"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4

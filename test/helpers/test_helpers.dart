@@ -74,6 +74,7 @@ MockModelManagementService getAndRegisterMockModelManagementService() {
   when(() => service.modelStatusStream).thenAnswer((_) => const Stream.empty());
   when(service.initialize).thenAnswer((_) async {});
   when(() => service.downloadModel(any())).thenAnswer((_) => Future.value());
+  when(service.resetErroredModels).thenReturn(null);
 
   return service;
 }

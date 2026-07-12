@@ -12,6 +12,20 @@ class ModelConfig {
     ...InferenceModels.all,
     ...EmbeddingModels.all,
   ];
+
+  static ModelDefinition activeInferenceModelOrDefault(
+    String? activeInferenceModelId,
+  ) {
+    if (activeInferenceModelId != null) {
+      for (final model in InferenceModels.all) {
+        if (model.id == activeInferenceModelId) {
+          return model;
+        }
+      }
+    }
+
+    return InferenceModels.gemma3_270M;
+  }
 }
 
 /// Inference models catalog

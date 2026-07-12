@@ -143,6 +143,26 @@ void main() {
     });
 
     group('Model switching logic -', () {
+      test(
+        'does not mark inference model active when activation fails',
+        () async {
+          final service = ModelManagementService(
+            inferenceModelActivator: (_) async {
+              throw Exception('activation failed');
+            },
+          );
+          addTearDown(service.dispose);
+
+          final model = service.models.firstWhere(
+            (m) => m.type == AppModelType.inference,
+          )..status = ModelStatus.downloaded;
+
+          await service.switchInferenceModel(model.id);
+
+          expect(service.activeInferenceModel, isNull);
+        },
+      );
+
       test('switchInferenceModel should validate model type', () async {
         // Find a model that's not an inference model
         final embeddingModel = service.models.firstWhere(

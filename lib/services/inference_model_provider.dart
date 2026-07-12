@@ -30,12 +30,9 @@ class InferenceModelProvider {
 
       final maxTokens =
           userMaxTokens ??
-          ModelConfig.allModels
-              .firstWhere(
-                (m) => m.type == AppModelType.inference,
-                orElse: () => InferenceModels.gemma3_270M,
-              )
-              .maxTokens;
+          ModelConfig.activeInferenceModelOrDefault(
+            settings.activeInferenceModelId,
+          ).maxTokens;
 
       _model = await FlutterGemma.getActiveModel(
         maxTokens: maxTokens,

@@ -209,7 +209,7 @@ void main() {
         );
       });
 
-      test('Should reset model error states on retry', () async {
+      test('Should delegate model error reset on retry', () async {
         final viewModel = StartupViewModel();
 
         final errorModel =
@@ -226,14 +226,11 @@ void main() {
         when(
           () => mockModelService.modelStatusStream,
         ).thenAnswer((_) => const Stream.empty());
+        when(mockModelService.resetErroredModels).thenReturn(null);
 
-        // Retry should reset error models
         await viewModel.retry();
 
-        // The model status should be reset to notDownloaded
-        expect(errorModel.status, ModelStatus.notDownloaded);
-        expect(errorModel.progress, 0.0);
-        expect(errorModel.errorMessage, isNull);
+        verify(mockModelService.resetErroredModels).called(1);
       });
     });
 

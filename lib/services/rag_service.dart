@@ -232,14 +232,18 @@ class RagService {
       searchResults = await expansionService.searchWithExpandedQueries(
         query,
         queryVariants,
-        limit: settings.rerankingEnabled ? settings.rerankTopK : 3,
+        limit: settings.rerankingEnabled
+            ? settings.rerankTopK
+            : settings.searchTopK,
         documentIds: documentIds,
       );
     } else {
       searchResults = await _vectorStore.hybridSearch(
         query,
         queryEmbedding,
-        limit: settings.rerankingEnabled ? settings.rerankTopK : 3,
+        limit: settings.rerankingEnabled
+            ? settings.rerankTopK
+            : settings.searchTopK,
         documentIds: documentIds,
       );
     }
@@ -256,8 +260,8 @@ class RagService {
         topK: settings.rerankTopK,
       );
       rerankingTime = stopwatch.elapsed - rerankStart;
-      // Take top 3 for generation
-      searchResults = searchResults.take(3).toList();
+      // Take top searchTopK for generation
+      searchResults = searchResults.take(settings.searchTopK).toList();
     }
 
     // 5. Emit metadata event with sources
@@ -328,12 +332,10 @@ class RagService {
     List<SearchResult> searchResults, {
     List<String>? conversationHistory,
   }) async {
-    // Get max tokens from model config
-    final modelConfig = ModelConfig.allModels.firstWhere(
-      (m) => m.type == AppModelType.inference,
-      orElse: () => InferenceModels.gemma3_270M,
+    final settings = locator<RagSettingsService>();
+    final modelConfig = ModelConfig.activeInferenceModelOrDefault(
+      settings.activeInferenceModelId,
     );
-
     // Calculate token budget using constants from RagConstants
     final maxTokens = modelConfig.maxTokens;
     final outputReserve = (maxTokens * RagConstants.outputReserveRatio).floor();
@@ -346,8 +348,6 @@ class RagService {
     final historyBudget = (availableForPrompt * RagConstants.historyBudgetRatio)
         .floor();
 
-    // Build components within budget
-    final settings = locator<RagSettingsService>();
     final historySection = _tokenManager.buildHistoryWithBudget(
       conversationHistory?.take(settings.maxHistoryMessages).toList() ?? [],
       historyBudget,
@@ -395,12 +395,10 @@ Answer based only on the provided context. If the answer is not in the context, 
     List<SearchResult> searchResults, {
     List<String>? conversationHistory,
   }) async* {
-    // Get max tokens from model config
-    final modelConfig = ModelConfig.allModels.firstWhere(
-      (m) => m.type == AppModelType.inference,
-      orElse: () => InferenceModels.gemma3_270M,
+    final settings = locator<RagSettingsService>();
+    final modelConfig = ModelConfig.activeInferenceModelOrDefault(
+      settings.activeInferenceModelId,
     );
-
     // Calculate token budget using constants from RagConstants
     final maxTokens = modelConfig.maxTokens;
     final outputReserve = (maxTokens * RagConstants.outputReserveRatio).floor();
@@ -413,8 +411,6 @@ Answer based only on the provided context. If the answer is not in the context, 
     final historyBudget = (availableForPrompt * RagConstants.historyBudgetRatio)
         .floor();
 
-    // Build components within budget
-    final settings = locator<RagSettingsService>();
     final historySection = _tokenManager.buildHistoryWithBudget(
       conversationHistory?.take(settings.maxHistoryMessages).toList() ?? [],
       historyBudget,
