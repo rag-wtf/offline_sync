@@ -169,10 +169,37 @@ class DocumentParserService {
       // Extract title/author if available
       // Helper to strip HTML tags
       String stripHtml(String html) {
-        return html.replaceAll(
-          RegExp('<[^>]*>', multiLine: true, caseSensitive: false),
-          ' ',
-        );
+        final withoutScriptAndStyle = html
+            .replaceAll(
+              RegExp(
+                '<script[^>]*>.*?</script>',
+                multiLine: true,
+                caseSensitive: false,
+                dotAll: true,
+              ),
+              ' ',
+            )
+            .replaceAll(
+              RegExp(
+                '<style[^>]*>.*?</style>',
+                multiLine: true,
+                caseSensitive: false,
+                dotAll: true,
+              ),
+              ' ',
+            );
+
+        return withoutScriptAndStyle
+            .replaceAll(
+              RegExp('<[^>]*>', multiLine: true, caseSensitive: false),
+              ' ',
+            )
+            .replaceAll('&amp;', '&')
+            .replaceAll('&lt;', '<')
+            .replaceAll('&gt;', '>')
+            .replaceAll('&quot;', '"')
+            .replaceAll('&#39;', "'")
+            .replaceAll('&nbsp;', ' ');
       }
 
       // Iterate over chapters

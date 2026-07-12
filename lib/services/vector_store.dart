@@ -215,10 +215,14 @@ class VectorStore {
     final keywordResults = _hasFts5
         ? _fts5Search(
             query,
-            limit: 100,
+            limit: RagConstants.hybridSearchCandidatePoolSize,
             documentIds: documentIds,
           ) // Increase candidate pool
-        : _fallbackKeywordSearch(query, limit: 100, documentIds: documentIds);
+        : _fallbackKeywordSearch(
+            query,
+            limit: RagConstants.hybridSearchCandidatePoolSize,
+            documentIds: documentIds,
+          );
 
     // 2. Compute Semantic Search (using Candidates from FTS5 if possible,
     // or all if small)
@@ -483,7 +487,11 @@ INSERT OR REPLACE INTO vectors
 
   List<EmbeddingData> getChunksForDocument(String documentId) {
     final results = _db!.select(
-      'SELECT * FROM vectors WHERE document_id = ? ORDER BY id ASC',
+      r'''
+      SELECT * FROM vectors
+      WHERE document_id = ?
+      ORDER BY CAST(json_extract(metadata, '$.seq') AS INTEGER) ASC, id ASC
+      ''',
       [documentId],
     );
 

@@ -4,6 +4,16 @@
 /// search relevance scoring. Extracted from hardcoded values to improve
 /// maintainability and tunability.
 class RagConstants {
+  // Search Candidate Configuration
+
+  /// Candidate pool size for keyword search before semantic fusion.
+  static const int hybridSearchCandidatePoolSize = 100;
+
+  // Conversation History Configuration
+
+  /// Upper bound while building history to avoid overlong loops.
+  static const int historyBuildMessageCap = 10;
+
   // Token Budget Allocation Ratios (for prompt construction)
 
   /// Percentage of available tokens reserved for model output (25%)
@@ -27,6 +37,20 @@ class RagConstants {
 
   /// Maximum characters to send to reranking model (truncate longer content)
   static const int maxCharsForReranking = 500;
+
+  // Contextual Retrieval Configuration
+
+  /// Conservative context window used for on-device contextual retrieval.
+  static const int contextualRetrievalModelMaxTokens = 2048;
+
+  /// Reserved prompt tokens for the contextual retrieval instructions.
+  static const int contextualRetrievalPromptOverheadTokens = 150;
+
+  /// Reserved prompt tokens for the active chunk being explained.
+  static const int contextualRetrievalChunkReserveTokens = 100;
+
+  /// Approximate characters-per-token heuristic.
+  static const int estimatedCharsPerToken = 4;
 
   // Search Ranking Configuration
 

@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
+import 'package:offline_sync/l10n/gen/app_localizations.dart';
 import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/document_management_service.dart';
 import 'package:stacked/stacked.dart';
@@ -18,8 +21,15 @@ class DocumentLibraryViewModel extends BaseViewModel {
   // Track active ingestion progress per document
   final Map<String, IngestionProgress> _activeIngestions = {};
   Map<String, IngestionProgress> get activeIngestions => _activeIngestions;
+  StreamSubscription<IngestionProgress>? _progressSubscription;
 
   bool get isIngesting => _activeIngestions.isNotEmpty;
+
+  AppLocalizations? get _l10n {
+    final context = StackedService.navigatorKey?.currentContext;
+    if (context == null) return null;
+    return AppLocalizations.of(context);
+  }
 
   Future<void> initialize() async {
     setBusy(true);
@@ -27,7 +37,10 @@ class DocumentLibraryViewModel extends BaseViewModel {
     setBusy(false);
 
     // Listen to progress stream to update UI in real-time
-    _documentService.ingestionProgressStream.listen((event) async {
+    _progressSubscription = _documentService.ingestionProgressStream.listen((
+      event,
+    ) async {
+      if (disposed) return;
       // Update active ingestion tracking
       if (event.stage == 'complete' || event.stage == 'error') {
         // Keep the final state briefly before removing
@@ -36,13 +49,16 @@ class DocumentLibraryViewModel extends BaseViewModel {
 
         // Wait a moment to show completion/error, then remove
         await Future<void>.delayed(const Duration(seconds: 2));
+        if (disposed) return;
         _activeIngestions.remove(event.documentId);
 
         await _refreshDocuments();
         if (event.stage == 'error') {
           await _dialogService.showDialog(
-            title: 'Ingestion Error',
-            description: 'Failed to process ${event.documentTitle}.',
+            title: _l10n?.ingestionErrorTitle ?? 'Ingestion Error',
+            description:
+                _l10n?.failedToProcessDocument(event.documentTitle) ??
+                'Failed to process ${event.documentTitle}.',
           );
         }
       } else {
@@ -70,8 +86,10 @@ class DocumentLibraryViewModel extends BaseViewModel {
           await _documentService.addDocumentFromPlatformFile(file);
         } on Exception catch (e) {
           await _dialogService.showDialog(
-            title: 'Error',
-            description: 'Failed to add ${file.name}: $e',
+            title: _l10n?.errorTitle ?? 'Error',
+            description:
+                _l10n?.failedToAddDocument(file.name, e.toString()) ??
+                'Failed to add ${file.name}: $e',
           );
         }
       }
@@ -80,21 +98,25 @@ class DocumentLibraryViewModel extends BaseViewModel {
     }
   }
 
-  Future<void> deleteDocument(Document doc) async {
+  Future<bool> deleteDocument(Document doc) async {
     final response = await _dialogService.showConfirmationDialog(
-      title: 'Delete Document?',
+      title: _l10n?.deleteDocumentTitle ?? 'Delete Document?',
       description:
+          _l10n?.deleteDocumentDescription(doc.title) ??
           'Are you sure you want to delete "${doc.title}"? '
-          'This will remove all associated knowledge chunks.',
-      confirmationTitle: 'Delete',
+              'This will remove all associated knowledge chunks.',
+      confirmationTitle: _l10n?.deleteAction ?? 'Delete',
     );
 
-    if (response?.confirmed ?? false) {
+    final confirmed = response?.confirmed ?? false;
+    if (confirmed) {
       setBusy(true);
       await _documentService.deleteDocument(doc.id);
       await _refreshDocuments();
       setBusy(false);
     }
+
+    return confirmed;
   }
 
   Future<void> showDocumentDetails(Document doc) async {
@@ -102,5 +124,11 @@ class DocumentLibraryViewModel extends BaseViewModel {
       Routes.documentDetailView,
       arguments: DocumentDetailViewArguments(document: doc),
     );
+  }
+
+  @override
+  void dispose() {
+    unawaited(_progressSubscription?.cancel());
+    super.dispose();
   }
 }

@@ -349,19 +349,26 @@ class DocumentManagementService {
     final oldDoc = _vectorStore.getDocument(documentId);
     if (oldDoc == null) return null;
 
-    final file = File(oldDoc.filePath);
-    if (!file.existsSync()) {
-      throw const FileSystemException('Original file not found');
+    if (!_hasSourceFile(oldDoc)) {
+      return oldDoc;
     }
 
+    final file = File(oldDoc.filePath);
     final newHash = await _calculateFileHash(file);
     if (newHash == oldDoc.contentHash &&
         oldDoc.status == IngestionStatus.complete) {
       return oldDoc;
     }
 
-    _vectorStore.deleteDocument(documentId);
-    return addDocument(oldDoc.filePath, skipDuplicateCheck: true);
+    final refreshedDoc = await addDocument(oldDoc.filePath);
+    if (refreshedDoc.id != oldDoc.id) {
+      _vectorStore.deleteDocument(documentId);
+    }
+    return refreshedDoc;
+  }
+
+  bool _hasSourceFile(Document document) {
+    return File(document.filePath).existsSync();
   }
 
   Future<void> deleteDocument(String documentId) async {

@@ -1,3 +1,5 @@
+import 'package:offline_sync/services/rag_constants.dart';
+
 /// Service for managing token estimation and budget calculations
 class RagTokenManager {
   /// Estimates the number of tokens in a string
@@ -35,7 +37,7 @@ class RagTokenManager {
 
       // Stop if we have a reasonable amount of context (e.g., max 10 messages)
       // to avoid extremely long loops, though tokenBudget usually handles this.
-      if (limitedHistory.length >= 10) break;
+      if (limitedHistory.length >= RagConstants.historyBuildMessageCap) break;
     }
 
     if (limitedHistory.isEmpty) return '';

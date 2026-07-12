@@ -10,17 +10,15 @@ class ChatView extends StackedView<ChatViewModel> {
   const ChatView({super.key});
 
   void _scrollToBottom(ChatViewModel viewModel) {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (viewModel.scrollController.hasClients) {
-        unawaited(
-          viewModel.scrollController.animateTo(
-            viewModel.scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeOut,
-          ),
-        );
-      }
-    });
+    if (viewModel.scrollController.hasClients) {
+      unawaited(
+        viewModel.scrollController.animateTo(
+          viewModel.scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        ),
+      );
+    }
   }
 
   void _showFilterDialog(BuildContext context, ChatViewModel viewModel) {
@@ -118,10 +116,12 @@ class ChatView extends StackedView<ChatViewModel> {
     final colorScheme = theme.colorScheme;
 
     // Listen for message changes to scroll
-    if (viewModel.shouldScroll) {
-      _scrollToBottom(viewModel);
-      viewModel.onScrolled();
-    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (viewModel.shouldScroll) {
+        _scrollToBottom(viewModel);
+        viewModel.onScrolled();
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(

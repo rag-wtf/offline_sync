@@ -9,6 +9,7 @@ import 'package:offline_sync/services/chat_repository.dart';
 import 'package:offline_sync/services/document_management_service.dart';
 import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/rag_service.dart';
+import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
 import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
 import 'package:stacked/stacked.dart';
@@ -49,6 +50,7 @@ class ChatViewModel extends BaseViewModel {
   final DialogService _dialogService = locator<DialogService>();
   final DocumentManagementService _documentService =
       locator<DocumentManagementService>();
+  final RagSettingsService _ragSettings = locator<RagSettingsService>();
 
   /// List of messages in the current conversation
   final List<ChatMessage> messages = [];
@@ -135,6 +137,9 @@ class ChatViewModel extends BaseViewModel {
   Future<void> sendMessage(String text) async {
     if (text.trim().isEmpty || _isProcessing) return;
 
+    _isProcessing = true;
+    notifyListeners();
+
     final userMsg = ChatMessage(
       content: text,
       isUser: true,
@@ -143,9 +148,6 @@ class ChatViewModel extends BaseViewModel {
     messages.add(userMsg);
     await _chatRepository.saveMessage(userMsg); // Persist user message
     _shouldScroll = true;
-    notifyListeners();
-
-    _isProcessing = true;
     notifyListeners();
 
     // Add placeholder AI message that will be updated with streaming content
@@ -161,9 +163,10 @@ class ChatViewModel extends BaseViewModel {
 
     try {
       // Build history from last 10 messages (excluding current placeholder)
+      final maxHistoryMessages = _ragSettings.maxHistoryMessages;
       final history = messages.reversed
           .skip(1) // Skip the placeholder AI message
-          .take(10)
+          .take(maxHistoryMessages)
           .toList()
           .reversed
           .map((m) => '${m.isUser ? "User" : "AI"}: ${m.content}')
@@ -221,20 +224,15 @@ class ChatViewModel extends BaseViewModel {
 
   /// Shows a detailed view of a source document used for context
   Future<void> showSourceDetail(SearchResult source) async {
-    // If we have documentId in metadata, we can navigate to detail view
-    final docId = source.metadata['documentId'] as String?;
-    if (docId != null) {
-      // For now, show a dialog with the content as we can't easily fetch
-      // the Document object without adding a method to
-      // DocumentManagementService.
-      // Phase 4 requirement: Source detail bottom sheet
-      // (impl as dialog/bottom sheet)
-
-      await _dialogService.showDialog(
-        title: (source.metadata['documentTitle'] as String?) ?? 'Source Detail',
-        description: source.content,
-      );
-    }
+    // For now, show a dialog with the content as we can't easily fetch
+    // the Document object without adding a method to
+    // DocumentManagementService.
+    // Phase 4 requirement: Source detail bottom sheet
+    // (impl as dialog/bottom sheet)
+    await _dialogService.showDialog(
+      title: source.documentTitle ?? 'Source Detail',
+      description: source.content,
+    );
   }
 
   /// Opens file picker and starts ingestion for one or more files

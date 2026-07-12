@@ -13,7 +13,7 @@ class MainApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppLifecycleRoot(
       child: MaterialApp(
-        title: 'Offline RAG Sync',
+        onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
         localizationsDelegates: AppLocalizations.localizationsDelegates,

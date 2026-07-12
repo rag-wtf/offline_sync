@@ -25,8 +25,9 @@ class _ChatInputState extends State<ChatInput> {
   final _focusNode = FocusNode();
 
   void _handleSend() {
-    if (_controller.text.isEmpty) return;
-    widget.onSend(_controller.text);
+    final trimmedText = _controller.text.trim();
+    if (trimmedText.isEmpty || widget.isProcessing) return;
+    widget.onSend(trimmedText);
     _controller.clear();
     _focusNode.requestFocus();
   }
@@ -118,7 +119,9 @@ class _ChatInputState extends State<ChatInput> {
                     ),
                   ),
                   style: theme.textTheme.bodyMedium,
-                  onSubmitted: (_) => _handleSend(),
+                  onSubmitted: widget.isProcessing
+                      ? null
+                      : (_) => _handleSend(),
                   textInputAction: TextInputAction.send,
                 ),
               ),

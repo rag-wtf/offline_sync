@@ -244,5 +244,64 @@ void main() {
         await file.delete();
       },
     );
+
+    test('refreshDocument keeps old document when reingestion fails', () async {
+      final file = File('refresh_failure.txt');
+      await file.writeAsString('new content');
+
+      final oldDoc = Document(
+        id: 'old_doc',
+        title: 'Old',
+        filePath: file.path,
+        format: DocumentFormat.plainText,
+        chunkCount: 1,
+        totalCharacters: 11,
+        contentHash: 'old-hash',
+        ingestedAt: DateTime.now(),
+      );
+
+      when(() => mockVectorStore.getDocument('old_doc')).thenReturn(oldDoc);
+      when(() => mockVectorStore.findByHash(any<String>())).thenReturn(null);
+      when(
+        () => mockParserService.detectFormat(any<String>()),
+      ).thenReturn(DocumentFormat.plainText);
+      when(
+        () => mockVectorStore.insertDocument(any<Document>()),
+      ).thenThrow(Exception('insert failed'));
+
+      await expectLater(
+        service.refreshDocument('old_doc'),
+        throwsA(isA<Exception>()),
+      );
+
+      verifyNever(() => mockVectorStore.deleteDocument('old_doc'));
+
+      await file.delete();
+    });
+
+    test(
+      'refreshDocument returns byte-backed documents without refreshing',
+      () async {
+        final byteBackedDoc = Document(
+          id: 'bytes_doc',
+          title: 'Bytes Doc',
+          filePath: 'bytes_doc.pdf',
+          format: DocumentFormat.pdf,
+          chunkCount: 1,
+          totalCharacters: 128,
+          contentHash: 'hash',
+          ingestedAt: DateTime.now(),
+        );
+
+        when(() => mockVectorStore.getDocument('bytes_doc')).thenReturn(
+          byteBackedDoc,
+        );
+
+        final result = await service.refreshDocument('bytes_doc');
+
+        expect(result, same(byteBackedDoc));
+        verifyNever(() => mockVectorStore.deleteDocument(any()));
+      },
+    );
   });
 }

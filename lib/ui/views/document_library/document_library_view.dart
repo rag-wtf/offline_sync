@@ -141,8 +141,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
                   ),
                 ),
                 confirmDismiss: (direction) async {
-                  await viewModel.deleteDocument(doc);
-                  return false;
+                  return viewModel.deleteDocument(doc);
                 },
                 child: Card(
                   margin: const EdgeInsets.only(bottom: 12),

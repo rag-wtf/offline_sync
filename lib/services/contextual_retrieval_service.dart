@@ -5,6 +5,7 @@ import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
+import 'package:offline_sync/services/rag_constants.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 
 class ContextualizedChunk {
@@ -46,7 +47,7 @@ class ContextualRetrievalService {
   int get _modelMaxTokens {
     // Ideally fetch active model config, but for now use safe default
     // for on-device context generation
-    return 2048;
+    return RagConstants.contextualRetrievalModelMaxTokens;
   }
 
   /// Check if the document fits within context window for *one-shot* context
@@ -56,13 +57,14 @@ class ContextualRetrievalService {
   }
 
   int _calculateMaxDocumentChars(int modelMaxTokens) {
-    final outputReserve = (modelMaxTokens * 0.25).floor();
-    const promptOverhead = 150;
-    const chunkReserve = 100;
+    final outputReserve = (modelMaxTokens * RagConstants.outputReserveRatio)
+        .floor();
+    const promptOverhead = RagConstants.contextualRetrievalPromptOverheadTokens;
+    const chunkReserve = RagConstants.contextualRetrievalChunkReserveTokens;
     final available =
         modelMaxTokens - outputReserve - promptOverhead - chunkReserve;
     // ~4 chars per token heuristic
-    return available * 4;
+    return available * RagConstants.estimatedCharsPerToken;
   }
 
   /// Generate context for a specific chunk using the document content
