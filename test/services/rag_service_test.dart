@@ -169,7 +169,6 @@ void main() {
             query,
             expandedQueries,
             limit: 3,
-            documentIds: null,
           ),
         ).called(1);
         verifyNever(() => mockVectorStore.hybridSearch(any(), any()));
@@ -184,9 +183,9 @@ void main() {
           SearchResult(id: '3', content: 'Third', score: 0.3, metadata: {}),
         ];
         final rerankedResults = [
-          SearchResult(id: '3', content: 'Third', score: 9.0, metadata: {}),
-          SearchResult(id: '2', content: 'Second', score: 8.0, metadata: {}),
-          SearchResult(id: '1', content: 'First', score: 7.0, metadata: {}),
+          SearchResult(id: '3', content: 'Third', score: 9, metadata: {}),
+          SearchResult(id: '2', content: 'Second', score: 8, metadata: {}),
+          SearchResult(id: '1', content: 'First', score: 7, metadata: {}),
         ];
 
         when(() => mockVectorStore.initialize()).thenAnswer((_) async {});
@@ -222,7 +221,6 @@ void main() {
             query,
             embedding,
             limit: 3,
-            documentIds: null,
           ),
         ).called(1);
         verify(
@@ -270,37 +268,40 @@ void main() {
         ).called(1);
       });
 
-      test('uses no-context fallback text when retrieval returns nothing', () async {
-        const query = 'Test query';
-        final embedding = [0.1, 0.2, 0.3];
-        Message? promptMessage;
+      test(
+        'uses no-context fallback text when retrieval returns nothing',
+        () async {
+          const query = 'Test query';
+          final embedding = [0.1, 0.2, 0.3];
+          Message? promptMessage;
 
-        when(() => mockVectorStore.initialize()).thenAnswer((_) async {});
-        await service.initialize();
+          when(() => mockVectorStore.initialize()).thenAnswer((_) async {});
+          await service.initialize();
 
-        when(
-          () => mockEmbeddingService.generateEmbedding(query),
-        ).thenAnswer((_) async => embedding);
-        when(() => mockSettingsService.rerankingEnabled).thenReturn(false);
-        when(
-          () => mockVectorStore.hybridSearch(
-            query,
-            embedding,
-            limit: any(named: 'limit'),
-            documentIds: any(named: 'documentIds'),
-          ),
-        ).thenAnswer((_) async => []);
-        await arrangeGeneration(
-          onAddQuery: (message) async {
-            promptMessage = message;
-          },
-        );
+          when(
+            () => mockEmbeddingService.generateEmbedding(query),
+          ).thenAnswer((_) async => embedding);
+          when(() => mockSettingsService.rerankingEnabled).thenReturn(false);
+          when(
+            () => mockVectorStore.hybridSearch(
+              query,
+              embedding,
+              limit: any(named: 'limit'),
+              documentIds: any(named: 'documentIds'),
+            ),
+          ).thenAnswer((_) async => []);
+          await arrangeGeneration(
+            onAddQuery: (message) async {
+              promptMessage = message;
+            },
+          );
 
-        await service.askWithRAG(query);
+          await service.askWithRAG(query);
 
-        expect(promptMessage, isNotNull);
-        expect(promptMessage!.text, contains('No relevant context found.'));
-      });
+          expect(promptMessage, isNotNull);
+          expect(promptMessage!.text, contains('No relevant context found.'));
+        },
+      );
 
       test('surfaces generation errors', () async {
         const query = 'Test query';

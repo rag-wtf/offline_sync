@@ -217,7 +217,8 @@ void main() {
 
     group('contextualizeDocument -', () {
       test(
-        'should contextualize chunks with full document context and report progress',
+        'should contextualize chunks with full document context and '
+        'report progress',
         () async {
           final testService = TestContextualRetrievalService(
             contexts: {
@@ -259,7 +260,8 @@ void main() {
       );
 
       test(
-        'should preserve original chunk when contextual generation returns empty',
+        'should preserve original chunk when contextual generation returns '
+        'empty',
         () async {
           final testService = TestContextualRetrievalService();
           final results = await testService.contextualizeDocument(
@@ -286,8 +288,14 @@ void main() {
           chunks: const ['Target chunk'],
         );
 
-        expect(results.single.combinedContent, 'Windowed context\n\nTarget chunk');
-        expect(testService.capturedDocumentContent.single, isNot(largeDocument));
+        expect(
+          results.single.combinedContent,
+          'Windowed context\n\nTarget chunk',
+        );
+        expect(
+          testService.capturedDocumentContent.single,
+          isNot(largeDocument),
+        );
         expect(
           testService.capturedDocumentContent.single.length,
           lessThan(largeDocument.length),
@@ -299,7 +307,8 @@ void main() {
       });
 
       test(
-        'should use the leading window when chunk is absent from a large document',
+        'should use the leading window when chunk is absent from a large '
+        'document',
         () async {
           final testService = TestContextualRetrievalService();
           final largeDocument = '${'Lead' * 3000}${'Tail' * 3000}';

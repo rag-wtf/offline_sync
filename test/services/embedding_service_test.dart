@@ -11,20 +11,23 @@ void main() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    test('surfaces a clear error when no active embedder is configured', () async {
-      await FlutterGemma.clearActiveEmbeddingIdentity();
-      final service = EmbeddingService();
+    test(
+      'surfaces a clear error when no active embedder is configured',
+      () async {
+        await FlutterGemma.clearActiveEmbeddingIdentity();
+        final service = EmbeddingService();
 
-      await expectLater(
-        () => service.generateEmbedding('test query'),
-        throwsA(
-          isA<StateError>().having(
-            (error) => error.message,
-            'message',
-            contains('No active embedding model set'),
+        await expectLater(
+          () => service.generateEmbedding('test query'),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              contains('No active embedding model set'),
+            ),
           ),
-        ),
-      );
-    });
+        );
+      },
+    );
   });
 }

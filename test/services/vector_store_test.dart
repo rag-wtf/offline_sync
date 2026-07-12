@@ -148,9 +148,9 @@ void main() {
         );
 
         const k = RagConstants.rrfConstant;
-        final expectedShared = (0.7 / (k + 2)) + (0.3 / (k + 1));
-        final expectedSemanticOnly = 0.7 / (k + 1);
-        final expectedKeywordOnly = 0.3 / (k + 2);
+        const expectedShared = (0.7 / (k + 2)) + (0.3 / (k + 1));
+        const expectedSemanticOnly = 0.7 / (k + 1);
+        const expectedKeywordOnly = 0.3 / (k + 2);
 
         expect(
           results.map((result) => result.id).toList(),
