@@ -59,3 +59,27 @@ Results:
 
 ## Concerns
 - `ChatViewModel.showSourceDetail` still falls back to the English `"Source Detail"` string when source metadata has no title. That fallback was outside the minimum l10n scope in the brief.
+
+---
+
+## Task 13 Review Fix Follow-up
+
+### Fixes Applied
+- Restored file-backed `refreshDocument` reingestion semantics in `DocumentManagementService` by forcing `addDocument(..., skipDuplicateCheck: true)` while preserving the Task 13 byte-backed graceful return path.
+- Reverted the unrelated `VectorStore.getChunksForDocument` `json_extract(metadata, '$.seq')` ordering hunk per review scope.
+- Added focused regression coverage for file-backed refresh with unchanged content hashes.
+
+### Verification
+Commands run:
+
+```bash
+rtk dart format lib/services/document_management_service.dart lib/services/vector_store.dart test/services/document_management_service_test.dart
+rtk flutter analyze
+rtk flutter test
+```
+
+Results:
+- `rtk flutter analyze`: passed, no issues found.
+- `rtk flutter test`: failed in existing `test/services/vector_store_test.dart` expectation `getChunksForDocument returns chunks in sequence order`.
+  - `DocumentManagementService` refresh tests, including the new file-backed unchanged-hash regression case, passed during the run.
+  - The remaining failure is a direct consequence of reverting the unrelated Task 13 ordering hunk in `lib/services/vector_store.dart`, which the review explicitly requested to drop; the corresponding test file was already modified in the worktree and is outside the allowed edit scope for this fix.

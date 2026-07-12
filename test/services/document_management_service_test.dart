@@ -303,5 +303,58 @@ void main() {
         verifyNever(() => mockVectorStore.deleteDocument(any()));
       },
     );
+
+    test(
+      'refreshDocument reingests file-backed documents '
+      'even when hash is unchanged',
+      () async {
+        final file = File('refresh_same_hash.txt');
+        await file.writeAsString('Refresh content');
+
+        final oldDoc = Document(
+          id: 'old_doc',
+          title: 'refresh_same_hash.txt',
+          filePath: file.path,
+          format: DocumentFormat.plainText,
+          chunkCount: 1,
+          totalCharacters: 15,
+          contentHash: 'placeholder-hash',
+          ingestedAt: DateTime.now(),
+          status: IngestionStatus.complete,
+        );
+
+        when(() => mockVectorStore.getDocument('old_doc')).thenReturn(oldDoc);
+        when(
+          () => mockVectorStore.findByHash(any<String>()),
+        ).thenReturn(oldDoc);
+        when(
+          () => mockParserService.detectFormat(any<String>()),
+        ).thenReturn(DocumentFormat.plainText);
+        when(
+          () => mockEmbeddingService.generateEmbedding(any<String>()),
+        ).thenAnswer((_) async => [0.1, 0.2]);
+        when(
+          () => mockVectorStore.insertDocument(any<Document>()),
+        ).thenReturn(null);
+        when(
+          () => mockVectorStore.updateDocument(any<Document>()),
+        ).thenReturn(null);
+        when(
+          () =>
+              mockVectorStore.insertEmbeddingsBatch(any<List<EmbeddingData>>()),
+        ).thenReturn(null);
+        when(() => mockVectorStore.deleteDocument('old_doc')).thenReturn(null);
+
+        final result = await service.refreshDocument('old_doc');
+
+        expect(result, isNotNull);
+        expect(result!.id, isNot(oldDoc.id));
+        expect(result.status, IngestionStatus.complete);
+        verify(() => mockVectorStore.insertDocument(any<Document>())).called(1);
+        verify(() => mockVectorStore.deleteDocument('old_doc')).called(1);
+
+        await file.delete();
+      },
+    );
   });
 }

@@ -487,11 +487,7 @@ INSERT OR REPLACE INTO vectors
 
   List<EmbeddingData> getChunksForDocument(String documentId) {
     final results = _db!.select(
-      r'''
-      SELECT * FROM vectors
-      WHERE document_id = ?
-      ORDER BY CAST(json_extract(metadata, '$.seq') AS INTEGER) ASC, id ASC
-      ''',
+      'SELECT * FROM vectors WHERE document_id = ? ORDER BY id ASC',
       [documentId],
     );
 

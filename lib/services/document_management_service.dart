@@ -353,14 +353,10 @@ class DocumentManagementService {
       return oldDoc;
     }
 
-    final file = File(oldDoc.filePath);
-    final newHash = await _calculateFileHash(file);
-    if (newHash == oldDoc.contentHash &&
-        oldDoc.status == IngestionStatus.complete) {
-      return oldDoc;
-    }
-
-    final refreshedDoc = await addDocument(oldDoc.filePath);
+    final refreshedDoc = await addDocument(
+      oldDoc.filePath,
+      skipDuplicateCheck: true,
+    );
     if (refreshedDoc.id != oldDoc.id) {
       _vectorStore.deleteDocument(documentId);
     }
