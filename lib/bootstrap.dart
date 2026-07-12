@@ -6,14 +6,15 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
-
-// Conditional imports for SQLite initialization
 import 'package:offline_sync/bootstrap_mobile.dart'
     if (dart.library.html) 'package:offline_sync/bootstrap_web.dart'
     as platform;
-
 import 'package:offline_sync/services/environment_service.dart';
 import 'package:offline_sync/services/logging_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+const notificationPermissionRequestAttemptedKey =
+    'notification_permission_request_attempted';
 
 Future<void> bootstrap(
   FutureOr<Widget> Function() builder, {
@@ -46,7 +47,7 @@ Future<void> bootstrap(
     // Android 13+ requires a runtime grant for notification visibility.
     // Downloads still run in the foreground if the permission is denied, so
     // progress notifications are best-effort rather than required for success.
-    await _requestAndroidNotificationPermissionIfNeeded();
+    unawaited(_requestAndroidNotificationPermissionIfNeeded());
   }
 
   await FlutterGemma.initialize();
@@ -85,16 +86,62 @@ Future<void> bootstrap(
 }
 
 Future<void> _requestAndroidNotificationPermissionIfNeeded() async {
-  final androidInfo = await DeviceInfoPlugin().androidInfo;
-  if (androidInfo.version.sdkInt < 33) {
-    return;
-  }
-
-  final status = await FileDownloader().permissions.status(
-    PermissionType.notifications,
+  await requestAndroidNotificationPermissionIfNeeded(
+    sdkIntProvider: () async =>
+        (await DeviceInfoPlugin().androidInfo).version.sdkInt,
+    permissionStatusProvider: () async => FileDownloader().permissions.status(
+      PermissionType.notifications,
+    ),
+    permissionRequest: () async => FileDownloader().permissions.request(
+      PermissionType.notifications,
+    ),
   );
-  if (status == PermissionStatus.undetermined ||
-      status == PermissionStatus.denied) {
-    await FileDownloader().permissions.request(PermissionType.notifications);
+}
+
+@visibleForTesting
+Future<void> requestAndroidNotificationPermissionIfNeeded({
+  Future<int> Function()? sdkIntProvider,
+  Future<PermissionStatus> Function()? permissionStatusProvider,
+  Future<PermissionStatus> Function()? permissionRequest,
+  Future<SharedPreferences> Function()? sharedPreferencesProvider,
+}) async {
+  try {
+    final resolvedSdkIntProvider =
+        sdkIntProvider ??
+        () async => (await DeviceInfoPlugin().androidInfo).version.sdkInt;
+    if (await resolvedSdkIntProvider() < 33) {
+      return;
+    }
+
+    final prefs =
+        await (sharedPreferencesProvider ?? SharedPreferences.getInstance)();
+    final status =
+        await (permissionStatusProvider ??
+            () async => FileDownloader().permissions.status(
+              PermissionType.notifications,
+            ))();
+
+    if (status == PermissionStatus.granted) {
+      return;
+    }
+
+    if (prefs.getBool(notificationPermissionRequestAttemptedKey) ?? false) {
+      return;
+    }
+
+    await prefs.setBool(notificationPermissionRequestAttemptedKey, true);
+
+    if (status != PermissionStatus.undetermined) {
+      return;
+    }
+
+    await (permissionRequest ??
+        () async => FileDownloader().permissions.request(
+          PermissionType.notifications,
+        ))();
+  } on Object catch (error, stackTrace) {
+    debugPrint(
+      'Notification permission request failed: $error\n$stackTrace',
+    );
   }
 }

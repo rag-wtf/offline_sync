@@ -61,3 +61,30 @@ These were first observed failing before implementation, then passing after the 
 
 ## Concerns
 - Crash persistence is stored in `SharedPreferences` rather than a rotating file. It is persisted locally and satisfies the task's no-remote-reporter requirement, but it is intentionally lightweight.
+
+## Review Fix Follow-up
+
+### Findings Addressed
+- Made Android notification permission handling best-effort and non-blocking by removing it from the startup critical path (`unawaited(...)`) and swallowing/logging all helper failures locally so startup cannot abort on a permission/platform-channel issue.
+- Persisted a one-time notification permission attempt flag in `SharedPreferences` under `notification_permission_request_attempted`.
+- Stopped re-requesting after a denied attempt by only prompting when Android 13+ status is `undetermined`; `denied` now records the attempt and exits without prompting again.
+- Kept the product decision intact: downloads still proceed even when notification visibility permission is not granted.
+
+### Additional Test Coverage
+- Added `test/bootstrap_test.dart` covering:
+  - request-once behavior for Android 13+ when permission is `undetermined`
+  - no re-request after a denied attempt
+  - denied status recorded as attempted without prompting
+  - helper failures completing without throwing
+
+### Verification
+Commands run after the fix:
+
+```bash
+rtk flutter analyze
+rtk flutter test
+```
+
+Results:
+- `rtk flutter analyze`: passed, no issues found.
+- `rtk flutter test`: passed, `147` tests passed.
