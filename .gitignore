@@ -9,6 +9,7 @@
 .history
 .svn/
 migrate_working_dir/
+.worktrees/
 
 # IntelliJ related
 *.iml
@@ -90,7 +91,6 @@ coverage/
 packages/**/pubspec.lock
 
 # Web related
-lib/generated_plugin_registrant.dart
 
 # Symbolication related
 app.*.symbols
@@ -113,3 +113,9 @@ app.*.map.json
 
 # Generated l10n files
 lib/l10n/gen/
+
+# Vector store
+vectors.db
+
+# Edge AI
+edge_ai

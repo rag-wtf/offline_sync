@@ -3,5 +3,100 @@
     "counterAppBarTitle": "Counter",
     "@counterAppBarTitle": {
         "description": "Text shown in the AppBar of the Counter Page"
-    }
+    },
+    "ragSyncChatTitle": "RAG Sync Chat",
+    "appTitle": "Offline RAG Sync",
+    "filterByDocuments": "Filter by Documents",
+    "noDocumentsAvailable": "No documents available.",
+    "done": "Done",
+    "loading": "Loading...",
+    "startConversation": "Start a conversation",
+    "startConversationSubtitle": "Ask questions about your documents\nor upload new ones to get started.",
+    "sourceDetail": "Source Detail",
+    "ingestionErrorTitle": "Ingestion Error",
+    "failedToProcessDocument": "Failed to process {title}.",
+    "@failedToProcessDocument": {
+        "placeholders": {
+            "title": {
+                "type": "String"
+            }
+        }
+    },
+    "errorTitle": "Error",
+    "failedToAddDocument": "Failed to add {fileName}: {error}",
+    "@failedToAddDocument": {
+        "placeholders": {
+            "fileName": {
+                "type": "String"
+            },
+            "error": {
+                "type": "String"
+            }
+        }
+    },
+    "deleteDocumentTitle": "Delete Document?",
+    "deleteDocumentDescription": "Are you sure you want to delete \"{title}\"? This will remove all associated knowledge chunks.",
+    "@deleteDocumentDescription": {
+        "placeholders": {
+            "title": {
+                "type": "String"
+            }
+        }
+    },
+    "deleteAction": "Delete",
+    "settingsTooltip": "Settings",
+    "initializationError": "Initialization error: {error}",
+    "@initializationError": {
+        "placeholders": {
+            "error": {
+                "type": "Object"
+            }
+        }
+    },
+    "authRequired": "Please provide authentication and try again",
+    "errorGeneric": "Error: {error}",
+    "@errorGeneric": {
+        "placeholders": {
+            "error": {
+                "type": "Object"
+            }
+        }
+    },
+    "failedIngestion": "Failed to ingest {count} file(s)",
+    "@failedIngestion": {
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
+    },
+    "mixedIngestion": "Ingested {success} file(s). Failed to ingest {failed} file(s).",
+    "@mixedIngestion": {
+        "placeholders": {
+            "success": {
+                "type": "int"
+            },
+            "failed": {
+                "type": "int"
+            }
+        }
+    },
+    "successIngestion": "Successfully ingested {count} file(s)",
+    "@successIngestion": {
+        "placeholders": {
+            "count": {
+                "type": "int"
+            }
+        }
+    },
+    "ingestionError": "Ingestion error: {error}",
+    "@ingestionError": {
+         "placeholders": {
+            "error": {
+                "type": "Object"
+            }
+        }
+    },
+    "attachDocument": "Attach document",
+    "chatInputHint": "Ask about your documents..."
 }

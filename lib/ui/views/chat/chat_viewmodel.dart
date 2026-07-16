@@ -1,0 +1,314 @@
+import 'dart:async';
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/widgets.dart';
+import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/app/app.router.dart';
+import 'package:offline_sync/models/document.dart';
+import 'package:offline_sync/services/chat_repository.dart';
+import 'package:offline_sync/services/document_management_service.dart';
+import 'package:offline_sync/services/exceptions.dart';
+import 'package:offline_sync/services/rag_service.dart';
+import 'package:offline_sync/services/rag_settings_service.dart';
+import 'package:offline_sync/services/vector_store.dart';
+import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
+import 'package:stacked/stacked.dart';
+import 'package:stacked_services/stacked_services.dart';
+
+/// Represents a single message in the chat history
+class ChatMessage {
+  ChatMessage({
+    required this.content,
+    required this.isUser,
+    required this.timestamp,
+    this.sources,
+    this.metrics,
+  });
+
+  /// The text content of the message
+  final String content;
+
+  /// Whether the message was sent by the user
+  final bool isUser;
+
+  /// When the message was sent
+  final DateTime timestamp;
+
+  /// Source documents used for RAG generation (if AI message)
+  final List<SearchResult>? sources;
+
+  /// Performance metrics for the RAG generation (if AI message)
+  final RAGMetrics? metrics;
+}
+
+/// ViewModel for the chat view, handling message sending and document ingestion
+class ChatViewModel extends BaseViewModel {
+  final RagService _ragService = locator<RagService>();
+  final SnackbarService _snackbarService = locator<SnackbarService>();
+  final NavigationService _navigationService = locator<NavigationService>();
+  final ChatRepository _chatRepository = locator<ChatRepository>();
+  final DialogService _dialogService = locator<DialogService>();
+  final DocumentManagementService _documentService =
+      locator<DocumentManagementService>();
+  final RagSettingsService _ragSettings = locator<RagSettingsService>();
+
+  /// List of messages in the current conversation
+  final List<ChatMessage> messages = [];
+
+  /// Controller for scrolling the chat list
+  final ScrollController scrollController = ScrollController();
+
+  StreamSubscription<IngestionProgress>? _progressSubscription;
+
+  List<Document> _availableDocuments = [];
+
+  /// Documents available for filtering the search
+  List<Document> get availableDocuments => _availableDocuments;
+
+  final Set<String> _selectedDocumentIds = {};
+
+  /// IDs of documents selected for search filtering
+  Set<String> get selectedDocumentIds => _selectedDocumentIds;
+
+  bool _isProcessing = false;
+
+  /// Whether a RAG query is currently in progress
+  bool get isProcessing => _isProcessing;
+
+  bool _shouldScroll = false;
+
+  /// Whether the chat view should scroll to the bottom
+  bool get shouldScroll => _shouldScroll;
+
+  /// Called when the user manualy scrolls the list
+  void onScrolled() {
+    _shouldScroll = false;
+  }
+
+  void toggleDocumentSelection(String docId) {
+    if (_selectedDocumentIds.contains(docId)) {
+      _selectedDocumentIds.remove(docId);
+    } else {
+      _selectedDocumentIds.add(docId);
+    }
+    notifyListeners();
+  }
+
+  /// Initializes the ViewModel, loading history and available documents
+  Future<void> initialize() async {
+    setBusy(true);
+    try {
+      await _ragService.initialize();
+      // Load previous chat history
+      final history = await _chatRepository.loadMessages();
+      messages.addAll(history);
+      if (messages.isNotEmpty) {
+        _shouldScroll = true;
+      }
+
+      await _refreshDocuments();
+
+      // Listen to ingestion events to update available documents
+      _progressSubscription = _documentService.ingestionProgressStream.listen((
+        event,
+      ) async {
+        if (event.stage == 'complete') {
+          await _refreshDocuments();
+        }
+      });
+    } on Exception catch (e) {
+      _snackbarService.showSnackbar(message: 'Initialization error: $e');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  Future<void> _refreshDocuments() async {
+    final allDocuments = await _documentService.getAllDocuments();
+    // Filter to only show successfully indexed documents
+    _availableDocuments = allDocuments
+        .where((doc) => doc.status == IngestionStatus.complete)
+        .toList();
+    notifyListeners();
+  }
+
+  /// Sends a user message and triggers a RAG query
+  /// Updates the messages list in real-time as tokens are streamed back
+  Future<void> sendMessage(String text) async {
+    if (text.trim().isEmpty || _isProcessing) return;
+
+    _isProcessing = true;
+    notifyListeners();
+
+    final userMsg = ChatMessage(
+      content: text,
+      isUser: true,
+      timestamp: DateTime.now(),
+    );
+    messages.add(userMsg);
+    await _chatRepository.saveMessage(userMsg); // Persist user message
+    _shouldScroll = true;
+    notifyListeners();
+
+    // Add placeholder AI message that will be updated with streaming content
+    final aiMsgIndex = messages.length;
+    final aiMsg = ChatMessage(
+      content: '',
+      isUser: false,
+      timestamp: DateTime.now(),
+    );
+    messages.add(aiMsg);
+    _shouldScroll = true;
+    notifyListeners();
+
+    try {
+      // Build history from last 10 messages (excluding current placeholder)
+      final maxHistoryMessages = _ragSettings.maxHistoryMessages;
+      final history = messages.reversed
+          .skip(1) // Skip the placeholder AI message
+          .take(maxHistoryMessages)
+          .toList()
+          .reversed
+          .map((m) => '${m.isUser ? "User" : "AI"}: ${m.content}')
+          .toList();
+
+      List<SearchResult>? sources;
+      RAGMetrics? metrics;
+
+      // Stream tokens and update the message incrementally
+      await for (final event in _ragService.askWithRAGStream(
+        text,
+        includeMetrics: true,
+        conversationHistory: history.isNotEmpty ? history : null,
+        documentIds: _selectedDocumentIds.isNotEmpty
+            ? _selectedDocumentIds.toList()
+            : null,
+      )) {
+        if (event is RAGMetadataEvent) {
+          // Store sources and metrics for later
+          sources = event.sources;
+          metrics = event.metrics;
+        } else if (event is RAGTokenEvent) {
+          // Update the message content with the new token
+          messages[aiMsgIndex] = ChatMessage(
+            content: messages[aiMsgIndex].content + event.token,
+            isUser: false,
+            timestamp: messages[aiMsgIndex].timestamp,
+            sources: sources,
+            metrics: metrics,
+          );
+          _shouldScroll = true;
+          notifyListeners(); // Trigger UI update for each token
+        } else if (event is RAGCompleteEvent) {
+          // Stream completed, persist the final message
+          await _chatRepository.saveMessage(messages[aiMsgIndex]);
+        }
+      }
+    } on AuthenticationRequiredException {
+      // Remove the placeholder message on error
+      messages.removeAt(aiMsgIndex);
+      // Show token input dialog
+      await _showTokenDialog();
+      _snackbarService.showSnackbar(
+        message: 'Please provide authentication and try again',
+      );
+    } on Exception catch (e) {
+      // Remove the placeholder message on error
+      messages.removeAt(aiMsgIndex);
+      _snackbarService.showSnackbar(message: 'Error: $e');
+    } finally {
+      _isProcessing = false;
+      notifyListeners();
+    }
+  }
+
+  /// Shows a detailed view of a source document used for context
+  Future<void> showSourceDetail(SearchResult source) async {
+    // For now, show a dialog with the content as we can't easily fetch
+    // the Document object without adding a method to
+    // DocumentManagementService.
+    // Phase 4 requirement: Source detail bottom sheet
+    // (impl as dialog/bottom sheet)
+    await _dialogService.showDialog(
+      title: source.documentTitle ?? 'Source Detail',
+      description: source.content,
+    );
+  }
+
+  /// Opens file picker and starts ingestion for one or more files
+  Future<void> pickAndIngestFiles() async {
+    // Use DocumentLibraryViewModel's logic or delegate?
+    // Duplicate logic is fine for now but ideally we use the service.
+
+    // Actually, why not just navigate to DocumentLibraryView?
+    // User might want to ingest *while* in chat.
+
+    final docService = locator<DocumentManagementService>();
+    // ... use docService.addDocument ...
+
+    final result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'docx', 'txt', 'md', 'epub', 'json'],
+    );
+
+    if (result == null || result.files.isEmpty) return;
+
+    setBusy(true);
+
+    try {
+      final paths = result.files
+          .where((f) => f.path != null)
+          .map((f) => f.path!)
+          .toList();
+
+      if (paths.isEmpty) return;
+
+      final ingestionResult = await docService.addMultipleDocuments(paths);
+
+      if (ingestionResult.hasErrors) {
+        final failedCount = ingestionResult.failed.length;
+        final successCount = ingestionResult.succeeded.length;
+
+        if (successCount == 0) {
+          _snackbarService.showSnackbar(
+            message: 'Failed to ingest $failedCount file(s)',
+          );
+        } else {
+          _snackbarService.showSnackbar(
+            message:
+                'Ingested $successCount file(s). '
+                'Failed to ingest $failedCount file(s).',
+          );
+        }
+      } else {
+        _snackbarService.showSnackbar(
+          message:
+              'Successfully ingested '
+              '${ingestionResult.succeeded.length} file(s)',
+        );
+      }
+    } on Exception catch (e) {
+      _snackbarService.showSnackbar(message: 'Ingestion error: $e');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  Future<void> _showTokenDialog() async {
+    await _navigationService.navigateWithTransition<bool?>(
+      const TokenInputDialog(),
+      transitionStyle: Transition.fade,
+    );
+  }
+
+  Future<void> navigateToSettings() async {
+    await _navigationService.navigateToSettingsView();
+  }
+
+  @override
+  void dispose() {
+    unawaited(_progressSubscription?.cancel());
+    scrollController.dispose();
+    super.dispose();
+  }
+}

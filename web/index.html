@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <!--
     If you are serving your web app in a path other than the root, change the
@@ -18,7 +19,7 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A Very Good Project created by Very Good CLI.">
+  <meta name="description" content="On-device, fully offline RAG assistant. Ask questions over your own documents — no data leaves your device.">
 
   <!-- iOS meta tags & icons -->
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -27,14 +28,28 @@
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/png" href="favicon.png" />
 
-  <title>Offline Sync</title>
+  <title>Offline RAG (No Sync)</title>
   <link rel="manifest" href="manifest.json">
-</head>
-<body>
-  <script>
-    {{flutter_bootstrap_js}}
+
+  <script src="coi-serviceworker.js"></script>
+
+  <!-- flutter_gemma web runtime -->
+  <script src="cache_api.js"></script>
+  <script type="module" src="litert_embeddings.js"></script>
+
+  <!-- MediaPipe GenAI for .task inference models -->
+  <script type="module">
+    import { FilesetResolver, LlmInference } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai@0.10.27';
+    window.FilesetResolver = FilesetResolver;
+    window.LlmInference = LlmInference;
   </script>
+
+</head>
+
+<body>
+  <script src="flutter_bootstrap.js" async></script>
 </body>
+
 </html>

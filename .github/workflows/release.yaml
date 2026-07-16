@@ -27,21 +27,53 @@ on:
         options:
           - release
           - debug
+      app_flavor:
+        description: "App flavor"
+        required: true
+        type: choice
+        default: "production"
+        options:
+          - development
+          - staging
+          - production
       version:
-        description: "Version tag (e.g., v1.0.0). Used in artifact filenames."
+        description: "Numeric version, e.g. 1.0.0 (NO leading 'v'). Used for build-name and artifact filenames."
         required: false
         type: string
         default: ""
-    branches:
-      - main
-      - no-sync
+
 env:
-  FLUTTER_VERSION: "3.35.x"
+  FLUTTER_VERSION: "3.44.x"
+  FLAVOR: ${{ github.event.inputs.app_flavor }}
+  TARGET: lib/main_${{ github.event.inputs.app_flavor }}.dart
+  BUILD_NUMBER: ${{ github.run_number }}
+  BUILD_NAME: ${{ github.event.inputs.version != '' && github.event.inputs.version || '1.0.0' }}
   VERSION_SUFFIX: ${{ github.event.inputs.version != '' && format('-{0}', github.event.inputs.version) || '' }}
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+
   build-android:
+    needs: verify
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'android' }}
+    # Requires repo secrets: ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+    # ANDROID_KEYSTORE_ALIAS, ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -63,27 +95,57 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Decode Android keystore
+        if: ${{ github.event.inputs.build_type == 'release' }}
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret is not set. Refusing to build an unsigned release."
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
       - name: Build Android APK
-        run: flutter build apk --${{ github.event.inputs.build_type }}
+        run: flutter build apk --${{ github.event.inputs.build_type }} --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
+          ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD }}
+
+      - name: Verify APK signature
+        if: ${{ github.event.inputs.build_type == 'release' }}
+        run: |
+          APK=$(find build/app/outputs/flutter-apk -name "*-release.apk" | head -n 1)
+          echo "Verifying $APK"
+          "$ANDROID_SDK_ROOT/build-tools"/*/apksigner verify --verbose "$APK"
 
       - name: Build Android App Bundle
         if: ${{ github.event.inputs.build_type == 'release' }}
-        run: flutter build appbundle --release
+        run: flutter build appbundle --release --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
+          ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD }}
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-apk-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          name: android-${{ env.FLAVOR }}-apk-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/app/outputs/flutter-apk/*.apk
 
       - name: Upload App Bundle artifact
         if: ${{ github.event.inputs.build_type == 'release' }}
         uses: actions/upload-artifact@v4
         with:
-          name: android-aab-release${{ env.VERSION_SUFFIX }}
-          path: build/app/outputs/bundle/release/*.aab
+          name: android-${{ env.FLAVOR }}-aab-release${{ env.VERSION_SUFFIX }}
+          path: build/app/outputs/bundle/${{ env.FLAVOR }}Release/*.aab
 
   build-ios:
+    needs: verify
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'ios' }}
     runs-on: macos-latest
     steps:
@@ -101,25 +163,27 @@ jobs:
         run: flutter pub get
 
       - name: Build iOS (no codesign)
-        run: flutter build ios --${{ github.event.inputs.build_type }} --no-codesign
+        run: flutter build ios --${{ github.event.inputs.build_type }} --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }} --no-codesign --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
 
       - name: Create IPA directory
         run: mkdir -p build/ios/ipa
 
-      - name: Create unsigned IPA
+      - name: Create unsigned IPA (INSPECTION ONLY — not installable)
         run: |
+          echo "::warning::This IPA is unsigned and cannot be installed or submitted. For distribution, configure Apple signing secrets and use Option A."
           cd build/ios/iphoneos
           mkdir Payload
           cp -r Runner.app Payload/
-          zip -r ../ipa/offline_sync-${{ github.event.inputs.build_type }}.ipa Payload
+          zip -r ../ipa/offline_sync-${{ github.event.inputs.build_type }}-UNSIGNED.ipa Payload
 
       - name: Upload iOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ios-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          name: ios-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}-UNSIGNED-inspection-only${{ env.VERSION_SUFFIX }}
           path: build/ios/ipa/*.ipa
 
   build-linux:
+    needs: verify
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux' }}
     runs-on: ubuntu-latest
     steps:
@@ -129,7 +193,7 @@ jobs:
       - name: Install Linux dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsqlite3-dev
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsqlite3-dev libsecret-1-dev
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -142,20 +206,83 @@ jobs:
         run: flutter pub get
 
       - name: Build Linux
-        run: flutter build linux --${{ github.event.inputs.build_type }}
+        run: flutter build linux --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Create AppImage
+        run: |
+          # Install dependencies
+          sudo apt-get install -y libfuse2 file
+
+          # Download linuxdeploy and plugin
+          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-appimage-x86_64.AppImage
+
+          # Find libjvm.so and set LD_LIBRARY_PATH
+          JAVA_HOME="${JAVA_HOME:?JAVA_HOME is not set}"
+          LIBJVM_PATH=$(find "$JAVA_HOME" -name libjvm.so | head -n 1)
+          if [ -n "$LIBJVM_PATH" ]; then
+            LIBJVM_DIR=$(dirname "$LIBJVM_PATH")
+            export LD_LIBRARY_PATH="$LIBJVM_DIR:$LD_LIBRARY_PATH"
+            echo "Added $LIBJVM_DIR to LD_LIBRARY_PATH"
+          else
+            echo "Warning: libjvm.so not found"
+          fi
+
+          # Setup AppDir
+          mkdir -p AppDir/usr/bin
+          cp -r build/linux/x64/${{ github.event.inputs.build_type }}/bundle/* AppDir/usr/bin/
+          
+          # Setup Libraries
+          mkdir -p AppDir/usr/lib
+          cp -r build/linux/x64/${{ github.event.inputs.build_type }}/bundle/lib/* AppDir/usr/lib/
+
+          # Create Desktop file
+          mkdir -p AppDir/usr/share/applications
+          cat > AppDir/usr/share/applications/offline_sync.desktop <<EOF
+          [Desktop Entry]
+          Name=Offline Sync
+          Exec=offline_sync
+          Icon=offline_sync
+          Type=Application
+          Categories=Utility;
+          Terminal=false
+          EOF
+
+          # Copy icon
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          cp android/app/src/main/res/mipmap-xhdpi/ic_launcher.png AppDir/usr/share/icons/hicolor/256x256/apps/offline_sync.png
+
+          # Generate AppImage
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir --output appimage \
+            --desktop-file AppDir/usr/share/applications/offline_sync.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/offline_sync.png \
+            --executable AppDir/usr/bin/offline_sync
+
+          # Move AppImage to build directory
+          mv Offline_Sync-*.AppImage build/offline_sync-linux-${{ github.event.inputs.build_type }}.AppImage
 
       - name: Create tarball
         run: |
           cd build/linux/x64/${{ github.event.inputs.build_type }}/bundle
           tar -czvf ../../../../../offline_sync-linux-${{ github.event.inputs.build_type }}.tar.gz .
-
+      
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
-          name: linux-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
-          path: build/offline_sync-linux-${{ github.event.inputs.build_type }}.tar.gz
+          name: linux-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          path: |
+            build/offline_sync-linux-${{ github.event.inputs.build_type }}.tar.gz
+            build/offline_sync-linux-${{ github.event.inputs.build_type }}.AppImage
 
   build-macos:
+    needs: verify
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos' }}
     runs-on: macos-latest
     steps:
@@ -172,21 +299,44 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Pre-build LiteRT-LM JAR
+        run: |
+          GEMMA_PATH=$(find $HOME/.pub-cache/hosted/pub.dev -maxdepth 1 -type d -name "flutter_gemma-*" | head -n 1)
+          if [ -z "$GEMMA_PATH" ]; then
+            GEMMA_PATH=$(find $HOME/.pub-cache/git -maxdepth 1 -type d -name "flutter_gemma*" | head -n 1)
+          fi
+          if [ -d "$GEMMA_PATH/macos/litertlm-server" ]; then
+            echo "Pre-building JAR in $GEMMA_PATH..."
+            cd "$GEMMA_PATH/macos/litertlm-server"
+            chmod +x gradlew
+            ./gradlew fatJar --no-daemon
+          else
+            echo "::error::flutter_gemma/macos/litertlm-server not found in pub cache ($GEMMA_PATH). macOS build would ship without the LiteRT-LM backend."
+            exit 1
+          fi
+
       - name: Build macOS
-        run: flutter build macos --${{ github.event.inputs.build_type }}
+        run: flutter build macos --${{ github.event.inputs.build_type }} --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
 
       - name: Create DMG
         run: |
-          cd build/macos/Build/Products/${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}
-          hdiutil create -volname "Offline Sync" -srcfolder "offline_sync.app" -ov -format UDZO "../../../../../offline_sync-macos-${{ github.event.inputs.build_type }}.dmg"
+          cd build/macos/Build/Products/${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}-${{ env.FLAVOR }}
+          hdiutil create -volname "Offline Sync" -srcfolder "Offline Sync.app" -ov -format UDZO "../../../../../offline_sync-macos-${{ github.event.inputs.build_type }}.dmg"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
-          name: macos-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          name: macos-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/offline_sync-macos-${{ github.event.inputs.build_type }}.dmg
 
   build-windows:
+    needs: verify
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows' }}
     runs-on: windows-latest
     steps:
@@ -204,7 +354,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Windows
-        run: flutter build windows --${{ github.event.inputs.build_type }}
+        run: flutter build windows --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
 
       - name: Create ZIP archive
         run: |
@@ -213,10 +363,11 @@ jobs:
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
-          name: windows-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          name: windows-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/offline_sync-windows-${{ github.event.inputs.build_type }}.zip
 
   build-web:
+    needs: verify
     if: ${{ github.event.inputs.platform == 'all' || github.event.inputs.platform == 'web' }}
     runs-on: ubuntu-latest
     permissions:
@@ -241,7 +392,7 @@ jobs:
         run: flutter pub get
 
       - name: Build Web
-        run: flutter build web --${{ github.event.inputs.build_type }} --base-href "/${{ github.event.repository.name }}/"
+        run: flutter build web --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }} --base-href "/${{ github.event.repository.name }}/" --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
 
       - name: Setup Pages
         if: ${{ github.event.inputs.platform == 'web' }}
@@ -261,5 +412,5 @@ jobs:
       - name: Upload Web build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: web-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
+          name: web-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/web
