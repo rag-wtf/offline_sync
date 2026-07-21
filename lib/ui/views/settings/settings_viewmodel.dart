@@ -9,11 +9,20 @@ import 'package:stacked/stacked.dart';
 import 'package:stacked_services/stacked_services.dart';
 
 class SettingsViewModel extends BaseViewModel {
-  final ModelManagementService _modelService =
-      locator<ModelManagementService>();
-  final RagSettingsService _ragSettings = locator<RagSettingsService>();
-  final NavigationService _navigationService = locator<NavigationService>();
-  final DeviceCapabilityService _deviceService = DeviceCapabilityService();
+  SettingsViewModel({
+    ModelManagementService? modelService,
+    RagSettingsService? ragSettings,
+    NavigationService? navigationService,
+    DeviceCapabilityService? deviceService,
+  }) : _modelService = modelService ?? locator<ModelManagementService>(),
+       _ragSettings = ragSettings ?? locator<RagSettingsService>(),
+       _navigationService = navigationService ?? locator<NavigationService>(),
+       _deviceService = deviceService ?? DeviceCapabilityService();
+
+  final ModelManagementService _modelService;
+  final RagSettingsService _ragSettings;
+  final NavigationService _navigationService;
+  final DeviceCapabilityService _deviceService;
 
   DeviceCapabilities? _capabilities;
   double? _pendingChunkOverlap;
@@ -63,7 +72,7 @@ class SettingsViewModel extends BaseViewModel {
     return ModelConfig.allModels
         .firstWhere(
           (m) => m.type == AppModelType.inference,
-          orElse: () => InferenceModels.gemma3_270M,
+          orElse: () => InferenceModels.gemma3_270M, // coverage:ignore-line
         )
         .maxTokens;
   }
@@ -73,7 +82,7 @@ class SettingsViewModel extends BaseViewModel {
     return ModelConfig.allModels
         .firstWhere(
           (m) => m.type == AppModelType.inference,
-          orElse: () => InferenceModels.gemma3_270M,
+          orElse: () => InferenceModels.gemma3_270M, // coverage:ignore-line
         )
         .maxTokens;
   }

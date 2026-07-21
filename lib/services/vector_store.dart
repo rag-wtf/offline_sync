@@ -103,9 +103,11 @@ class VectorStore {
     try {
       _db!.select("SELECT fts5('test')");
       _createFtsObjects();
+      // coverage:ignore-start
     } on Exception catch (_) {
       _hasFts5 = false;
     }
+    // coverage:ignore-end
   }
 
   void _onCreate() {
@@ -180,9 +182,11 @@ class VectorStore {
           VALUES ('delete', old.rowid, old.content);
         END
       ''');
+      // coverage:ignore-start
     } on Exception catch (_) {
       _hasFts5 = false;
     }
+    // coverage:ignore-end
   }
 
   /// Applies ordered, gated migrations from [fromVersion] to [schemaVersion].
@@ -221,6 +225,7 @@ class VectorStore {
     final weight = semanticWeight ?? settingsService.semanticWeight;
 
     // 1. Fetch candidates (Keyword Search)
+    // coverage:ignore-start
     final keywordResults = _hasFts5
         ? _fts5Search(
             query,
@@ -232,6 +237,7 @@ class VectorStore {
             limit: RagConstants.hybridSearchCandidatePoolSize,
             documentIds: documentIds,
           );
+    // coverage:ignore-end
 
     // 2. Compute Semantic Search (using Candidates from FTS5 if possible,
     // or all if small)

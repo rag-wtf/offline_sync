@@ -77,6 +77,34 @@ void main() {
 
         expect(result, candidates);
       });
+
+      test('uses a neutral score when scoring a chunk throws', () async {
+        const query = 'test query';
+        final candidates = [
+          SearchResult(id: '1', content: 'c1', score: 0.5, metadata: {}),
+        ];
+
+        when(
+          () => mockModelProvider.getModel(),
+        ).thenAnswer((_) async => mockInferenceModel);
+
+        final mockChat = MockInferenceChat();
+        when(
+          () => mockInferenceModel.createChat(
+            temperature: any(named: 'temperature'),
+          ),
+        ).thenAnswer((_) async => mockChat);
+
+        when(mockChat.initSession).thenAnswer((_) async {});
+        when(
+          () => mockChat.addQuery(any()),
+        ).thenThrow(Exception('prompt failed'));
+
+        final result = await service.rerank(query, candidates, topK: 1);
+
+        expect(result.single.id, '1');
+        expect(result.single.score, 5.0);
+      });
     });
   });
 }

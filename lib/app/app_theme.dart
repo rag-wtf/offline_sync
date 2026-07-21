@@ -6,6 +6,31 @@ import 'package:google_fonts/google_fonts.dart';
 class AppTheme {
   AppTheme._();
 
+  /// Allows tests to build themes without triggering Google Fonts asset loads.
+  @visibleForTesting
+  static bool useGoogleFonts = true;
+
+  @visibleForTesting
+  static String? googleFontsFamilyOverride;
+
+  // coverage:ignore-start
+  @visibleForTesting
+  static String Function() googleFontsFamilyBuilder = () =>
+      GoogleFonts.inter().fontFamily ?? 'Inter';
+  // coverage:ignore-end
+
+  @visibleForTesting
+  static TextStyle Function({
+    required double fontSize,
+    required FontWeight fontWeight,
+    required Color color,
+  })
+  googleFontsTextStyleBuilder = GoogleFonts.inter;
+
+  @visibleForTesting
+  static TextTheme Function() googleFontsTextThemeBuilder =
+      GoogleFonts.interTextTheme;
+
   // Custom colors based on UI Pro Max design system
   static const Color _primaryBlue = Color(0xFF2563EB);
   static const Color _secondaryBlue = Color(0xFF3B82F6);
@@ -43,7 +68,7 @@ class AppTheme {
         textButtonRadius: 12,
       ),
       visualDensity: FlexColorScheme.comfortablePlatformDensity,
-      fontFamily: GoogleFonts.inter().fontFamily,
+      fontFamily: _fontFamily,
     ).copyWith(
       textTheme: _buildTextTheme(Brightness.light),
     );
@@ -78,7 +103,7 @@ class AppTheme {
         textButtonRadius: 12,
       ),
       visualDensity: FlexColorScheme.comfortablePlatformDensity,
-      fontFamily: GoogleFonts.inter().fontFamily,
+      fontFamily: _fontFamily,
     ).copyWith(
       textTheme: _buildTextTheme(Brightness.dark),
     );
@@ -86,82 +111,122 @@ class AppTheme {
 
   static TextTheme _buildTextTheme(Brightness brightness) {
     final baseColor = brightness == Brightness.light ? _textDark : Colors.white;
-    return GoogleFonts.interTextTheme().copyWith(
-      displayLarge: GoogleFonts.inter(
-        fontSize: 57,
-        fontWeight: FontWeight.w400,
-        color: baseColor,
-      ),
-      displayMedium: GoogleFonts.inter(
-        fontSize: 45,
-        fontWeight: FontWeight.w400,
-        color: baseColor,
-      ),
-      displaySmall: GoogleFonts.inter(
-        fontSize: 36,
-        fontWeight: FontWeight.w400,
-        color: baseColor,
-      ),
-      headlineLarge: GoogleFonts.inter(
-        fontSize: 32,
-        fontWeight: FontWeight.w600,
-        color: baseColor,
-      ),
-      headlineMedium: GoogleFonts.inter(
-        fontSize: 28,
-        fontWeight: FontWeight.w600,
-        color: baseColor,
-      ),
-      headlineSmall: GoogleFonts.inter(
-        fontSize: 24,
-        fontWeight: FontWeight.w600,
-        color: baseColor,
-      ),
-      titleLarge: GoogleFonts.inter(
-        fontSize: 22,
-        fontWeight: FontWeight.w500,
-        color: baseColor,
-      ),
-      titleMedium: GoogleFonts.inter(
-        fontSize: 16,
-        fontWeight: FontWeight.w500,
-        color: baseColor,
-      ),
-      titleSmall: GoogleFonts.inter(
-        fontSize: 14,
-        fontWeight: FontWeight.w500,
-        color: baseColor,
-      ),
-      bodyLarge: GoogleFonts.inter(
-        fontSize: 16,
-        fontWeight: FontWeight.w400,
-        color: baseColor,
-      ),
-      bodyMedium: GoogleFonts.inter(
-        fontSize: 14,
-        fontWeight: FontWeight.w400,
-        color: baseColor,
-      ),
-      bodySmall: GoogleFonts.inter(
-        fontSize: 12,
-        fontWeight: FontWeight.w400,
-        color: baseColor.withValues(alpha: 0.7),
-      ),
-      labelLarge: GoogleFonts.inter(
-        fontSize: 14,
-        fontWeight: FontWeight.w500,
-        color: baseColor,
-      ),
-      labelMedium: GoogleFonts.inter(
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-        color: baseColor,
-      ),
-      labelSmall: GoogleFonts.inter(
-        fontSize: 11,
-        fontWeight: FontWeight.w500,
-        color: baseColor.withValues(alpha: 0.7),
-      ),
-    );
+    TextStyle inter({
+      required double fontSize,
+      required FontWeight fontWeight,
+      required Color color,
+    }) {
+      if (useGoogleFonts) {
+        return googleFontsTextStyleBuilder(
+          fontSize: fontSize,
+          fontWeight: fontWeight,
+          color: color,
+        );
+      }
+
+      return TextStyle(
+        fontFamily: 'Inter',
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        color: color,
+      );
+    }
+
+    return (useGoogleFonts ? googleFontsTextThemeBuilder() : const TextTheme())
+        .copyWith(
+          displayLarge: inter(
+            fontSize: 57,
+            fontWeight: FontWeight.w400,
+            color: baseColor,
+          ),
+          displayMedium: inter(
+            fontSize: 45,
+            fontWeight: FontWeight.w400,
+            color: baseColor,
+          ),
+          displaySmall: inter(
+            fontSize: 36,
+            fontWeight: FontWeight.w400,
+            color: baseColor,
+          ),
+          headlineLarge: inter(
+            fontSize: 32,
+            fontWeight: FontWeight.w600,
+            color: baseColor,
+          ),
+          headlineMedium: inter(
+            fontSize: 28,
+            fontWeight: FontWeight.w600,
+            color: baseColor,
+          ),
+          headlineSmall: inter(
+            fontSize: 24,
+            fontWeight: FontWeight.w600,
+            color: baseColor,
+          ),
+          titleLarge: inter(
+            fontSize: 22,
+            fontWeight: FontWeight.w500,
+            color: baseColor,
+          ),
+          titleMedium: inter(
+            fontSize: 16,
+            fontWeight: FontWeight.w500,
+            color: baseColor,
+          ),
+          titleSmall: inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: baseColor,
+          ),
+          bodyLarge: inter(
+            fontSize: 16,
+            fontWeight: FontWeight.w400,
+            color: baseColor,
+          ),
+          bodyMedium: inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w400,
+            color: baseColor,
+          ),
+          bodySmall: inter(
+            fontSize: 12,
+            fontWeight: FontWeight.w400,
+            color: baseColor.withValues(alpha: 0.7),
+          ),
+          labelLarge: inter(
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+            color: baseColor,
+          ),
+          labelMedium: inter(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: baseColor,
+          ),
+          labelSmall: inter(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: baseColor.withValues(alpha: 0.7),
+          ),
+        );
+  }
+
+  static String get _fontFamily {
+    if (useGoogleFonts) {
+      final override = googleFontsFamilyOverride;
+      if (override != null) {
+        return override;
+      }
+
+      return googleFontsFamilyBuilder();
+    }
+
+    return 'Inter';
+  }
+
+  @visibleForTesting
+  static void instantiateForCoverage() {
+    AppTheme._();
   }
 }

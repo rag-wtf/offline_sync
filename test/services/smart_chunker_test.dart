@@ -51,6 +51,23 @@ A third paragraph follows with more information.
         }
       });
 
+      test(
+        'carries overlap into the first split subchunk of a large paragraph',
+        () {
+          const text =
+              'Alpha beta gamma delta epsilon zeta eta theta.\n\n'
+              'This paragraph is intentionally long. It contains several '
+              'sentences. Each sentence adds more detail. The goal is to '
+              'force subchunk splitting while overlap text already exists.';
+
+          final result = chunker.chunk(text, maxChars: 70, overlapChars: 12);
+
+          expect(result.length, greaterThan(2));
+          expect(result[1], contains('theta.'));
+          expect(result[1], contains('This paragraph is intentionally long.'));
+        },
+      );
+
       test('should handle consecutive newlines correctly', () {
         const text = 'Para 1\n\n\nPara 2\n\n\n\nPara 3';
         final result = chunker.chunk(text, maxChars: 50);

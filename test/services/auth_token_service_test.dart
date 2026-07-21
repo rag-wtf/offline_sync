@@ -58,6 +58,12 @@ void main() {
       expect(token, 'stored_token');
     });
 
+    test('loadToken returns null when no stored token exists anywhere', () async {
+      final token = await AuthTokenService.loadToken();
+
+      expect(token, isNull);
+    });
+
     test(
       'loadToken migrates from SharedPreferences if secure storage is empty',
       () async {
@@ -102,6 +108,25 @@ void main() {
 
     test('hasToken returns false if token does not exist', () async {
       expect(await AuthTokenService.hasToken(), isFalse);
+    });
+
+    test('hasToken returns false for an empty stored token', () async {
+      secureStorageValues['auth_token'] = '';
+
+      expect(await AuthTokenService.hasToken(), isFalse);
+    });
+
+    test('loadToken falls back to the debug environment token when provided', () async {
+      final token = await AuthTokenService.loadToken();
+
+      const envToken = String.fromEnvironment('HUGGINGFACE_TOKEN');
+      if (envToken.isEmpty) {
+        expect(token, isNull);
+        expect(secureStorageValues.containsKey('auth_token'), isFalse);
+      } else {
+        expect(token, envToken);
+        expect(secureStorageValues['auth_token'], envToken);
+      }
     });
   });
 }

@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
@@ -26,6 +27,10 @@ class ContextualRetrievalService {
   final ModelRecommendationService _recommendationService =
       locator<ModelRecommendationService>();
   final RagSettingsService _settingsService = locator<RagSettingsService>();
+
+  @visibleForTesting
+  static Future<InferenceModel> Function() getActiveModel =
+      FlutterGemma.getActiveModel;
 
   // Only supported on High or Premium tiers due to context window requirements
   Future<bool> get isSupported async {
@@ -90,7 +95,7 @@ Make the explanation standalone so the chunk can be understood without the full 
 ''';
 
     try {
-      final model = await FlutterGemma.getActiveModel();
+      final model = await getActiveModel();
       final chat = await model.createChat(temperature: 0.1);
       await chat.initSession();
       await chat.addQuery(Message(text: prompt, isUser: true));

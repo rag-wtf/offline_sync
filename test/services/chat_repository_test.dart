@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/chat_repository.dart';
+import 'package:offline_sync/services/rag_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
 import 'package:offline_sync/ui/views/chat/chat_viewmodel.dart';
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
@@ -112,6 +113,83 @@ void main() {
       expect(messages.length, 2);
       expect(messages[0].content, 'First');
       expect(messages[1].content, 'Second');
+    });
+
+    test('saveMessage persists sources and metrics for later reads', () async {
+      final message = ChatMessage(
+        content: 'Grounded answer',
+        isUser: false,
+        timestamp: DateTime.fromMillisecondsSinceEpoch(3000),
+        sources: [
+          SearchResult(
+            id: 'src-1',
+            content: 'Source chunk',
+            score: 0.75,
+            metadata: {'documentTitle': 'Spec'},
+          ),
+        ],
+        metrics: RAGMetrics(
+          embeddingTime: const Duration(milliseconds: 10),
+          searchTime: const Duration(milliseconds: 20),
+          generationTime: const Duration(milliseconds: 30),
+          chunksRetrieved: 4,
+        ),
+      );
+
+      await chatRepository.saveMessage(message);
+
+      final stored = await chatRepository.loadMessages();
+
+      expect(stored.single.sources, hasLength(1));
+      expect(stored.single.sources!.single.id, 'src-1');
+      expect(stored.single.sources!.single.metadata['documentTitle'], 'Spec');
+      expect(stored.single.metrics!.embeddingTime, const Duration(milliseconds: 10));
+      expect(stored.single.metrics!.searchTime, const Duration(milliseconds: 20));
+      expect(
+        stored.single.metrics!.generationTime,
+        const Duration(milliseconds: 30),
+      );
+      expect(stored.single.metrics!.chunksRetrieved, 4);
+    });
+
+    test('loadMessages respects the provided limit', () async {
+      for (var i = 0; i < 3; i++) {
+        await chatRepository.saveMessage(
+          ChatMessage(
+            content: 'message-$i',
+            isUser: i.isEven,
+            timestamp: DateTime.fromMillisecondsSinceEpoch(1000 + i),
+          ),
+        );
+      }
+
+      final messages = await chatRepository.loadMessages(limit: 2);
+
+      expect(messages.map((message) => message.content), [
+        'message-1',
+        'message-2',
+      ]);
+    });
+
+    test('db throws when vector store has not been initialized', () async {
+      vectorStore.close();
+      await locator.reset();
+
+      final uninitializedStore = VectorStore();
+      locator.registerSingleton<VectorStore>(uninitializedStore);
+
+      final repository = ChatRepository();
+
+      expect(
+        () => repository.db,
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('Database not initialized'),
+          ),
+        ),
+      );
     });
   });
 }

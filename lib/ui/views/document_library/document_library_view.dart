@@ -7,7 +7,15 @@ import 'package:offline_sync/ui/views/document_library/document_library_viewmode
 import 'package:stacked/stacked.dart';
 
 class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
-  const DocumentLibraryView({super.key});
+  const DocumentLibraryView({
+    this.viewModel,
+    this.onViewModelReadyCallback,
+    super.key,
+  });
+
+  final DocumentLibraryViewModel? viewModel;
+  final void Function(DocumentLibraryViewModel viewModel)?
+  onViewModelReadyCallback;
 
   @override
   Widget builder(
@@ -439,9 +447,15 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
 
   @override
   DocumentLibraryViewModel viewModelBuilder(BuildContext context) =>
-      DocumentLibraryViewModel();
+      viewModel ?? DocumentLibraryViewModel();
 
   @override
-  void onViewModelReady(DocumentLibraryViewModel viewModel) =>
-      viewModel.initialize();
+  void onViewModelReady(DocumentLibraryViewModel viewModel) {
+    final callback = onViewModelReadyCallback;
+    if (callback != null) {
+      callback(viewModel);
+      return;
+    }
+    viewModel.initialize();
+  }
 }

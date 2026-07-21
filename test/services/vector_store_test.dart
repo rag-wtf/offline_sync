@@ -57,6 +57,41 @@ void main() {
   });
 
   group('VectorStore Tests', () {
+    test('SearchResult exposes typed source metadata', () {
+      final result = SearchResult(
+        id: 'chunk',
+        content: 'content',
+        score: 1,
+        metadata: const {
+          'documentId': 'doc',
+          'documentTitle': 'Title',
+          'documentPath': '/tmp/doc.txt',
+          'seq': 2,
+        },
+      );
+
+      expect(result.documentId, 'doc');
+      expect(result.documentTitle, 'Title');
+      expect(result.documentPath, '/tmp/doc.txt');
+      expect(result.chunkIndex, 2);
+    });
+
+    test('batch insertion handles empty and metadata-bearing batches', () {
+      vectorStore.insertEmbeddingsBatch([]);
+      vectorStore.insertEmbeddingsBatch([
+        EmbeddingData(
+          id: 'batch',
+          documentId: 'doc',
+          content: 'batch content',
+          embedding: [1, 0],
+          metadata: const {'kind': 'batch'},
+        ),
+      ]);
+
+      final chunks = vectorStore.getChunksForDocument('doc');
+      expect(chunks.single.metadata, {'kind': 'batch'});
+    });
+
     test('stamps user_version to current schemaVersion on init', () {
       final version =
           vectorStore.db!.select('PRAGMA user_version').first.values.first
@@ -107,6 +142,71 @@ void main() {
 
       expect(results.length, 1);
       expect(results.first.content, contains('fox'));
+    });
+
+    test(
+      'search filters semantic and keyword results by document ids',
+      () async {
+        vectorStore
+          ..insertEmbedding(
+            id: 'included',
+            documentId: 'include',
+            content: 'filterable phrase',
+            embedding: [1, 0],
+          )
+          ..insertEmbedding(
+            id: 'excluded',
+            documentId: 'exclude',
+            content: 'filterable phrase',
+            embedding: [1, 0],
+          );
+
+        final results = await vectorStore.hybridSearch(
+          'filterable phrase',
+          [1, 0],
+          documentIds: const ['include'],
+        );
+
+        expect(results.map((result) => result.id), isNot(contains('excluded')));
+        expect(results.map((result) => result.id), contains('included'));
+      },
+    );
+
+    test('sanitizes operator-only keyword queries without throwing', () async {
+      expect(
+        await vectorStore.hybridSearch('OR AND NOT', [0.1, 0.2]),
+        isEmpty,
+      );
+    });
+
+    test('falls back to LIKE search when FTS query execution fails', () async {
+      vectorStore
+        ..insertEmbedding(
+          id: 'fallback-include',
+          documentId: 'include-doc',
+          content: 'fallback search phrase',
+          embedding: [1, 0],
+          metadata: const {'kind': 'include'},
+        )
+        ..insertEmbedding(
+          id: 'fallback-exclude',
+          documentId: 'exclude-doc',
+          content: 'fallback search phrase',
+          embedding: [1, 0],
+          metadata: const {'kind': 'exclude'},
+        );
+
+      vectorStore.db!.execute('DROP TABLE vectors_fts');
+
+      final results = await vectorStore.hybridSearch(
+        'fallback phrase',
+        [1, 0],
+        semanticWeight: 0,
+        documentIds: const ['include-doc'],
+      );
+
+      expect(results.map((result) => result.id), ['fallback-include']);
+      expect(results.single.metadata, const {'kind': 'include'});
     });
 
     group('Hybrid Search Merging', () {
@@ -326,6 +426,93 @@ void main() {
         );
         expect(results.isEmpty, true);
       });
+
+      test('getChunksForDocument supports rows with null metadata', () {
+        vectorStore.insertEmbedding(
+          id: 'null-metadata',
+          documentId: 'doc-null',
+          content: 'content',
+          embedding: [0.1],
+        );
+
+        expect(
+          vectorStore.getChunksForDocument('doc-null').single.metadata,
+          <String, dynamic>{},
+        );
+      });
+    });
+
+    test('optimizeDatabase completes successfully', () {
+      expect(vectorStore.optimizeDatabase, returnsNormally);
+    });
+
+    test('batch insertion rolls back the transaction when a row fails', () {
+      vectorStore.db!.execute('''
+        CREATE TRIGGER fail_bad_batch_insert
+        BEFORE INSERT ON vectors
+        WHEN NEW.id = 'boom'
+        BEGIN
+          SELECT RAISE(ABORT, 'boom');
+        END
+      ''');
+
+      expect(
+        () => vectorStore.insertEmbeddingsBatch([
+          EmbeddingData(
+            id: 'ok-batch',
+            documentId: 'doc-batch',
+            content: 'kept?',
+            embedding: [0.1],
+          ),
+          EmbeddingData(
+            id: 'boom',
+            documentId: 'doc-batch',
+            content: 'explode',
+            embedding: [0.2],
+          ),
+        ]),
+        throwsA(isA<SqliteException>()),
+      );
+
+      expect(vectorStore.getChunksForDocument('doc-batch'), isEmpty);
+    });
+
+    test('deleteDocument rolls back when vector deletion fails', () {
+      final document = Document(
+        id: 'rollback-doc',
+        title: 'Rollback',
+        filePath: '/rollback.txt',
+        format: DocumentFormat.plainText,
+        chunkCount: 1,
+        totalCharacters: 8,
+        contentHash: 'rollback-hash',
+        ingestedAt: DateTime.now(),
+      );
+
+      vectorStore.insertDocument(document);
+      vectorStore.insertEmbedding(
+        id: 'rollback-chunk',
+        documentId: document.id,
+        content: 'rollback',
+        embedding: [0.4],
+      );
+
+      vectorStore.db!.execute('''
+        CREATE TRIGGER fail_vector_delete
+        BEFORE DELETE ON vectors
+        WHEN OLD.document_id = 'rollback-doc'
+        BEGIN
+          SELECT RAISE(ABORT, 'no delete');
+        END
+      ''');
+
+      expect(
+        () => vectorStore.deleteDocument(document.id),
+        throwsA(isA<SqliteException>()),
+      );
+
+      expect(vectorStore.getDocument(document.id), isNotNull);
+      expect(vectorStore.getChunksForDocument(document.id), hasLength(1));
     });
 
     test(

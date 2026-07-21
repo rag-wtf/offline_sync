@@ -39,7 +39,37 @@ class DeviceCapabilities {
 ///
 /// See `docs/resource_monitoring.md` for architectural details.
 class DeviceCapabilityService {
-  final DeviceInfoPlugin _deviceInfo = DeviceInfoPlugin();
+  DeviceCapabilityService({
+    DeviceInfoPlugin? deviceInfo,
+    this._isWebOverride,
+    this._isAndroidOverride,
+    this._isIosOverride,
+    this._isLinuxOverride,
+    this._isMacOsOverride,
+    this._isWindowsOverride,
+    this._androidModelProvider,
+    this._iosModelProvider,
+    this._linuxPrettyNameProvider,
+    this._macOsModelProvider,
+    this._windowsComputerNameProvider,
+    this._totalRamProvider,
+    this._freeStorageProvider,
+  }) : _deviceInfo = deviceInfo ?? DeviceInfoPlugin();
+
+  final DeviceInfoPlugin _deviceInfo;
+  final bool? _isWebOverride;
+  final bool? _isAndroidOverride;
+  final bool? _isIosOverride;
+  final bool? _isLinuxOverride;
+  final bool? _isMacOsOverride;
+  final bool? _isWindowsOverride;
+  final Future<String> Function()? _androidModelProvider;
+  final Future<String> Function()? _iosModelProvider;
+  final Future<String> Function()? _linuxPrettyNameProvider;
+  final Future<String> Function()? _macOsModelProvider;
+  final Future<String> Function()? _windowsComputerNameProvider;
+  final int Function()? _totalRamProvider;
+  final Future<int?> Function()? _freeStorageProvider;
 
   // Minimum thresholds for fallback validation
   static const int _minReasonableRamMB = 512;
@@ -52,20 +82,20 @@ class DeviceCapabilityService {
 
   Future<DeviceCapabilities> getCapabilities() async {
     try {
-      if (kIsWeb) {
-        return _getWebCapabilities();
-      } else if (Platform.isAndroid) {
-        return _getAndroidCapabilities();
-      } else if (Platform.isIOS) {
-        return _getIosCapabilities();
-      } else if (Platform.isLinux) {
-        return _getLinuxCapabilities();
-      } else if (Platform.isMacOS) {
-        return _getMacOsCapabilities();
-      } else if (Platform.isWindows) {
-        return _getWindowsCapabilities();
+      if (_isWebOverride ?? kIsWeb) {
+        return await _getWebCapabilities();
+      } else if (_isAndroidOverride ?? Platform.isAndroid) {
+        return await _getAndroidCapabilities();
+      } else if (_isIosOverride ?? Platform.isIOS) {
+        return await _getIosCapabilities();
+      } else if (_isLinuxOverride ?? Platform.isLinux) {
+        return await _getLinuxCapabilities();
+      } else if (_isMacOsOverride ?? Platform.isMacOS) {
+        return await _getMacOsCapabilities();
+      } else if (_isWindowsOverride ?? Platform.isWindows) {
+        return await _getWindowsCapabilities();
       }
-    } on Exception catch (e) {
+    } on Object catch (e) {
       log('Error detecting device capabilities: $e');
     }
 
@@ -91,8 +121,9 @@ class DeviceCapabilityService {
   }
 
   Future<DeviceCapabilities> _getAndroidCapabilities() async {
-    final androidInfo = await _deviceInfo.androidInfo;
-    log('Android device: ${androidInfo.model}');
+    final model =
+        await (_androidModelProvider ?? () async => (await _deviceInfo.androidInfo).model)();
+    log('Android device: $model');
 
     final ramMB = _detectRam(fallback: 2048);
     final storageMB = await _detectStorage(fallback: _mobileDefaultStorageMB);
@@ -106,8 +137,9 @@ class DeviceCapabilityService {
   }
 
   Future<DeviceCapabilities> _getIosCapabilities() async {
-    final iosInfo = await _deviceInfo.iosInfo;
-    log('iOS device: ${iosInfo.model}');
+    final model =
+        await (_iosModelProvider ?? () async => (await _deviceInfo.iosInfo).model)();
+    log('iOS device: $model');
 
     // iOS WARNING: Do not use getFreePhysicalMemory() on iOS.
     // iOS uses Compressed Memory - "Free RAM" is often near zero.
@@ -124,8 +156,10 @@ class DeviceCapabilityService {
   }
 
   Future<DeviceCapabilities> _getLinuxCapabilities() async {
-    final linuxInfo = await _deviceInfo.linuxInfo;
-    log('Linux device: ${linuxInfo.prettyName}');
+    final prettyName =
+        await (_linuxPrettyNameProvider ??
+                () async => (await _deviceInfo.linuxInfo).prettyName)();
+    log('Linux device: $prettyName');
 
     final ramMB = _detectRam(fallback: 4096);
     final storageMB = await _detectStorage(fallback: _desktopDefaultStorageMB);
@@ -139,8 +173,10 @@ class DeviceCapabilityService {
   }
 
   Future<DeviceCapabilities> _getMacOsCapabilities() async {
-    final macInfo = await _deviceInfo.macOsInfo;
-    log('macOS device: ${macInfo.model}');
+    final model =
+        await (_macOsModelProvider ??
+                () async => (await _deviceInfo.macOsInfo).model)();
+    log('macOS device: $model');
 
     final ramMB = _detectRam(fallback: 4096);
     final storageMB = await _detectStorage(fallback: _desktopDefaultStorageMB);
@@ -154,8 +190,10 @@ class DeviceCapabilityService {
   }
 
   Future<DeviceCapabilities> _getWindowsCapabilities() async {
-    final windowsInfo = await _deviceInfo.windowsInfo;
-    log('Windows device: ${windowsInfo.computerName}');
+    final computerName =
+        await (_windowsComputerNameProvider ??
+                () async => (await _deviceInfo.windowsInfo).computerName)();
+    log('Windows device: $computerName');
 
     final ramMB = _detectRam(fallback: 4096);
     final storageMB = await _detectStorage(fallback: _desktopDefaultStorageMB);
@@ -174,7 +212,8 @@ class DeviceCapabilityService {
   int _detectRam({required int fallback}) {
     try {
       // SysInfo.getTotalPhysicalMemory() is synchronous
-      final totalMemory = SysInfo.getTotalPhysicalMemory();
+      final totalMemory =
+          (_totalRamProvider ?? SysInfo.getTotalPhysicalMemory)();
       if (totalMemory > 0) {
         final calculatedRam = totalMemory ~/ (1024 * 1024);
         if (calculatedRam >= _minReasonableRamMB) {
@@ -196,7 +235,8 @@ class DeviceCapabilityService {
   Future<int> _detectStorage({required int fallback}) async {
     try {
       // DiskUsage.freeSpace() returns available disk space in bytes
-      final freeStorage = await DiskUsage.freeSpace();
+      final freeStorage =
+          await (_freeStorageProvider ?? DiskUsage.freeSpace)();
       if (freeStorage != null && freeStorage > 0) {
         final calculatedStorage = freeStorage ~/ (1024 * 1024);
         if (calculatedStorage >= _minReasonableStorageMB) {

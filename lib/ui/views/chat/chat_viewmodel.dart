@@ -80,6 +80,13 @@ class ChatViewModel extends BaseViewModel {
   /// Whether the chat view should scroll to the bottom
   bool get shouldScroll => _shouldScroll;
 
+  @visibleForTesting
+  static Future<FilePickerResult?> Function({
+    required FileType type,
+    required List<String> allowedExtensions,
+  })
+  pickFiles = FilePicker.pickFiles;
+
   /// Called when the user manualy scrolls the list
   void onScrolled() {
     _shouldScroll = false;
@@ -246,7 +253,7 @@ class ChatViewModel extends BaseViewModel {
     final docService = locator<DocumentManagementService>();
     // ... use docService.addDocument ...
 
-    final result = await FilePicker.pickFiles(
+    final result = await pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'docx', 'txt', 'md', 'epub', 'json'],
     );

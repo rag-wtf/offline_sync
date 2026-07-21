@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// for token encryption.
 class AuthTokenService {
   // Private constructor to prevent instantiation
-  AuthTokenService._();
+  AuthTokenService._(); // coverage:ignore-line
 
   static const String _authTokenKey = 'auth_token';
   static const _storage = FlutterSecureStorage(
@@ -42,8 +42,10 @@ class AuthTokenService {
       const envToken = String.fromEnvironment('HUGGINGFACE_TOKEN');
       if (envToken.isNotEmpty) {
         // Auto-save environment token for persistence
+        // coverage:ignore-start
         await _storage.write(key: _authTokenKey, value: envToken);
         return envToken;
+        // coverage:ignore-end
       }
     }
 

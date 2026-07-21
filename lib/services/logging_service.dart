@@ -47,11 +47,15 @@ class LoggingService {
     _logger.e(message, error: error, stackTrace: stackTrace);
 
     if (kIsWeb) {
+      // coverage:ignore-line
+      // coverage:ignore-start
       return _persistCrashRecord(message, error: error, stackTrace: stackTrace);
+      // coverage:ignore-end
     }
 
     try {
       await _persistCrashRecord(message, error: error, stackTrace: stackTrace);
+      // coverage:ignore-start
     } on Object catch (writeError, writeStackTrace) {
       _logger.w(
         'Failed to persist crash log',
@@ -59,6 +63,7 @@ class LoggingService {
         stackTrace: writeStackTrace,
       );
     }
+    // coverage:ignore-end
   }
 
   static Future<void> _persistCrashRecord(

@@ -16,6 +16,10 @@ class MockModelRecommendationService extends Mock
 
 class MockRagSettingsService extends Mock implements RagSettingsService {}
 
+class MockInferenceModel extends Mock implements InferenceModel {}
+
+class MockInferenceChat extends Mock implements InferenceChat {}
+
 class TestContextualRetrievalService extends ContextualRetrievalService {
   TestContextualRetrievalService({Map<String, String>? contexts})
     : _contexts = contexts ?? const {};
@@ -72,6 +76,7 @@ void main() {
     });
 
     tearDown(() async {
+      ContextualRetrievalService.getActiveModel = FlutterGemma.getActiveModel;
       await locator.reset();
     });
 
@@ -216,6 +221,49 @@ void main() {
     });
 
     group('contextualizeDocument -', () {
+      test('generateChunkContext builds a prompt and trims the response', () async {
+        final model = MockInferenceModel();
+        final chat = MockInferenceChat();
+        Message? capturedPrompt;
+
+        ContextualRetrievalService.getActiveModel = () async => model;
+        when(
+          () => model.createChat(temperature: any(named: 'temperature')),
+        ).thenAnswer((_) async => chat);
+        when(chat.initSession).thenAnswer((_) async {});
+        when(() => chat.addQuery(any())).thenAnswer((invocation) async {
+          capturedPrompt = invocation.positionalArguments.single as Message;
+        });
+        when(chat.generateChatResponseAsync).thenAnswer(
+          (_) => Stream<ModelResponse>.fromIterable([
+            const TextResponse('  Context'),
+            const TextResponse(' summary  '),
+          ]),
+        );
+
+        final response = await service.generateChunkContext(
+          documentContent: 'Full document body',
+          chunk: 'Target chunk',
+        );
+
+        expect(response, 'Context summary');
+        expect(capturedPrompt, isNotNull);
+        expect(capturedPrompt!.text, contains('Target chunk'));
+        expect(capturedPrompt!.text, contains('Full document body'));
+      });
+
+      test('generateChunkContext falls back to empty text on model errors', () async {
+        ContextualRetrievalService.getActiveModel =
+            () async => throw Exception('missing model');
+
+        final response = await service.generateChunkContext(
+          documentContent: 'Full document body',
+          chunk: 'Target chunk',
+        );
+
+        expect(response, isEmpty);
+      });
+
       test(
         'should contextualize chunks with full document context and '
         'report progress',

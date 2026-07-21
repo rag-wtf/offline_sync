@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
+import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/ui/views/startup/startup_viewmodel.dart';
 
 import '../../../helpers/test_helpers.dart';
@@ -16,6 +18,39 @@ class FakeWidget extends Fake implements Widget {
   String toString({DiagnosticLevel minLevel = DiagnosticLevel.info}) {
     return 'FakeWidget';
   }
+}
+
+class FakeDeviceCapabilityService extends DeviceCapabilityService {
+  FakeDeviceCapabilityService(this.capabilities);
+
+  final DeviceCapabilities capabilities;
+
+  @override
+  Future<DeviceCapabilities> getCapabilities() async => capabilities;
+}
+
+class FakeModelRecommendationService extends ModelRecommendationService {
+  FakeModelRecommendationService({
+    required this.recommendedModels,
+    this.meetsRequirements = true,
+    this.unsupportedMessage = 'Unsupported device',
+  });
+
+  final RecommendedModels recommendedModels;
+  final bool meetsRequirements;
+  final String unsupportedMessage;
+
+  @override
+  RecommendedModels getRecommendedModels(DeviceCapabilities capabilities) =>
+      recommendedModels;
+
+  @override
+  bool meetsMinimumRequirements(DeviceCapabilities capabilities) =>
+      meetsRequirements;
+
+  @override
+  String getUnsupportedDeviceMessage(DeviceCapabilities capabilities) =>
+      unsupportedMessage;
 }
 
 void main() {
@@ -145,8 +180,6 @@ void main() {
 
     group('Status message updates -', () {
       test('Should update status message during download progress', () async {
-        final viewModel = StartupViewModel();
-
         final downloadingModel =
             ModelInfo(
                 id: 'test-model',
@@ -156,23 +189,90 @@ void main() {
               )
               ..status = ModelStatus.downloading
               ..progress = 0.5;
-
-        when(() => mockModelService.models).thenReturn([downloadingModel]);
-
+        final inferenceModel = ModelInfo(
+            id: InferenceModels.gemma3_270M.id,
+            name: InferenceModels.gemma3_270M.name,
+            url: 'https://example.com/inference',
+            type: AppModelType.inference,
+          )
+          ..status = ModelStatus.downloaded;
+        final embeddingModel = ModelInfo(
+            id: EmbeddingModels.gecko64.id,
+            name: EmbeddingModels.gecko64.name,
+            url: 'https://example.com/embedding',
+            type: AppModelType.embedding,
+          )
+          ..status = ModelStatus.downloaded;
         final controller = StreamController<List<ModelInfo>>.broadcast();
+        final progressObserved = Completer<String>();
+        final ragSettings = getAndRegisterMockRagSettingsService();
+
         when(
           () => mockModelService.modelStatusStream,
         ).thenAnswer((_) => controller.stream);
+        when(() => mockModelService.models).thenReturn([
+          inferenceModel,
+          embeddingModel,
+        ]);
+        when(mockModelService.initialize).thenAnswer((_) async {});
+        when(ragSettings.initialize).thenAnswer((_) async {});
+        when(() => mockModelService.activeInferenceModel).thenReturn(
+          inferenceModel,
+        );
+        when(() => mockModelService.activeEmbeddingModel).thenReturn(
+          embeddingModel,
+        );
+        when(
+          () => mockNavigationService.replaceWith<dynamic>(
+            any(),
+            arguments: any(named: 'arguments'),
+            id: any(named: 'id'),
+            preventDuplicates: any(named: 'preventDuplicates'),
+            parameters: any(named: 'parameters'),
+            transition: any(named: 'transition'),
+          ),
+        ).thenAnswer((_) async {});
 
-        unawaited(viewModel.runStartupLogic());
+        late final StartupViewModel viewModel;
+        viewModel = StartupViewModel(
+          navigationService: mockNavigationService,
+          modelService: mockModelService,
+          deviceService: FakeDeviceCapabilityService(
+            const DeviceCapabilities(
+              totalRamMB: 4096,
+              availableStorageMB: 4096,
+              hasGpu: false,
+              platform: 'android',
+            ),
+          ),
+          recommendationService: FakeModelRecommendationService(
+            recommendedModels: const RecommendedModels(
+              inferenceModel: InferenceModels.gemma3_270M,
+              embeddingModel: EmbeddingModels.gecko64,
+              tier: DeviceTier.low,
+            ),
+          ),
+          ragSettingsService: ragSettings,
+        );
+        viewModel.addListener(() {
+          final status = viewModel.statusMessage;
+          if (!progressObserved.isCompleted &&
+              status != null &&
+              status.contains('Downloading')) {
+            progressObserved.complete(status);
+          }
+        });
+
+        final startup = viewModel.runStartupLogic();
 
         controller.add([downloadingModel]);
-        await Future<void>.delayed(const Duration(milliseconds: 100));
+        final progressMessage = await progressObserved.future;
 
-        expect(viewModel.statusMessage, contains('Downloading'));
-        expect(viewModel.statusMessage, contains('50.0'));
+        expect(progressMessage, contains('Downloading'));
+        expect(progressMessage, contains('50.0'));
 
         await controller.close();
+        await startup;
       });
     });
 
@@ -203,6 +303,7 @@ void main() {
           viewModel.statusMessage,
           anyOf(
             contains('Detecting'),
+            contains('Selecting'),
             contains('error'),
             contains('Error'),
           ),
@@ -280,6 +381,211 @@ void main() {
       test('Should set isUnsupportedDevice flag for low-spec devices', () {
         final viewModel = StartupViewModel();
         expect(viewModel.isUnsupportedDevice, isFalse);
+      });
+    });
+
+    group('Injected startup dependencies -', () {
+      late ModelInfo inferenceModel;
+      late ModelInfo embeddingModel;
+      late FakeModelRecommendationService recommendationService;
+      late FakeDeviceCapabilityService deviceService;
+      late MockRagSettingsService ragSettings;
+
+      setUp(() {
+        inferenceModel = ModelInfo(
+            id: InferenceModels.gemma3_270M.id,
+            name: InferenceModels.gemma3_270M.name,
+            url: 'https://example.com/inference',
+            type: AppModelType.inference,
+          )
+          ..status = ModelStatus.downloaded;
+        embeddingModel = ModelInfo(
+            id: EmbeddingModels.gecko64.id,
+            name: EmbeddingModels.gecko64.name,
+            url: 'https://example.com/embedding',
+            type: AppModelType.embedding,
+          )
+          ..status = ModelStatus.downloaded;
+        recommendationService = FakeModelRecommendationService(
+          recommendedModels: const RecommendedModels(
+            inferenceModel: InferenceModels.gemma3_270M,
+            embeddingModel: EmbeddingModels.gecko64,
+            tier: DeviceTier.low,
+          ),
+        );
+        deviceService = FakeDeviceCapabilityService(
+          const DeviceCapabilities(
+            totalRamMB: 4096,
+            availableStorageMB: 4096,
+            hasGpu: false,
+            platform: 'android',
+          ),
+        );
+        ragSettings = getAndRegisterMockRagSettingsService();
+
+        when(() => mockModelService.models).thenReturn([
+          inferenceModel,
+          embeddingModel,
+        ]);
+        when(
+          () => mockModelService.modelStatusStream,
+        ).thenAnswer((_) => const Stream.empty());
+        when(mockModelService.initialize).thenAnswer((_) async {});
+        when(() => mockModelService.downloadModel(any())).thenAnswer((_) async {});
+        when(() => mockModelService.switchInferenceModel(any())).thenAnswer((_) async {});
+        when(() => mockModelService.switchEmbeddingModel(any())).thenAnswer((_) async {});
+        when(() => mockModelService.activeInferenceModel).thenReturn(null);
+        when(() => mockModelService.activeEmbeddingModel).thenReturn(null);
+        when(ragSettings.initialize).thenAnswer((_) async {});
+        when(
+          () => mockNavigationService.replaceWith<dynamic>(
+            any(),
+            arguments: any(named: 'arguments'),
+            id: any(named: 'id'),
+            preventDuplicates: any(named: 'preventDuplicates'),
+            parameters: any(named: 'parameters'),
+            transition: any(named: 'transition'),
+          ),
+        ).thenAnswer((_) async {});
+      });
+
+      test('navigates to chat when recommended models are ready', () async {
+        final viewModel = StartupViewModel(
+          navigationService: mockNavigationService,
+          modelService: mockModelService,
+          deviceService: deviceService,
+          recommendationService: recommendationService,
+          ragSettingsService: ragSettings,
+        );
+
+        await viewModel.runStartupLogic();
+
+        expect(viewModel.capabilities?.platform, 'android');
+        verify(() => mockModelService.switchInferenceModel(inferenceModel.id)).called(1);
+        verify(() => mockModelService.switchEmbeddingModel(embeddingModel.id)).called(1);
+        verify(
+          () => mockNavigationService.replaceWith<dynamic>(
+            Routes.chatView,
+            arguments: any(named: 'arguments'),
+            id: any(named: 'id'),
+            preventDuplicates: any(named: 'preventDuplicates'),
+            parameters: any(named: 'parameters'),
+            transition: any(named: 'transition'),
+          ),
+        ).called(1);
+      });
+
+      test('navigates to settings when required models are still missing', () async {
+        embeddingModel.status = ModelStatus.notDownloaded;
+
+        final viewModel = StartupViewModel(
+          navigationService: mockNavigationService,
+          modelService: mockModelService,
+          deviceService: deviceService,
+          recommendationService: recommendationService,
+          ragSettingsService: ragSettings,
+        );
+
+        await viewModel.runStartupLogic();
+
+        verify(() => mockModelService.downloadModel(embeddingModel.id)).called(1);
+        verify(
+          () => mockNavigationService.replaceWith<dynamic>(
+            Routes.settingsView,
+            arguments: any(named: 'arguments'),
+            id: any(named: 'id'),
+            preventDuplicates: any(named: 'preventDuplicates'),
+            parameters: any(named: 'parameters'),
+            transition: any(named: 'transition'),
+          ),
+        ).called(1);
+      });
+
+      test('marks unsupported devices while still continuing startup flow', () async {
+        final viewModel = StartupViewModel(
+          navigationService: mockNavigationService,
+          modelService: mockModelService,
+          deviceService: deviceService,
+          recommendationService: FakeModelRecommendationService(
+            recommendedModels: recommendationService.recommendedModels,
+            meetsRequirements: false,
+            unsupportedMessage: 'Need more RAM',
+          ),
+          ragSettingsService: ragSettings,
+        );
+
+        await viewModel.runStartupLogic();
+
+        expect(viewModel.isUnsupportedDevice, isTrue);
+        expect(viewModel.modelError, 'Need more RAM');
+      });
+
+      test('cancels the previous subscription when startup runs twice', () async {
+        final controller = StreamController<List<ModelInfo>>.broadcast();
+        when(() => mockModelService.modelStatusStream).thenAnswer((_) => controller.stream);
+
+        final viewModel = StartupViewModel(
+          navigationService: mockNavigationService,
+          modelService: mockModelService,
+          deviceService: deviceService,
+          recommendationService: recommendationService,
+          ragSettingsService: ragSettings,
+        );
+
+        await viewModel.runStartupLogic();
+        await viewModel.runStartupLogic();
+
+        controller.add([inferenceModel, embeddingModel]);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(viewModel.statusMessage, 'Finalizing initialization...');
+        await controller.close();
+      });
+
+      test('handles stream onError branches for 401 and generic failures', () async {
+        final controller = StreamController<List<ModelInfo>>.broadcast();
+        when(() => mockModelService.modelStatusStream).thenAnswer((_) => controller.stream);
+
+        final viewModel = StartupViewModel(
+          navigationService: mockNavigationService,
+          modelService: mockModelService,
+          deviceService: deviceService,
+          recommendationService: recommendationService,
+          ragSettingsService: ragSettings,
+        );
+
+        unawaited(viewModel.runStartupLogic());
+        controller.addError(StateError('401 unauthorized'));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(viewModel.needsToken, isTrue);
+
+        controller.addError(StateError('plain failure'));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(viewModel.modelError, contains('plain failure'));
+
+        await controller.close();
+      });
+
+      test('downloads inference models that are missing and stops on post-download errors', () async {
+        inferenceModel.status = ModelStatus.notDownloaded;
+        embeddingModel.status = ModelStatus.error;
+        embeddingModel.errorMessage = 'Disk full';
+
+        final dynamicModels = <ModelInfo>[inferenceModel, embeddingModel];
+        when(() => mockModelService.models).thenReturn(dynamicModels);
+
+        final viewModel = StartupViewModel(
+          navigationService: mockNavigationService,
+          modelService: mockModelService,
+          deviceService: deviceService,
+          recommendationService: recommendationService,
+          ragSettingsService: ragSettings,
+        );
+
+        await viewModel.runStartupLogic();
+
+        verify(() => mockModelService.downloadModel(inferenceModel.id)).called(1);
+        expect(viewModel.modelError, 'Failed to download models. Please retry.');
       });
     });
   });

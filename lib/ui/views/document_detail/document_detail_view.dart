@@ -4,9 +4,17 @@ import 'package:offline_sync/ui/views/document_detail/document_detail_viewmodel.
 import 'package:stacked/stacked.dart';
 
 class DocumentDetailView extends StackedView<DocumentDetailViewModel> {
-  const DocumentDetailView({required this.document, super.key});
+  const DocumentDetailView({
+    required this.document,
+    this.viewModel,
+    this.onViewModelReadyCallback,
+    super.key,
+  });
 
   final Document document;
+  final DocumentDetailViewModel? viewModel;
+  final void Function(DocumentDetailViewModel viewModel)?
+  onViewModelReadyCallback;
 
   @override
   Widget builder(
@@ -328,9 +336,15 @@ class DocumentDetailView extends StackedView<DocumentDetailViewModel> {
 
   @override
   DocumentDetailViewModel viewModelBuilder(BuildContext context) =>
-      DocumentDetailViewModel();
+      viewModel ?? DocumentDetailViewModel();
 
   @override
-  void onViewModelReady(DocumentDetailViewModel viewModel) =>
-      viewModel.initialize(document);
+  void onViewModelReady(DocumentDetailViewModel viewModel) {
+    final callback = onViewModelReadyCallback;
+    if (callback != null) {
+      callback(viewModel);
+      return;
+    }
+    viewModel.initialize(document);
+  }
 }

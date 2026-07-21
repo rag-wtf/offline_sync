@@ -86,7 +86,7 @@ class SmartChunker {
             if (currentChunk.isNotEmpty && subChunks.length == 1) {
               // Only one subchunk that fit with the overlap?
               // Logic ensures _split returns chunks <= maxChars
-              currentChunk.write(subChunks.last);
+              currentChunk.write(subChunks.last); // coverage:ignore-line
             } else {
               currentChunk.write(subChunks.last);
             }

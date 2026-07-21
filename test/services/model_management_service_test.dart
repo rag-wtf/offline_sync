@@ -1,8 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:mocktail/mocktail.dart';
+import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
+import 'package:offline_sync/services/rag_settings_service.dart';
 
 import '../helpers/test_helpers.dart';
 
@@ -101,6 +104,18 @@ void main() {
     });
 
     group('ModelInfo -', () {
+      test('uses an explicit file name when one is supplied', () {
+        final model = ModelInfo(
+          id: 'custom',
+          name: 'Custom',
+          url: 'https://example.com/model.bin',
+          type: AppModelType.inference,
+          fileName: 'local-model.bin',
+        );
+
+        expect(model.effectiveFileName, 'local-model.bin');
+      });
+
       test('should have required fields', () {
         final model = service.models.first;
 
@@ -240,6 +255,113 @@ void main() {
     });
 
     group('Integration constraints -', () {
+      test(
+        'verifyFileSha256 accepts the expected digest case-insensitively',
+        () async {
+          final tempDir = await Directory.systemTemp.createTemp(
+            'model-sha256-valid-',
+          );
+          addTearDown(() async {
+            if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+          });
+          final file = File('${tempDir.path}/sample-model.bin');
+          await file.writeAsBytes(const [1, 2, 3, 4]);
+
+          expect(
+            await ModelManagementService.verifyFileSha256(
+              file,
+              'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            ),
+            isFalse,
+          );
+          expect(
+            await ModelManagementService.verifyFileSha256(
+              file,
+              '9F64A747E1B97F131FABB6B447296C9B6F0201E79FB3C5356E6C77E89B6A806A',
+            ),
+            isTrue,
+          );
+          expect(
+            await ModelManagementService.verifyFileSha256(file, 'not-a-digest'),
+            isFalse,
+          );
+        },
+      );
+
+      test('verifyFileSha256 returns false for a missing file', () async {
+        final result = await ModelManagementService.verifyFileSha256(
+          File('missing-model-file.bin'),
+          'anything',
+        );
+        expect(result, isFalse);
+      });
+
+      test(
+        'initialize treats model-installed checker errors as not downloaded',
+        () async {
+          final service = ModelManagementService(
+            modelInstalledChecker: (_) async =>
+                throw Exception('checker failed'),
+          );
+          addTearDown(service.dispose);
+
+          await service.initialize();
+
+          expect(service.downloadedInferenceModels, isEmpty);
+          expect(service.downloadedEmbeddingModels, isEmpty);
+        },
+      );
+
+      test(
+        'switches downloaded inference and embedding models successfully',
+        () async {
+          final activatedInference = <String>[];
+          final activatedEmbedding = <String>[];
+          final service = ModelManagementService(
+            inferenceModelActivator: (model) async =>
+                activatedInference.add(model.id),
+            embeddingModelActivator: (model) async =>
+                activatedEmbedding.add(model.id),
+          );
+          addTearDown(service.dispose);
+          final inference = service.models.firstWhere(
+            (m) => m.type == AppModelType.inference,
+          )..status = ModelStatus.downloaded;
+          final embedding = service.models.firstWhere(
+            (m) => m.type == AppModelType.embedding,
+          )..status = ModelStatus.downloaded;
+          when(
+            () =>
+                locator<RagSettingsService>().setActiveInferenceModelId(any()),
+          ).thenAnswer((_) async {});
+          when(
+            () =>
+                locator<RagSettingsService>().setActiveEmbeddingModelId(any()),
+          ).thenAnswer((_) async {});
+
+          await service.switchInferenceModel(inference.id);
+          await service.switchEmbeddingModel(embedding.id);
+
+          expect(service.activeInferenceModel, same(inference));
+          expect(service.activeEmbeddingModel, same(embedding));
+          expect(activatedInference, [inference.id]);
+          expect(activatedEmbedding, [embedding.id]);
+        },
+      );
+
+      test('resetErroredModels restores errored state and clears messages', () {
+        final errored = service.models.first..status = ModelStatus.error;
+        errored
+          ..progress = 0.5
+          ..errorMessage = 'failed';
+
+        service.resetErroredModels();
+
+        expect(errored.status, ModelStatus.notDownloaded);
+        expect(errored.progress, 0);
+        expect(errored.errorMessage, isNull);
+      });
+
       test('Gecko 64 declares the verified SHA-256 digest', () {
         expect(
           EmbeddingModels.gecko64.sha256,
@@ -303,6 +425,290 @@ void main() {
             errors,
             contains('Checksum verification unavailable for gecko-64.'),
           );
+        },
+      );
+
+      test(
+        'initialize resets stale downloaded state when file is missing',
+        () async {
+          final service = ModelManagementService(
+            modelInstalledChecker: (_) async => false,
+          );
+          addTearDown(service.dispose);
+
+          final model = service.models.first;
+          model
+            ..status = ModelStatus.downloaded
+            ..progress = 1;
+
+          await service.initialize();
+
+          expect(model.status, ModelStatus.notDownloaded);
+          expect(model.progress, 0);
+        },
+      );
+
+      test(
+        'initialize restores saved active model ids when activation succeeds',
+        () async {
+          const inferenceId = 'gemma3-270m';
+          const embeddingId = 'embedding-gemma-256';
+
+          when(
+            () => locator<RagSettingsService>().activeInferenceModelId,
+          ).thenReturn(inferenceId);
+          when(
+            () => locator<RagSettingsService>().activeEmbeddingModelId,
+          ).thenReturn(embeddingId);
+
+          final tempDir = await Directory.systemTemp.createTemp('model-path-');
+          addTearDown(() async {
+            if (tempDir.existsSync()) {
+              tempDir.deleteSync(recursive: true);
+            }
+          });
+
+          final service = ModelManagementService(
+            modelInstalledChecker: (_) async => true,
+            installedModelPathResolver: (definition) async {
+              final file = File('${tempDir.path}/${definition.fileName}');
+              await file.writeAsBytes(const [1, 2, 3]);
+              return file.path;
+            },
+            inferenceModelActivator: (_) async {},
+            embeddingModelActivator: (_) async {},
+          );
+          addTearDown(service.dispose);
+
+          await service.initialize();
+
+          expect(service.activeInferenceModel?.id, inferenceId);
+          expect(service.activeEmbeddingModel?.id, embeddingId);
+        },
+      );
+
+      test(
+        'initialize falls back to the first model when saved ids are unknown',
+        () async {
+          final firstModel = ModelConfig.allModels.first;
+          when(
+            () => locator<RagSettingsService>().activeInferenceModelId,
+          ).thenReturn('missing-inference');
+          when(
+            () => locator<RagSettingsService>().activeEmbeddingModelId,
+          ).thenReturn('missing-embedding');
+
+          final service = ModelManagementService(
+            modelInstalledChecker: (filename) async =>
+                filename == firstModel.fileName,
+            installedModelPathResolver: (definition) async {
+              final tempDir = await Directory.systemTemp.createTemp(
+                'model-fallback-',
+              );
+              addTearDown(() async {
+                if (tempDir.existsSync()) {
+                  tempDir.deleteSync(recursive: true);
+                }
+              });
+              final file = File('${tempDir.path}/${definition.fileName}');
+              await file.writeAsBytes(const [7, 8, 9]);
+              return file.path;
+            },
+            inferenceModelActivator: (_) async {},
+          );
+          addTearDown(service.dispose);
+
+          await service.initialize();
+
+          expect(service.activeInferenceModel?.id, firstModel.id);
+          expect(service.activeEmbeddingModel, isNull);
+        },
+      );
+
+      test(
+        'downloadModel auto-activates the first downloaded inference model',
+        () async {
+          final progressUpdates = <double>[];
+          when(
+            () =>
+                locator<RagSettingsService>().setActiveInferenceModelId(any()),
+          ).thenAnswer((_) async {});
+
+          final service = ModelManagementService(
+            authTokenLoader: () async => 'hf_token',
+            inferenceModelDownloader: (model, token, onProgress) async {
+              expect(token, 'hf_token');
+              onProgress(25);
+              progressUpdates.add(model.progress);
+              onProgress(100);
+              progressUpdates.add(model.progress);
+            },
+            inferenceModelActivator: (_) async {},
+          );
+          addTearDown(service.dispose);
+
+          final inference = service.models.firstWhere(
+            (m) => m.type == AppModelType.inference,
+          );
+
+          await service.downloadModel(inference.id);
+
+          expect(inference.status, ModelStatus.downloaded);
+          expect(inference.progress, 1);
+          expect(service.activeInferenceModel?.id, inference.id);
+          expect(progressUpdates, [0.25, 1.0]);
+        },
+      );
+
+      test(
+        'downloadModel restores the previously active inference model',
+        () async {
+          final activatedModels = <String>[];
+          when(
+            () =>
+                locator<RagSettingsService>().setActiveInferenceModelId(any()),
+          ).thenAnswer((_) async {});
+
+          final service = ModelManagementService(
+            authTokenLoader: () async => 'hf_token',
+            inferenceModelDownloader: (model, token, onProgress) async {
+              onProgress(100);
+            },
+            inferenceModelActivator: (model) async {
+              activatedModels.add(model.id);
+            },
+          );
+          addTearDown(service.dispose);
+
+          final inferenceModels = service.models
+              .where((m) => m.type == AppModelType.inference)
+              .take(2)
+              .toList();
+          final first = inferenceModels.first..status = ModelStatus.downloaded;
+          final second = inferenceModels.last;
+
+          await service.switchInferenceModel(first.id);
+          activatedModels.clear();
+
+          await service.downloadModel(second.id);
+
+          expect(second.status, ModelStatus.downloaded);
+          expect(service.activeInferenceModel?.id, first.id);
+          expect(activatedModels, [first.id]);
+        },
+      );
+
+      test(
+        'downloadModel surfaces unauthorized errors for inference downloads',
+        () async {
+          final service = ModelManagementService(
+            authTokenLoader: () async => 'hf_token',
+            inferenceModelDownloader: (model, token, onProgress) async {
+              throw Exception('401 unauthorized');
+            },
+          );
+          addTearDown(service.dispose);
+
+          final errors = <Object>[];
+          final subscription = service.modelStatusStream.listen(
+            (_) {},
+            onError: errors.add,
+          );
+          addTearDown(subscription.cancel);
+
+          final inference = service.models.firstWhere(
+            (m) => m.type == AppModelType.inference,
+          );
+
+          await service.downloadModel(inference.id);
+          await Future<void>.delayed(Duration.zero);
+
+          expect(inference.status, ModelStatus.error);
+          expect(
+            errors,
+            contains('Unauthorized (401). Please check your HF Token.'),
+          );
+        },
+      );
+
+      test(
+        'downloadModel restores the previously active embedding model',
+        () async {
+          final activatedModels = <String>[];
+          when(
+            () =>
+                locator<RagSettingsService>().setActiveEmbeddingModelId(any()),
+          ).thenAnswer((_) async {});
+
+          final service = ModelManagementService(
+            authTokenLoader: () async => 'hf_token',
+            embeddingModelDownloader: (model, token, onProgress) async {
+              onProgress(100);
+            },
+            embeddingModelActivator: (model) async {
+              activatedModels.add(model.id);
+            },
+          );
+          addTearDown(service.dispose);
+
+          final embeddingModels = service.models
+              .where((m) => m.type == AppModelType.embedding)
+              .take(2)
+              .toList();
+          final first = embeddingModels.first..status = ModelStatus.downloaded;
+          final second = embeddingModels.last;
+
+          await service.switchEmbeddingModel(first.id);
+          activatedModels.clear();
+
+          await service.downloadModel(second.id);
+
+          expect(second.status, ModelStatus.downloaded);
+          expect(service.activeEmbeddingModel?.id, first.id);
+          expect(activatedModels, [first.id]);
+        },
+      );
+
+      test(
+        'verifyDeclaredChecksumForTest deletes mismatched files and marks error',
+        () async {
+          final tempDir = await Directory.systemTemp.createTemp(
+            'model-checksum-mismatch-',
+          );
+          addTearDown(() async {
+            if (tempDir.existsSync()) {
+              tempDir.deleteSync(recursive: true);
+            }
+          });
+
+          const expected = EmbeddingModels.gecko64;
+          final file = File('${tempDir.path}/${expected.fileName}');
+          await file.writeAsBytes(const [1, 2, 3]);
+
+          final service = ModelManagementService(
+            installedModelPathResolver: (_) async => file.path,
+          );
+          addTearDown(service.dispose);
+
+          final errors = <Object>[];
+          final subscription = service.modelStatusStream.listen(
+            (_) {},
+            onError: errors.add,
+          );
+          addTearDown(subscription.cancel);
+
+          final model = service.models.firstWhere(
+            (candidate) => candidate.id == expected.id,
+          );
+
+          final verified = await service.verifyDeclaredChecksumForTest(model);
+          await Future<void>.delayed(Duration.zero);
+
+          expect(verified, isFalse);
+          expect(file.existsSync(), isFalse);
+          expect(model.status, ModelStatus.error);
+          expect(model.errorMessage, contains('Checksum mismatch'));
+          expect(errors, contains('Checksum mismatch for ${expected.id}.'));
         },
       );
 

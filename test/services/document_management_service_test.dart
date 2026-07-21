@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -86,6 +87,155 @@ void main() {
   });
 
   group('DocumentManagementService Tests', () {
+    test('value objects expose cancellation and aggregate state', () {
+      final job = IngestionJob(documentId: 'doc');
+      expect(job.isCancelled, isFalse);
+      job.cancel();
+      expect(job.isCancelled, isTrue);
+
+      const result = IngestionResult(
+        succeeded: [],
+        failed: {'file.txt': 'failed'},
+      );
+      expect(result.hasErrors, isTrue);
+      expect(result.totalCount, 1);
+      expect(
+        const IngestionProgress(
+          documentId: 'd',
+          documentTitle: 'D',
+          stage: 'parsing',
+        ).currentChunk,
+        0,
+      );
+    });
+
+    test('addDocument rejects a missing file', () async {
+      await expectLater(
+        service.addDocument('does-not-exist.txt'),
+        throwsA(isA<FileSystemException>()),
+      );
+    });
+
+    test('addDocumentFromPlatformFile ingests in-memory bytes', () async {
+      when(
+        () => mockParserService.detectFormat(any<String>()),
+      ).thenReturn(DocumentFormat.plainText);
+      when(
+        () => mockEmbeddingService.generateEmbedding(any<String>()),
+      ).thenAnswer((_) async => [0.1, 0.2]);
+      when(() => mockVectorStore.findByHash(any<String>())).thenReturn(null);
+      when(
+        () => mockVectorStore.insertDocument(any<Document>()),
+      ).thenReturn(null);
+      when(
+        () => mockVectorStore.updateDocument(any<Document>()),
+      ).thenReturn(null);
+      when(
+        () => mockVectorStore.insertEmbeddingsBatch(any<List<EmbeddingData>>()),
+      ).thenReturn(null);
+
+      final result = await service.addDocumentFromPlatformFile(
+        PlatformFile(
+          name: 'memory.txt',
+          size: 12,
+          bytes: Uint8List.fromList('memory bytes'.codeUnits),
+        ),
+      );
+
+      expect(result.title, 'memory.txt');
+      expect(result.filePath, 'memory.txt');
+      expect(result.status, IngestionStatus.complete);
+    });
+
+    test('addDocumentFromPlatformFile rejects missing bytes', () async {
+      await expectLater(
+        service.addDocumentFromPlatformFile(
+          PlatformFile(name: 'empty.txt', size: 0),
+        ),
+        throwsA(
+          isA<Exception>().having(
+            (error) => error.toString(),
+            'message',
+            contains('File content is not available'),
+          ),
+        ),
+      );
+    });
+
+    test(
+      'addMultipleDocuments reports successes and failures per file',
+      () async {
+        final file = File('multiple-success.txt');
+        await file.writeAsString('multiple content');
+        addTearDown(() async {
+          if (file.existsSync()) await file.delete();
+        });
+        when(() => mockVectorStore.findByHash(any<String>())).thenReturn(null);
+        when(
+          () => mockParserService.detectFormat(any<String>()),
+        ).thenReturn(DocumentFormat.plainText);
+        when(
+          () => mockEmbeddingService.generateEmbedding(any<String>()),
+        ).thenAnswer((_) async => [0.1]);
+        when(
+          () => mockVectorStore.insertDocument(any<Document>()),
+        ).thenReturn(null);
+        when(
+          () => mockVectorStore.updateDocument(any<Document>()),
+        ).thenReturn(null);
+        when(
+          () =>
+              mockVectorStore.insertEmbeddingsBatch(any<List<EmbeddingData>>()),
+        ).thenReturn(null);
+
+        final result = await service.addMultipleDocuments([
+          file.path,
+          'missing.txt',
+        ]);
+
+        expect(result.succeeded, hasLength(1));
+        expect(result.failed.keys, contains('missing.txt'));
+        expect(result.totalCount, 2);
+      },
+    );
+
+    test('delegates document query and maintenance operations', () async {
+      final document = Document(
+        id: 'doc',
+        title: 'Doc',
+        filePath: 'doc.txt',
+        format: DocumentFormat.plainText,
+        chunkCount: 1,
+        totalCharacters: 4,
+        contentHash: 'hash',
+        ingestedAt: DateTime.now(),
+      );
+      final chunks = [
+        EmbeddingData(
+          id: 'chunk',
+          documentId: 'doc',
+          content: 'text',
+          embedding: [1],
+        ),
+      ];
+      when(() => mockVectorStore.getAllDocuments()).thenReturn([document]);
+      when(() => mockVectorStore.getDocument('doc')).thenReturn(document);
+      when(() => mockVectorStore.findByHash('hash')).thenReturn(document);
+      when(
+        () => mockVectorStore.getChunksForDocument('doc'),
+      ).thenReturn(chunks);
+      when(() => mockVectorStore.optimizeDatabase()).thenReturn(null);
+      when(() => mockVectorStore.deleteDocument('doc')).thenReturn(null);
+
+      expect(await service.getAllDocuments(), [document]);
+      expect(await service.findByHash('hash'), same(document));
+      expect(await service.getDocumentChunks('doc'), chunks);
+      await service.optimizeDatabase();
+      await service.deleteDocument('doc');
+      verify(() => mockVectorStore.optimizeDatabase()).called(1);
+      verify(() => mockVectorStore.deleteDocument('doc')).called(1);
+    });
+
     test('addDocument success flow', () async {
       final file = File('test_file.txt');
       await file.writeAsString('Test content');

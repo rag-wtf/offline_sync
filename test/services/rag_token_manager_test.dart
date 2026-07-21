@@ -77,6 +77,38 @@ void main() {
       test('should handle empty history gracefully', () {
         expect(manager.buildHistoryWithBudget([], 100), isEmpty);
       });
+
+      test('still keeps the newest message when it alone exceeds budget', () {
+        final result = manager.buildHistoryWithBudget(
+          ['old', 'this newest message is definitely too long'],
+          1,
+        );
+
+        expect(result, contains('this newest message is definitely too long'));
+        expect(result, isNot(contains('old')));
+      });
+
+      test('caps returned history to the most recent ten messages', () {
+        final history = List.generate(12, (index) => 'Message $index');
+
+        final result = manager.buildHistoryWithBudget(history, 1000);
+        final returnedLines = result
+            .split('\n')
+            .where((line) => line.startsWith('Message '))
+            .toList();
+
+        expect(returnedLines, hasLength(10));
+        expect(returnedLines, isNot(contains('Message 0')));
+        expect(returnedLines, isNot(contains('Message 1')));
+        expect(returnedLines.first, 'Message 2');
+        expect(returnedLines.last, 'Message 11');
+      });
+    });
+
+    group('calculateChunkOverlap -', () {
+      test('floors the overlap ratio against chunk size', () {
+        expect(manager.calculateChunkOverlap(101, 0.25), 25);
+      });
     });
   });
 }

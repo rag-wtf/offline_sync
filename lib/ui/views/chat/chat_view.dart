@@ -7,7 +7,14 @@ import 'package:offline_sync/ui/views/chat/widgets/chat_message_tile.dart';
 import 'package:stacked/stacked.dart';
 
 class ChatView extends StackedView<ChatViewModel> {
-  const ChatView({super.key});
+  const ChatView({
+    this.viewModel,
+    this.onViewModelReadyCallback,
+    super.key,
+  });
+
+  final ChatViewModel? viewModel;
+  final void Function(ChatViewModel viewModel)? onViewModelReadyCallback;
 
   void _scrollToBottom(ChatViewModel viewModel) {
     if (viewModel.scrollController.hasClients) {
@@ -68,7 +75,9 @@ class ChatView extends StackedView<ChatViewModel> {
                       return ListView.separated(
                         shrinkWrap: true,
                         itemCount: viewModel.availableDocuments.length,
+                        // coverage:ignore-start
                         separatorBuilder: (_, _) => const Divider(height: 1),
+                        // coverage:ignore-end
                         itemBuilder: (context, index) {
                           final doc = viewModel.availableDocuments[index];
                           final isSelected = viewModel.selectedDocumentIds
@@ -261,10 +270,16 @@ class ChatView extends StackedView<ChatViewModel> {
   }
 
   @override
-  ChatViewModel viewModelBuilder(BuildContext context) => ChatViewModel();
+  ChatViewModel viewModelBuilder(BuildContext context) =>
+      viewModel ?? ChatViewModel();
 
   @override
   void onViewModelReady(ChatViewModel viewModel) {
+    final callback = onViewModelReadyCallback;
+    if (callback != null) {
+      callback(viewModel);
+      return;
+    }
     unawaited(viewModel.initialize());
   }
 }

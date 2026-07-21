@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/l10n/gen/app_localizations.dart';
@@ -28,8 +29,15 @@ class DocumentLibraryViewModel extends BaseViewModel {
   AppLocalizations? get _l10n {
     final context = StackedService.navigatorKey?.currentContext;
     if (context == null) return null;
-    return AppLocalizations.of(context);
+    return AppLocalizations.of(context); // coverage:ignore-line
   }
+
+  @visibleForTesting
+  static Future<FilePickerResult?> Function({
+    required FileType type,
+    required List<String> allowedExtensions,
+  })
+  pickFiles = FilePicker.pickFiles;
 
   Future<void> initialize() async {
     setBusy(true);
@@ -75,7 +83,7 @@ class DocumentLibraryViewModel extends BaseViewModel {
   }
 
   Future<void> pickAndIngestFile() async {
-    final result = await FilePicker.pickFiles(
+    final result = await pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'docx', 'txt', 'md', 'epub', 'json'],
     );

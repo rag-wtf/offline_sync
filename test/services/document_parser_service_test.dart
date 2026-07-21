@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/services/document_parser_service.dart';
+import 'package:syncfusion_flutter_pdf/pdf.dart';
 
 void main() {
   group('DocumentParserServiceTest -', () {
@@ -104,6 +105,45 @@ void main() {
         expect(result.estimatedTokens, 3);
       });
 
+      test(
+        'parses unknown text-like files as text while preserving metadata',
+        () async {
+          const content = 'mystery format content';
+          final result = await service.parseDocumentFromBytes(
+            Uint8List.fromList(utf8.encode(content)),
+            'notes.custom',
+          );
+
+          expect(result.content, content);
+          expect(result.format, DocumentFormat.unknown);
+          expect(
+            result.metadata,
+            containsPair('fileName', 'notes.custom'),
+          );
+          expect(result.metadata, containsPair('fileSize', content.length));
+          expect(result.metadata, containsPair('extension', 'unknown'));
+        },
+      );
+
+      test(
+        'rejects binary unknown files instead of treating them as text',
+        () async {
+          await expectLater(
+            () => service.parseDocumentFromBytes(
+              Uint8List.fromList(const [0, 159, 146, 150]),
+              'archive.bin',
+            ),
+            throwsA(
+              isA<Exception>().having(
+                (error) => error.toString(),
+                'message',
+                contains('Unsupported file format: archive.bin'),
+              ),
+            ),
+          );
+        },
+      );
+
       test('parses non-ASCII DOCX text without corruption', () async {
         const text = 'Café — 日本語 — 😀 — “smart quotes”';
         final documentXml = [
@@ -133,6 +173,165 @@ void main() {
         expect(parsed.content, contains('😀'));
         expect(parsed.content, contains('“smart quotes”'));
       });
+
+      test(
+        'throws a helpful error when DOCX bytes lack document.xml',
+        () async {
+          final archive = Archive()
+            ..addFile(
+              ArchiveFile(
+                'word/styles.xml',
+                8,
+                utf8.encode('<styles/>'),
+              ),
+            );
+          final encoded = ZipEncoder().encode(archive);
+
+          await expectLater(
+            () => service.parseDocumentFromBytes(
+              Uint8List.fromList(encoded),
+              'broken.docx',
+            ),
+            throwsA(
+              isA<Exception>().having(
+                (error) => error.toString(),
+                'message',
+                contains('Invalid DOCX file: missing word/document.xml'),
+              ),
+            ),
+          );
+        },
+      );
+
+      test('wraps PDF parser failures with PDF-specific context', () async {
+        await expectLater(
+          () => service.parseDocumentFromBytes(
+            Uint8List.fromList(const [1, 2, 3, 4]),
+            'broken.pdf',
+          ),
+          throwsA(
+            isA<Exception>().having(
+              (error) => error.toString(),
+              'message',
+              contains('Failed to parse PDF:'),
+            ),
+          ),
+        );
+      });
+
+      test('parses text from a valid PDF', () async {
+        final pdf = PdfDocument();
+        pdf.pages.add().graphics.drawString(
+          'PDF content',
+          PdfStandardFont(PdfFontFamily.helvetica, 12),
+        );
+        final bytes = pdf.saveSync();
+        pdf.dispose();
+
+        final parsed = await service.parseDocumentFromBytes(
+          Uint8List.fromList(bytes),
+          'valid.pdf',
+        );
+
+        expect(parsed.content, contains('PDF content'));
+        expect(parsed.format, DocumentFormat.pdf);
+      });
+
+      test('parses EPUB chapters and strips markup and entities', () async {
+        final archive = Archive()
+          ..addFile(
+            ArchiveFile(
+              'META-INF/container.xml',
+              _containerXml.length,
+              utf8.encode(_containerXml),
+            ),
+          )
+          ..addFile(
+            ArchiveFile(
+              'OEBPS/content.opf',
+              _contentOpf.length,
+              utf8.encode(_contentOpf),
+            ),
+          )
+          ..addFile(
+            ArchiveFile(
+              'OEBPS/nav.xhtml',
+              _navXhtml.length,
+              utf8.encode(_navXhtml),
+            ),
+          )
+          ..addFile(
+            ArchiveFile(
+              'OEBPS/chapter.xhtml',
+              _chapterXhtml.length,
+              utf8.encode(_chapterXhtml),
+            ),
+          );
+
+        final encoded = ZipEncoder().encode(archive);
+        final parsed = await service.parseDocumentFromBytes(
+          Uint8List.fromList(encoded),
+          'book.epub',
+        );
+
+        expect(parsed.content, contains('Chapter text & more'));
+        expect(parsed.content, isNot(contains('<p>')));
+        expect(parsed.content, isNot(contains('hidden')));
+        expect(parsed.format, DocumentFormat.epub);
+      });
+
+      test('wraps invalid EPUB bytes with EPUB-specific context', () async {
+        await expectLater(
+          () => service.parseDocumentFromBytes(
+            Uint8List.fromList(const [1, 2, 3]),
+            'broken.epub',
+          ),
+          throwsA(
+            isA<Exception>().having(
+              (error) => error.toString(),
+              'message',
+              contains('Failed to parse EPUB:'),
+            ),
+          ),
+        );
+      });
     });
   });
 }
+
+const _containerXml = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles>
+</container>
+''';
+
+const _contentOpf = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="BookId">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:title>Test Book</dc:title>
+    <dc:identifier id="BookId">book-id</dc:identifier>
+    <dc:language>en</dc:language>
+  </metadata>
+  <manifest>
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+    <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="chapter"/></spine>
+</package>
+''';
+
+const _navXhtml = '''
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+  <head><title>Navigation</title></head>
+  <body><nav epub:type="toc"><ol><li><a href="chapter.xhtml">Chapter</a></li></ol></nav></body>
+</html>
+''';
+
+const _chapterXhtml = '''
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head><style>.hidden { display: none; }</style></head>
+  <body><p>Chapter text &amp; more</p><script>hidden</script></body>
+</html>
+''';

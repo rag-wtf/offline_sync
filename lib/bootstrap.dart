@@ -19,38 +19,71 @@ const notificationPermissionRequestAttemptedKey =
 Future<void> bootstrap(
   FutureOr<Widget> Function() builder, {
   required String flavor,
+  bool? isWebOverride,
+  TargetPlatform? targetPlatformOverride,
+  Future<void> Function()? flutterGemmaInitialize,
+  Future<void> Function()? initializeSqliteOverride,
+  Future<void> Function()? setupLocatorOverride,
+  EnvironmentService? environmentServiceOverride,
+  void Function(Widget app)? runAppOverride,
+  Future<void> Function()? requestNotificationPermissionOverride,
+  Future<void> Function()? configureDownloaderOverride,
+  void Function()? configureDownloaderNotificationOverride,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  final isWeb = isWebOverride ?? kIsWeb;
+  final targetPlatform = targetPlatformOverride ?? defaultTargetPlatform;
+  final runAppFn = runAppOverride ?? runApp;
+  final environmentService =
+      environmentServiceOverride ?? locator<EnvironmentService>();
 
   // Configure FileDownloader for foreground mode on Android to prevent
   // WorkManager from cancelling downloads on network state changes. This must
   // be called before FlutterGemma.initialize() which uses the downloader.
   // IMPORTANT: Foreground mode requires a notification to be configured!
-  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+  if (!isWeb && targetPlatform == TargetPlatform.android) {
     // Configure foreground mode for files >= 0 MB (all files)
-    await FileDownloader().configure(
-      androidConfig: (Config.runInForegroundIfFileLargerThan, 0),
-    );
+    if (configureDownloaderOverride != null) {
+      await configureDownloaderOverride();
+    } else {
+      // coverage:ignore-start
+      await FileDownloader().configure(
+        androidConfig: (Config.runInForegroundIfFileLargerThan, 0),
+      );
+      // coverage:ignore-end
+    }
 
     // Configure notification for the 'smart_downloads' group used by
     // SmartDownloader. Without a 'running' notification, foreground mode is
     // ignored!
-    FileDownloader().configureNotificationForGroup(
-      'smart_downloads',
-      running: const TaskNotification(
-        'Downloading Model',
-        '{displayName} - {progress}%',
-      ),
-      progressBar: true,
-    );
+    if (configureDownloaderNotificationOverride != null) {
+      configureDownloaderNotificationOverride();
+    } else {
+      // coverage:ignore-start
+      FileDownloader().configureNotificationForGroup(
+        'smart_downloads',
+        running: const TaskNotification(
+          'Downloading Model',
+          '{displayName} - {progress}%',
+        ),
+        progressBar: true,
+      );
+      // coverage:ignore-end
+    }
 
     // Android 13+ requires a runtime grant for notification visibility.
     // Downloads still run in the foreground if the permission is denied, so
     // progress notifications are best-effort rather than required for success.
-    unawaited(_requestAndroidNotificationPermissionIfNeeded());
+    unawaited(
+      requestNotificationPermissionOverride?.call() ??
+          // coverage:ignore-start
+          _requestAndroidNotificationPermissionIfNeeded(),
+      // coverage:ignore-end
+    );
   }
 
-  await FlutterGemma.initialize();
+  await (flutterGemmaInitialize ?? FlutterGemma.initialize)();
 
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
@@ -64,15 +97,26 @@ Future<void> bootstrap(
   };
 
   // Platform-specific SQLite initialization
-  await platform.initializeSqlite();
+  await (initializeSqliteOverride ?? platform.initializeSqlite)();
 
-  await setupLocator();
-  locator<EnvironmentService>().flavor = flavor;
+  await (setupLocatorOverride ?? setupLocator)();
+  environmentService.flavor = flavor;
 
   await runZonedGuarded(
     () async {
-      runApp(await builder());
+      try {
+        runAppFn(await builder());
+      } on Object catch (error, stackTrace) {
+        unawaited(
+          LoggingService.recordCrash(
+            'Unhandled zone error',
+            error: error,
+            stackTrace: stackTrace,
+          ),
+        );
+      }
     },
+    // coverage:ignore-start
     (error, stackTrace) {
       unawaited(
         LoggingService.recordCrash(
@@ -82,9 +126,11 @@ Future<void> bootstrap(
         ),
       );
     },
+    // coverage:ignore-end
   );
 }
 
+// coverage:ignore-start
 Future<void> _requestAndroidNotificationPermissionIfNeeded() async {
   await requestAndroidNotificationPermissionIfNeeded(
     sdkIntProvider: () async =>
@@ -97,6 +143,7 @@ Future<void> _requestAndroidNotificationPermissionIfNeeded() async {
     ),
   );
 }
+// coverage:ignore-end
 
 @visibleForTesting
 Future<void> requestAndroidNotificationPermissionIfNeeded({
@@ -108,7 +155,9 @@ Future<void> requestAndroidNotificationPermissionIfNeeded({
   try {
     final resolvedSdkIntProvider =
         sdkIntProvider ??
+        // coverage:ignore-start
         () async => (await DeviceInfoPlugin().androidInfo).version.sdkInt;
+    // coverage:ignore-end
     if (await resolvedSdkIntProvider() < 33) {
       return;
     }
@@ -117,9 +166,12 @@ Future<void> requestAndroidNotificationPermissionIfNeeded({
         await (sharedPreferencesProvider ?? SharedPreferences.getInstance)();
     final status =
         await (permissionStatusProvider ??
+            // coverage:ignore-start
             () async => FileDownloader().permissions.status(
               PermissionType.notifications,
-            ))();
+            )
+        // coverage:ignore-end
+        )();
 
     if (status == PermissionStatus.granted) {
       return;
@@ -136,9 +188,12 @@ Future<void> requestAndroidNotificationPermissionIfNeeded({
     }
 
     await (permissionRequest ??
+        // coverage:ignore-start
         () async => FileDownloader().permissions.request(
           PermissionType.notifications,
-        ))();
+        )
+    // coverage:ignore-end
+    )();
   } on Object catch (error, stackTrace) {
     debugPrint(
       'Notification permission request failed: $error\n$stackTrace',

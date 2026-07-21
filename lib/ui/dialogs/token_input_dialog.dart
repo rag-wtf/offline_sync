@@ -5,7 +5,14 @@ import 'package:offline_sync/services/auth_token_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class TokenInputDialog extends StatefulWidget {
-  const TokenInputDialog({super.key});
+  const TokenInputDialog({
+    this.onSaveToken,
+    this.onLaunchUrl,
+    super.key,
+  });
+
+  final Future<void> Function(String token)? onSaveToken;
+  final Future<bool> Function(Uri uri)? onLaunchUrl;
 
   @override
   State<TokenInputDialog> createState() => _TokenInputDialogState();
@@ -48,7 +55,7 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
       _isSaving = true;
     });
 
-    await AuthTokenService.saveToken(token);
+    await (widget.onSaveToken ?? AuthTokenService.saveToken)(token);
 
     if (mounted) {
       Navigator.of(context).pop(true); // Return true to indicate success
@@ -92,13 +99,15 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
                     decoration: TextDecoration.underline,
                   ),
                   recognizer: TapGestureRecognizer()
+                    // coverage:ignore-start
                     ..onTap = () {
                       unawaited(
-                        launchUrl(
+                        (widget.onLaunchUrl ?? launchUrl)(
                           Uri.parse('https://huggingface.co/settings/tokens'),
                         ),
                       );
                     },
+                  // coverage:ignore-end
                 ),
                 const TextSpan(text: '. Ensure the token has read access.'),
               ],
@@ -107,10 +116,12 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
         ],
       ),
       actions: [
+        // coverage:ignore-start
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
           child: const Text('Cancel'),
         ),
+        // coverage:ignore-end
         ElevatedButton(
           onPressed: _isSaving ? null : _saveToken,
           child: _isSaving

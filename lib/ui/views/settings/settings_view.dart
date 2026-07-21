@@ -7,7 +7,14 @@ import 'package:offline_sync/ui/views/settings/settings_viewmodel.dart';
 import 'package:stacked/stacked.dart';
 
 class SettingsView extends StackedView<SettingsViewModel> {
-  const SettingsView({super.key});
+  const SettingsView({
+    this.viewModel,
+    this.onViewModelReadyCallback,
+    super.key,
+  });
+
+  final SettingsViewModel? viewModel;
+  final void Function(SettingsViewModel viewModel)? onViewModelReadyCallback;
 
   @override
   Widget builder(
@@ -446,10 +453,15 @@ class SettingsView extends StackedView<SettingsViewModel> {
 
   @override
   SettingsViewModel viewModelBuilder(BuildContext context) =>
-      SettingsViewModel();
+      viewModel ?? SettingsViewModel();
 
   @override
   void onViewModelReady(SettingsViewModel viewModel) {
+    final callback = onViewModelReadyCallback;
+    if (callback != null) {
+      callback(viewModel);
+      return;
+    }
     viewModel.setup();
   }
 }
