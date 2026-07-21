@@ -6,6 +6,8 @@ import 'package:offline_sync/services/vector_store.dart';
 
 /// Service for LLM-based relevance reranking of search results
 class RerankingService {
+  // Pre-compiled Regular Expressions for performance optimization
+  static final _numericCharsRegex = RegExp('[^0-9.]');
   final InferenceModelProvider _inferenceModelProvider =
       locator<InferenceModelProvider>();
 
@@ -92,7 +94,7 @@ Relevance score:''';
       // Parse score from response
       final scoreText = response.toString().trim();
       final score = double.tryParse(
-        scoreText.split('\n').first.replaceAll(RegExp('[^0-9.]'), ''),
+        scoreText.split('\n').first.replaceAll(_numericCharsRegex, ''),
       );
 
       return (score ?? 5.0).clamp(0.0, 10.0);

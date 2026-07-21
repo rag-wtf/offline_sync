@@ -4,6 +4,10 @@ import 'package:offline_sync/services/rag_constants.dart';
 
 /// Intelligent text chunker that respects document structure
 class SmartChunker {
+  // Pre-compiled Regular Expressions for performance optimization
+  static final _paragraphRegex = RegExp(r'\n\s*\n');
+  static final _sentencePunctuationRegex = RegExp(r'([.!?])\s+');
+
   /// Split text into chunks respecting structure
   /// (headers, paragraphs, sentences)
   ///
@@ -28,7 +32,7 @@ class SmartChunker {
     // If a paragraph is too large, split by sentences
     // If a sentence is too large, split by words/chars
 
-    final paragraphs = text.split(RegExp(r'\n\s*\n'));
+    final paragraphs = text.split(_paragraphRegex);
 
     final currentChunk = StringBuffer();
 
@@ -122,7 +126,7 @@ class SmartChunker {
     // So we'll replace with a specialized delimiter
     final sentences = paragraph
         .replaceAllMapped(
-          RegExp(r'([.!?])\s+'),
+          _sentencePunctuationRegex,
           (match) => '${match.group(1)}|<SPLIT>|',
         )
         .split('|<SPLIT>|');
