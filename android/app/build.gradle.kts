@@ -28,7 +28,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "wtf.rag.offline.sync.offline_sync"
+        applicationId = "com.offline_sync.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
