@@ -63,6 +63,15 @@ class EmbeddingData {
 }
 
 class VectorStore {
+  // Pre-compiled Regular Expressions for performance optimization
+  static final _whitespaceRegex = RegExp(r'\s+');
+  static final _sqlWildcardRegex = RegExp('[%_]');
+  static final _specialCharsRegex = RegExp(r'["\*\-\(\)\^\:]');
+  static final _sqlOperatorsRegex = RegExp(
+    r'\b(OR|AND|NOT|NEAR)\b',
+    caseSensitive: false,
+  );
+
   /// Current on-disk schema version. Bump when the schema changes and add a
   /// matching branch in [_migrate].
   static const int schemaVersion = 2;
@@ -332,14 +341,16 @@ class VectorStore {
   }) {
     final words = query
         .toLowerCase()
-        .split(RegExp(r'\s+'))
+        .split(_whitespaceRegex)
         .where((w) => w.length > 2);
     if (words.isEmpty) return [];
 
     // Sanitize and limit search terms to prevent SQL injection
     final sanitizedWords = words
         .take(10) // Limit to 10 search terms max
-        .map((w) => w.replaceAll(RegExp('[%_]'), '')) // Remove LIKE wildcards
+        .map(
+          (w) => w.replaceAll(_sqlWildcardRegex, ''),
+        ) // Remove LIKE wildcards
         .where((w) => w.isNotEmpty)
         .toList();
 
@@ -530,12 +541,9 @@ INSERT OR REPLACE INTO vectors
 
   String _sanitizeFtsQuery(String query) {
     return query
-        .replaceAll(RegExp(r'["\*\-\(\)\^\:]'), ' ')
-        .replaceAll(
-          RegExp(r'\b(OR|AND|NOT|NEAR)\b', caseSensitive: false),
-          ' ',
-        )
-        .replaceAll(RegExp(r'\s+'), ' ')
+        .replaceAll(_specialCharsRegex, ' ')
+        .replaceAll(_sqlOperatorsRegex, ' ')
+        .replaceAll(_whitespaceRegex, ' ')
         .trim();
   }
 

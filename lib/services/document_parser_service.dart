@@ -28,6 +28,25 @@ class ParsedDocument {
 
 /// Service to parse various document formats into plain text
 class DocumentParserService {
+  // Pre-compiled Regular Expressions for performance optimization
+  static final _scriptTagRegex = RegExp(
+    '<script[^>]*>.*?</script>',
+    multiLine: true,
+    caseSensitive: false,
+    dotAll: true,
+  );
+  static final _styleTagRegex = RegExp(
+    '<style[^>]*>.*?</style>',
+    multiLine: true,
+    caseSensitive: false,
+    dotAll: true,
+  );
+  static final _htmlTagsRegex = RegExp(
+    '<[^>]*>',
+    multiLine: true,
+    caseSensitive: false,
+  );
+
   /// Detect format from file name or path
   DocumentFormat detectFormat(String fileName) {
     final ext = fileName.split('.').last.toLowerCase();
@@ -171,27 +190,17 @@ class DocumentParserService {
       String stripHtml(String html) {
         final withoutScriptAndStyle = html
             .replaceAll(
-              RegExp(
-                '<script[^>]*>.*?</script>',
-                multiLine: true,
-                caseSensitive: false,
-                dotAll: true,
-              ),
+              _scriptTagRegex,
               ' ',
             )
             .replaceAll(
-              RegExp(
-                '<style[^>]*>.*?</style>',
-                multiLine: true,
-                caseSensitive: false,
-                dotAll: true,
-              ),
+              _styleTagRegex,
               ' ',
             );
 
         return withoutScriptAndStyle
             .replaceAll(
-              RegExp('<[^>]*>', multiLine: true, caseSensitive: false),
+              _htmlTagsRegex,
               ' ',
             )
             .replaceAll('&amp;', '&')

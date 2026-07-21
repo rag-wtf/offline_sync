@@ -41,6 +41,8 @@ class ModelInfo {
 }
 
 class ModelManagementService {
+  // Pre-compiled Regular Expressions for performance optimization
+  static final _pathSeparatorRegex = RegExp(r'[\/\\]');
   ModelManagementService({
     Future<String?> Function(ModelDefinition definition)?
     installedModelPathResolver,
@@ -539,7 +541,8 @@ class ModelManagementService {
       }
 
       for (final installedPath in filePaths.values) {
-        if (installedPath.split(RegExp(r'[/\\]')).last == definition.fileName) {
+        if (installedPath.split(_pathSeparatorRegex).last ==
+            definition.fileName) {
           return installedPath;
         }
       }
