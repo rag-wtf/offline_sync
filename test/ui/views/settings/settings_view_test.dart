@@ -103,7 +103,7 @@ void main() {
     when(
       () => navigationService.navigateTo<dynamic>(
         any(),
-        arguments: any(named: 'arguments'),
+        arguments: any<dynamic>(named: 'arguments'),
         id: any(named: 'id'),
         preventDuplicates: any(named: 'preventDuplicates'),
         parameters: any(named: 'parameters'),
@@ -172,7 +172,7 @@ void main() {
     verify(
       () => navigationService.navigateTo<dynamic>(
         any(),
-        arguments: any(named: 'arguments'),
+        arguments: any<dynamic>(named: 'arguments'),
         id: any(named: 'id'),
         preventDuplicates: any(named: 'preventDuplicates'),
         parameters: any(named: 'parameters'),

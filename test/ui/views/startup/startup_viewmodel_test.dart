@@ -190,19 +190,17 @@ void main() {
               ..status = ModelStatus.downloading
               ..progress = 0.5;
         final inferenceModel = ModelInfo(
-            id: InferenceModels.gemma3_270M.id,
-            name: InferenceModels.gemma3_270M.name,
-            url: 'https://example.com/inference',
-            type: AppModelType.inference,
-          )
-          ..status = ModelStatus.downloaded;
+          id: InferenceModels.gemma3_270M.id,
+          name: InferenceModels.gemma3_270M.name,
+          url: 'https://example.com/inference',
+          type: AppModelType.inference,
+        )..status = ModelStatus.downloaded;
         final embeddingModel = ModelInfo(
-            id: EmbeddingModels.gecko64.id,
-            name: EmbeddingModels.gecko64.name,
-            url: 'https://example.com/embedding',
-            type: AppModelType.embedding,
-          )
-          ..status = ModelStatus.downloaded;
+          id: EmbeddingModels.gecko64.id,
+          name: EmbeddingModels.gecko64.name,
+          url: 'https://example.com/embedding',
+          type: AppModelType.embedding,
+        )..status = ModelStatus.downloaded;
         final controller = StreamController<List<ModelInfo>>.broadcast();
         final progressObserved = Completer<String>();
         final ragSettings = getAndRegisterMockRagSettingsService();
@@ -225,7 +223,7 @@ void main() {
         when(
           () => mockNavigationService.replaceWith<dynamic>(
             any(),
-            arguments: any(named: 'arguments'),
+            arguments: any<dynamic>(named: 'arguments'),
             id: any(named: 'id'),
             preventDuplicates: any(named: 'preventDuplicates'),
             parameters: any(named: 'parameters'),
@@ -393,19 +391,17 @@ void main() {
 
       setUp(() {
         inferenceModel = ModelInfo(
-            id: InferenceModels.gemma3_270M.id,
-            name: InferenceModels.gemma3_270M.name,
-            url: 'https://example.com/inference',
-            type: AppModelType.inference,
-          )
-          ..status = ModelStatus.downloaded;
+          id: InferenceModels.gemma3_270M.id,
+          name: InferenceModels.gemma3_270M.name,
+          url: 'https://example.com/inference',
+          type: AppModelType.inference,
+        )..status = ModelStatus.downloaded;
         embeddingModel = ModelInfo(
-            id: EmbeddingModels.gecko64.id,
-            name: EmbeddingModels.gecko64.name,
-            url: 'https://example.com/embedding',
-            type: AppModelType.embedding,
-          )
-          ..status = ModelStatus.downloaded;
+          id: EmbeddingModels.gecko64.id,
+          name: EmbeddingModels.gecko64.name,
+          url: 'https://example.com/embedding',
+          type: AppModelType.embedding,
+        )..status = ModelStatus.downloaded;
         recommendationService = FakeModelRecommendationService(
           recommendedModels: const RecommendedModels(
             inferenceModel: InferenceModels.gemma3_270M,
@@ -431,16 +427,22 @@ void main() {
           () => mockModelService.modelStatusStream,
         ).thenAnswer((_) => const Stream.empty());
         when(mockModelService.initialize).thenAnswer((_) async {});
-        when(() => mockModelService.downloadModel(any())).thenAnswer((_) async {});
-        when(() => mockModelService.switchInferenceModel(any())).thenAnswer((_) async {});
-        when(() => mockModelService.switchEmbeddingModel(any())).thenAnswer((_) async {});
+        when(
+          () => mockModelService.downloadModel(any()),
+        ).thenAnswer((_) async {});
+        when(
+          () => mockModelService.switchInferenceModel(any()),
+        ).thenAnswer((_) async {});
+        when(
+          () => mockModelService.switchEmbeddingModel(any()),
+        ).thenAnswer((_) async {});
         when(() => mockModelService.activeInferenceModel).thenReturn(null);
         when(() => mockModelService.activeEmbeddingModel).thenReturn(null);
         when(ragSettings.initialize).thenAnswer((_) async {});
         when(
           () => mockNavigationService.replaceWith<dynamic>(
             any(),
-            arguments: any(named: 'arguments'),
+            arguments: any<dynamic>(named: 'arguments'),
             id: any(named: 'id'),
             preventDuplicates: any(named: 'preventDuplicates'),
             parameters: any(named: 'parameters'),
@@ -461,12 +463,16 @@ void main() {
         await viewModel.runStartupLogic();
 
         expect(viewModel.capabilities?.platform, 'android');
-        verify(() => mockModelService.switchInferenceModel(inferenceModel.id)).called(1);
-        verify(() => mockModelService.switchEmbeddingModel(embeddingModel.id)).called(1);
+        verify(
+          () => mockModelService.switchInferenceModel(inferenceModel.id),
+        ).called(1);
+        verify(
+          () => mockModelService.switchEmbeddingModel(embeddingModel.id),
+        ).called(1);
         verify(
           () => mockNavigationService.replaceWith<dynamic>(
             Routes.chatView,
-            arguments: any(named: 'arguments'),
+            arguments: any<dynamic>(named: 'arguments'),
             id: any(named: 'id'),
             preventDuplicates: any(named: 'preventDuplicates'),
             parameters: any(named: 'parameters'),
@@ -475,7 +481,8 @@ void main() {
         ).called(1);
       });
 
-      test('navigates to settings when required models are still missing', () async {
+      test('navigates to settings when required'
+          ' models are still missing', () async {
         embeddingModel.status = ModelStatus.notDownloaded;
 
         final viewModel = StartupViewModel(
@@ -488,11 +495,13 @@ void main() {
 
         await viewModel.runStartupLogic();
 
-        verify(() => mockModelService.downloadModel(embeddingModel.id)).called(1);
+        verify(
+          () => mockModelService.downloadModel(embeddingModel.id),
+        ).called(1);
         verify(
           () => mockNavigationService.replaceWith<dynamic>(
             Routes.settingsView,
-            arguments: any(named: 'arguments'),
+            arguments: any<dynamic>(named: 'arguments'),
             id: any(named: 'id'),
             preventDuplicates: any(named: 'preventDuplicates'),
             parameters: any(named: 'parameters'),
@@ -501,7 +510,8 @@ void main() {
         ).called(1);
       });
 
-      test('marks unsupported devices while still continuing startup flow', () async {
+      test('marks unsupported devices while still'
+          ' continuing startup flow', () async {
         final viewModel = StartupViewModel(
           navigationService: mockNavigationService,
           modelService: mockModelService,
@@ -520,9 +530,12 @@ void main() {
         expect(viewModel.modelError, 'Need more RAM');
       });
 
-      test('cancels the previous subscription when startup runs twice', () async {
+      test('cancels the previous subscription'
+          ' when startup runs twice', () async {
         final controller = StreamController<List<ModelInfo>>.broadcast();
-        when(() => mockModelService.modelStatusStream).thenAnswer((_) => controller.stream);
+        when(
+          () => mockModelService.modelStatusStream,
+        ).thenAnswer((_) => controller.stream);
 
         final viewModel = StartupViewModel(
           navigationService: mockNavigationService,
@@ -542,9 +555,12 @@ void main() {
         await controller.close();
       });
 
-      test('handles stream onError branches for 401 and generic failures', () async {
+      test('handles stream onError branches for 401'
+          ' and generic failures', () async {
         final controller = StreamController<List<ModelInfo>>.broadcast();
-        when(() => mockModelService.modelStatusStream).thenAnswer((_) => controller.stream);
+        when(
+          () => mockModelService.modelStatusStream,
+        ).thenAnswer((_) => controller.stream);
 
         final viewModel = StartupViewModel(
           navigationService: mockNavigationService,
@@ -566,10 +582,12 @@ void main() {
         await controller.close();
       });
 
-      test('downloads inference models that are missing and stops on post-download errors', () async {
+      test('downloads inference models that are missing and'
+          ' stops on post-download errors', () async {
         inferenceModel.status = ModelStatus.notDownloaded;
-        embeddingModel.status = ModelStatus.error;
-        embeddingModel.errorMessage = 'Disk full';
+        embeddingModel
+          ..status = ModelStatus.error
+          ..errorMessage = 'Disk full';
 
         final dynamicModels = <ModelInfo>[inferenceModel, embeddingModel];
         when(() => mockModelService.models).thenReturn(dynamicModels);
@@ -584,8 +602,13 @@ void main() {
 
         await viewModel.runStartupLogic();
 
-        verify(() => mockModelService.downloadModel(inferenceModel.id)).called(1);
-        expect(viewModel.modelError, 'Failed to download models. Please retry.');
+        verify(
+          () => mockModelService.downloadModel(inferenceModel.id),
+        ).called(1);
+        expect(
+          viewModel.modelError,
+          'Failed to download models. Please retry.',
+        );
       });
     });
   });

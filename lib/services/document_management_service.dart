@@ -272,8 +272,9 @@ class DocumentManagementService {
       const batchSize = 10;
 
       for (var i = 0; i < chunksToEmbed.length; i += batchSize) {
-        if (job.isCancelled)
+        if (job.isCancelled) {
           throw Exception('Ingestion cancelled'); // coverage:ignore-line
+        }
 
         // coverage:ignore-start
         final end = (i + batchSize < chunksToEmbed.length)

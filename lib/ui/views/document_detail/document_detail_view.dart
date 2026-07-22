@@ -345,6 +345,6 @@ class DocumentDetailView extends StackedView<DocumentDetailViewModel> {
       callback(viewModel);
       return;
     }
-    viewModel.initialize(document);
+    viewModel.initialize(document).ignore();
   }
 }

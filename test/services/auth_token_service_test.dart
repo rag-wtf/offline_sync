@@ -58,7 +58,8 @@ void main() {
       expect(token, 'stored_token');
     });
 
-    test('loadToken returns null when no stored token exists anywhere', () async {
+    test('loadToken returns null when no stored'
+        ' token exists anywhere', () async {
       final token = await AuthTokenService.loadToken();
 
       expect(token, isNull);
@@ -116,7 +117,8 @@ void main() {
       expect(await AuthTokenService.hasToken(), isFalse);
     });
 
-    test('loadToken falls back to the debug environment token when provided', () async {
+    test('loadToken falls back to the debug'
+        ' environment token when provided', () async {
       final token = await AuthTokenService.loadToken();
 
       const envToken = String.fromEnvironment('HUGGINGFACE_TOKEN');

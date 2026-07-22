@@ -128,7 +128,8 @@ void main() {
   });
 
   testWidgets(
-    'bootstrap can use locator-provided environment service and default platform lookup',
+    'bootstrap can use locator-provided environment'
+    ' service and default platform lookup',
     (tester) async {
       await locator.reset();
       final environmentService = EnvironmentService();
@@ -205,7 +206,8 @@ void main() {
   });
 
   testWidgets(
-    'bootstrap runs Android-specific configuration hooks and swallows zone errors',
+    'bootstrap runs Android-specific configuration'
+    ' hooks and swallows zone errors',
     (
       tester,
     ) async {

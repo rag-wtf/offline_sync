@@ -80,7 +80,8 @@ void main() {
       );
     });
 
-    test('uses iOS, Linux, macOS, and Windows branches with fallback handling', () async {
+    test('uses iOS, Linux, macOS, and Windows'
+        ' branches with fallback handling', () async {
       final iosService = DeviceCapabilityService(
         isAndroidOverride: false,
         isIosOverride: true,
@@ -128,7 +129,10 @@ void main() {
       expect((await linuxService.getCapabilities()).availableStorageMB, 10240);
       expect((await macService.getCapabilities()).platform, 'macos');
       expect((await windowsService.getCapabilities()).platform, 'windows');
-      expect((await windowsService.getCapabilities()).availableStorageMB, 10240);
+      expect(
+        (await windowsService.getCapabilities()).availableStorageMB,
+        10240,
+      );
     });
   });
 

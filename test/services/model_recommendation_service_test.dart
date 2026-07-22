@@ -112,7 +112,8 @@ void main() {
       );
     });
 
-    test('selects premium models only when GPU and premium thresholds exist', () {
+    test('selects premium models only when GPU and'
+        ' premium thresholds exist', () {
       final recommendation = service.getRecommendedModels(
         const DeviceCapabilities(
           totalRamMB: 13000,

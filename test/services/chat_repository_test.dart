@@ -143,8 +143,14 @@ void main() {
       expect(stored.single.sources, hasLength(1));
       expect(stored.single.sources!.single.id, 'src-1');
       expect(stored.single.sources!.single.metadata['documentTitle'], 'Spec');
-      expect(stored.single.metrics!.embeddingTime, const Duration(milliseconds: 10));
-      expect(stored.single.metrics!.searchTime, const Duration(milliseconds: 20));
+      expect(
+        stored.single.metrics!.embeddingTime,
+        const Duration(milliseconds: 10),
+      );
+      expect(
+        stored.single.metrics!.searchTime,
+        const Duration(milliseconds: 20),
+      );
       expect(
         stored.single.metrics!.generationTime,
         const Duration(milliseconds: 30),

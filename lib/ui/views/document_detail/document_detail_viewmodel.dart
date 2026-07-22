@@ -17,7 +17,10 @@ class DocumentDetailViewModel extends BaseViewModel {
   Future<void> initialize(Document doc) async {
     _document = doc;
     setBusy(true);
-    _chunks = await _documentService.getDocumentChunks(doc.id);
-    setBusy(false);
+    try {
+      _chunks = await _documentService.getDocumentChunks(doc.id);
+    } finally {
+      setBusy(false);
+    }
   }
 }

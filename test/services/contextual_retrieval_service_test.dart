@@ -221,7 +221,8 @@ void main() {
     });
 
     group('contextualizeDocument -', () {
-      test('generateChunkContext builds a prompt and trims the response', () async {
+      test('generateChunkContext builds a prompt'
+          ' and trims the response', () async {
         final model = MockInferenceModel();
         final chat = MockInferenceChat();
         Message? capturedPrompt;
@@ -252,9 +253,10 @@ void main() {
         expect(capturedPrompt!.text, contains('Full document body'));
       });
 
-      test('generateChunkContext falls back to empty text on model errors', () async {
-        ContextualRetrievalService.getActiveModel =
-            () async => throw Exception('missing model');
+      test('generateChunkContext falls back to'
+          ' empty text on model errors', () async {
+        ContextualRetrievalService.getActiveModel = () async =>
+            throw Exception('missing model');
 
         final response = await service.generateChunkContext(
           documentContent: 'Full document body',

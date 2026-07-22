@@ -41,8 +41,11 @@ class DocumentLibraryViewModel extends BaseViewModel {
 
   Future<void> initialize() async {
     setBusy(true);
-    await _refreshDocuments();
-    setBusy(false);
+    try {
+      await _refreshDocuments();
+    } finally {
+      setBusy(false);
+    }
 
     // Listen to progress stream to update UI in real-time
     _progressSubscription = _documentService.ingestionProgressStream.listen((

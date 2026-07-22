@@ -97,7 +97,7 @@ void main() {
     when(
       () => navigationService.navigateTo<dynamic>(
         Routes.settingsView,
-        arguments: any(named: 'arguments'),
+        arguments: any<dynamic>(named: 'arguments'),
         id: any(named: 'id'),
         preventDuplicates: any(named: 'preventDuplicates'),
         parameters: any(named: 'parameters'),
@@ -216,7 +216,8 @@ void main() {
     ).called(1);
   });
 
-  test('initialize keeps only completed documents and enables scroll for history', () async {
+  test('initialize keeps only completed documents and'
+      ' enables scroll for history', () async {
     final progressController = StreamController<IngestionProgress>.broadcast();
     when(ragService.initialize).thenAnswer((_) async {});
     when(() => chatRepository.loadMessages()).thenAnswer(
@@ -268,7 +269,8 @@ void main() {
     await progressController.close();
   });
 
-  test('initialize refreshes documents again when ingestion completes', () async {
+  test('initialize refreshes documents again'
+      ' when ingestion completes', () async {
     final progressController = StreamController<IngestionProgress>.broadcast();
     when(ragService.initialize).thenAnswer((_) async {});
     when(() => chatRepository.loadMessages()).thenAnswer((_) async => []);
@@ -291,7 +293,9 @@ void main() {
     );
     await Future<void>.delayed(Duration.zero);
 
-    verify(() => documentService.getAllDocuments()).called(greaterThanOrEqualTo(2));
+    verify(
+      () => documentService.getAllDocuments(),
+    ).called(greaterThanOrEqualTo(2));
     await progressController.close();
   });
 
@@ -310,24 +314,27 @@ void main() {
     ).called(1);
   });
 
-  test('toggleDocumentSelection toggles filters and onScrolled clears pending scroll', () {
-    final viewModel = ChatViewModel();
-
-    viewModel.toggleDocumentSelection('doc-1');
+  test('toggleDocumentSelection toggles filters and'
+      ' onScrolled clears pending scroll', () {
+    final viewModel = ChatViewModel()..toggleDocumentSelection('doc-1');
     expect(viewModel.selectedDocumentIds, {'doc-1'});
 
     viewModel.toggleDocumentSelection('doc-1');
     expect(viewModel.selectedDocumentIds, isEmpty);
 
-    viewModel.sendMessage('   ');
-    viewModel.onScrolled();
+    viewModel
+      ..sendMessage('   ').ignore()
+      ..onScrolled();
 
     expect(viewModel.shouldScroll, isFalse);
   });
 
-  test('sendMessage streams metadata and tokens into the persisted assistant reply', () async {
+  test('sendMessage streams metadata and tokens into'
+      ' the persisted assistant reply', () async {
     final savedMessages = <ChatMessage>[];
-    when(() => chatRepository.saveMessage(any())).thenAnswer((invocation) async {
+    when(() => chatRepository.saveMessage(any())).thenAnswer((
+      invocation,
+    ) async {
       savedMessages.add(invocation.positionalArguments.first as ChatMessage);
     });
     when(
@@ -361,8 +368,7 @@ void main() {
       ]),
     );
 
-    final viewModel = ChatViewModel();
-    viewModel.toggleDocumentSelection('doc-7');
+    final viewModel = ChatViewModel()..toggleDocumentSelection('doc-7');
 
     await viewModel.sendMessage('question');
 
@@ -386,7 +392,8 @@ void main() {
     expect(documentIds, ['doc-7']);
   });
 
-  test('sendMessage prompts for auth when generation requires authentication', () async {
+  test('sendMessage prompts for auth when'
+      ' generation requires authentication', () async {
     when(() => chatRepository.saveMessage(any())).thenAnswer((_) async {});
     when(
       () => ragService.askWithRAGStream(
@@ -509,7 +516,8 @@ void main() {
     ).called(1);
   });
 
-  test('pickAndIngestFiles reports partial failures and full success', () async {
+  test('pickAndIngestFiles reports partial'
+      ' failures and full success', () async {
     ChatViewModel.pickFiles =
         ({
           required type,
@@ -587,7 +595,8 @@ void main() {
     expect(viewModel.isBusy, isFalse);
   });
 
-  test('navigateToSettings delegates to the generated settings route', () async {
+  test('navigateToSettings delegates to the'
+      ' generated settings route', () async {
     final viewModel = ChatViewModel();
 
     await viewModel.navigateToSettings();
@@ -595,7 +604,7 @@ void main() {
     verify(
       () => navigationService.navigateTo<dynamic>(
         Routes.settingsView,
-        arguments: any(named: 'arguments'),
+        arguments: any<dynamic>(named: 'arguments'),
         id: any(named: 'id'),
         preventDuplicates: any(named: 'preventDuplicates'),
         parameters: any(named: 'parameters'),
@@ -604,7 +613,8 @@ void main() {
     ).called(1);
   });
 
-  test('sendMessage prompts for authentication when the stream requires it', () async {
+  test('sendMessage prompts for authentication'
+      ' when the stream requires it', () async {
     when(() => chatRepository.saveMessage(any())).thenAnswer((_) async {});
     when(
       () => ragService.askWithRAGStream(
@@ -635,7 +645,8 @@ void main() {
     ).called(1);
   });
 
-  test('sendMessage reports stream failures and clears processing state', () async {
+  test('sendMessage reports stream failures and'
+      ' clears processing state', () async {
     when(() => chatRepository.saveMessage(any())).thenAnswer((_) async {});
     when(
       () => ragService.askWithRAGStream(
@@ -668,7 +679,7 @@ void main() {
     verify(
       () => navigationService.navigateTo<dynamic>(
         Routes.settingsView,
-        arguments: any(named: 'arguments'),
+        arguments: any<dynamic>(named: 'arguments'),
         id: any(named: 'id'),
         preventDuplicates: any(named: 'preventDuplicates'),
         parameters: any(named: 'parameters'),

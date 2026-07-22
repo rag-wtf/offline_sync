@@ -122,7 +122,8 @@ class DeviceCapabilityService {
 
   Future<DeviceCapabilities> _getAndroidCapabilities() async {
     final model =
-        await (_androidModelProvider ?? () async => (await _deviceInfo.androidInfo).model)();
+        await (_androidModelProvider ??
+            () async => (await _deviceInfo.androidInfo).model)();
     log('Android device: $model');
 
     final ramMB = _detectRam(fallback: 2048);
@@ -138,7 +139,8 @@ class DeviceCapabilityService {
 
   Future<DeviceCapabilities> _getIosCapabilities() async {
     final model =
-        await (_iosModelProvider ?? () async => (await _deviceInfo.iosInfo).model)();
+        await (_iosModelProvider ??
+            () async => (await _deviceInfo.iosInfo).model)();
     log('iOS device: $model');
 
     // iOS WARNING: Do not use getFreePhysicalMemory() on iOS.
@@ -158,7 +160,7 @@ class DeviceCapabilityService {
   Future<DeviceCapabilities> _getLinuxCapabilities() async {
     final prettyName =
         await (_linuxPrettyNameProvider ??
-                () async => (await _deviceInfo.linuxInfo).prettyName)();
+            () async => (await _deviceInfo.linuxInfo).prettyName)();
     log('Linux device: $prettyName');
 
     final ramMB = _detectRam(fallback: 4096);
@@ -175,7 +177,7 @@ class DeviceCapabilityService {
   Future<DeviceCapabilities> _getMacOsCapabilities() async {
     final model =
         await (_macOsModelProvider ??
-                () async => (await _deviceInfo.macOsInfo).model)();
+            () async => (await _deviceInfo.macOsInfo).model)();
     log('macOS device: $model');
 
     final ramMB = _detectRam(fallback: 4096);
@@ -192,7 +194,7 @@ class DeviceCapabilityService {
   Future<DeviceCapabilities> _getWindowsCapabilities() async {
     final computerName =
         await (_windowsComputerNameProvider ??
-                () async => (await _deviceInfo.windowsInfo).computerName)();
+            () async => (await _deviceInfo.windowsInfo).computerName)();
     log('Windows device: $computerName');
 
     final ramMB = _detectRam(fallback: 4096);
@@ -235,8 +237,7 @@ class DeviceCapabilityService {
   Future<int> _detectStorage({required int fallback}) async {
     try {
       // DiskUsage.freeSpace() returns available disk space in bytes
-      final freeStorage =
-          await (_freeStorageProvider ?? DiskUsage.freeSpace)();
+      final freeStorage = await (_freeStorageProvider ?? DiskUsage.freeSpace)();
       if (freeStorage != null && freeStorage > 0) {
         final calculatedStorage = freeStorage ~/ (1024 * 1024);
         if (calculatedStorage >= _minReasonableStorageMB) {

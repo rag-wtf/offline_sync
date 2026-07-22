@@ -43,8 +43,7 @@ class InferenceModelProvider {
           ).maxTokens;
 
       final activeModelLoader =
-          _activeModelLoader ??
-          FlutterGemma.getActiveModel;
+          _activeModelLoader ?? FlutterGemma.getActiveModel;
       _model = await activeModelLoader(maxTokens: maxTokens);
     } catch (e) {
       throw Exception(

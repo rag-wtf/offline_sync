@@ -127,7 +127,8 @@ void main() {
   });
 
   test(
-    'initialize handles progress updates, refreshes documents, and shows errors',
+    'initialize handles progress updates, refreshes'
+    ' documents, and shows errors',
     () async {
       when(
         documentService.getAllDocuments,

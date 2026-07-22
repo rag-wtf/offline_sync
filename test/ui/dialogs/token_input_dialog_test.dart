@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
@@ -13,11 +14,13 @@ void main() {
           body: Center(
             child: ElevatedButton(
               onPressed: () {
-                showDialog<bool>(
-                  context: context,
-                  builder: (_) => TokenInputDialog(
-                    onSaveToken: onSaveToken,
-                    onLaunchUrl: onLaunchUrl,
+                unawaited(
+                  showDialog<bool>(
+                    context: context,
+                    builder: (_) => TokenInputDialog(
+                      onSaveToken: onSaveToken,
+                      onLaunchUrl: onLaunchUrl,
+                    ),
                   ),
                 );
               },
@@ -54,7 +57,8 @@ void main() {
     expect(find.textContaining('Invalid token format'), findsOneWidget);
   });
 
-  testWidgets('saves valid token and closes dialog with success', (tester) async {
+  testWidgets('saves valid token and closes'
+      ' dialog with success', (tester) async {
     String? savedToken;
 
     await openDialog(

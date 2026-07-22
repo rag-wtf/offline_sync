@@ -3,7 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:offline_sync/app/app_theme.dart';
 
-final String Function() _defaultGoogleFontsFamilyBuilder = AppTheme.googleFontsFamilyBuilder;
+final String Function() _defaultGoogleFontsFamilyBuilder =
+    AppTheme.googleFontsFamilyBuilder;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

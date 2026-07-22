@@ -83,7 +83,8 @@ void main() {
     );
   });
 
-  test('throws a clear error when the plugin returns no active model', () async {
+  test('throws a clear error when the plugin'
+      ' returns no active model', () async {
     when(() => settings.maxTokens).thenReturn(1024);
     when(() => settings.activeInferenceModelId).thenReturn(null);
 

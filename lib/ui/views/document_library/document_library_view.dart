@@ -456,6 +456,6 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
       callback(viewModel);
       return;
     }
-    viewModel.initialize();
+    viewModel.initialize().ignore();
   }
 }

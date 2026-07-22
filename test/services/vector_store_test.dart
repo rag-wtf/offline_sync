@@ -77,16 +77,17 @@ void main() {
     });
 
     test('batch insertion handles empty and metadata-bearing batches', () {
-      vectorStore.insertEmbeddingsBatch([]);
-      vectorStore.insertEmbeddingsBatch([
-        EmbeddingData(
-          id: 'batch',
-          documentId: 'doc',
-          content: 'batch content',
-          embedding: [1, 0],
-          metadata: const {'kind': 'batch'},
-        ),
-      ]);
+      vectorStore
+        ..insertEmbeddingsBatch([])
+        ..insertEmbeddingsBatch([
+          EmbeddingData(
+            id: 'batch',
+            documentId: 'doc',
+            content: 'batch content',
+            embedding: [1, 0],
+            metadata: const {'kind': 'batch'},
+          ),
+        ]);
 
       final chunks = vectorStore.getChunksForDocument('doc');
       expect(chunks.single.metadata, {'kind': 'batch'});
@@ -489,13 +490,14 @@ void main() {
         ingestedAt: DateTime.now(),
       );
 
-      vectorStore.insertDocument(document);
-      vectorStore.insertEmbedding(
-        id: 'rollback-chunk',
-        documentId: document.id,
-        content: 'rollback',
-        embedding: [0.4],
-      );
+      vectorStore
+        ..insertDocument(document)
+        ..insertEmbedding(
+          id: 'rollback-chunk',
+          documentId: document.id,
+          content: 'rollback',
+          embedding: [0.4],
+        );
 
       vectorStore.db!.execute('''
         CREATE TRIGGER fail_vector_delete

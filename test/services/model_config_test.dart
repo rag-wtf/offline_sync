@@ -27,7 +27,8 @@ void main() {
       expect(model, same(InferenceModels.gemma3n_2B));
     });
 
-    test('activeInferenceModelOrDefault falls back for null or unknown ids', () {
+    test('activeInferenceModelOrDefault falls back'
+        ' for null or unknown ids', () {
       expect(
         ModelConfig.activeInferenceModelOrDefault(null),
         same(InferenceModels.gemma3_270M),

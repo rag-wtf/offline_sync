@@ -270,14 +270,16 @@ void main() {
           expect(
             await ModelManagementService.verifyFileSha256(
               file,
-              'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+              'e3b0c44298fc1c149afbf4c8996fb924'
+              '27ae41e4649b934ca495991b7852b855',
             ),
             isFalse,
           );
           expect(
             await ModelManagementService.verifyFileSha256(
               file,
-              '9F64A747E1B97F131FABB6B447296C9B6F0201E79FB3C5356E6C77E89B6A806A',
+              '9F64A747E1B97F131FABB6B447296C9B'
+              '6F0201E79FB3C5356E6C77E89B6A806A',
             ),
             isTrue,
           );
@@ -350,8 +352,8 @@ void main() {
       );
 
       test('resetErroredModels restores errored state and clears messages', () {
-        final errored = service.models.first..status = ModelStatus.error;
-        errored
+        final errored = service.models.first
+          ..status = ModelStatus.error
           ..progress = 0.5
           ..errorMessage = 'failed';
 
@@ -377,7 +379,7 @@ void main() {
         );
         addTearDown(() async {
           if (tempDir.existsSync()) {
-            tempDir.deleteSync(recursive: true);
+            await tempDir.delete(recursive: true);
           }
         });
 
@@ -436,8 +438,7 @@ void main() {
           );
           addTearDown(service.dispose);
 
-          final model = service.models.first;
-          model
+          final model = service.models.first
             ..status = ModelStatus.downloaded
             ..progress = 1;
 
@@ -670,7 +671,8 @@ void main() {
       );
 
       test(
-        'verifyDeclaredChecksumForTest deletes mismatched files and marks error',
+        'verifyDeclaredChecksumForTest deletes'
+        ' mismatched files and marks error',
         () async {
           final tempDir = await Directory.systemTemp.createTemp(
             'model-checksum-mismatch-',

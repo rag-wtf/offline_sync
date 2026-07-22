@@ -260,7 +260,8 @@ void main() {
       });
 
       test(
-        'falls back to hybrid search when expansion returns only the original query',
+        'falls back to hybrid search when expansion'
+        ' returns only the original query',
         () async {
           const query = 'Test query';
           final embedding = [0.1, 0.2, 0.3];
@@ -271,7 +272,9 @@ void main() {
           when(
             () => mockEmbeddingService.generateEmbedding(query),
           ).thenAnswer((_) async => embedding);
-          when(() => mockSettingsService.queryExpansionEnabled).thenReturn(true);
+          when(
+            () => mockSettingsService.queryExpansionEnabled,
+          ).thenReturn(true);
           when(() => mockSettingsService.rerankingEnabled).thenReturn(false);
           when(() => mockSettingsService.searchTopK).thenReturn(3);
           when(
@@ -528,7 +531,8 @@ void main() {
       });
 
       test(
-        'expands, reranks, and reports metrics when streaming with includeMetrics',
+        'expands, reranks, and reports metrics when'
+        ' streaming with includeMetrics',
         () async {
           const query = 'Stream query';
           final embedding = [0.1, 0.2, 0.3];
@@ -549,7 +553,9 @@ void main() {
           when(
             () => mockEmbeddingService.generateEmbedding(query),
           ).thenAnswer((_) async => embedding);
-          when(() => mockSettingsService.queryExpansionEnabled).thenReturn(true);
+          when(
+            () => mockSettingsService.queryExpansionEnabled,
+          ).thenReturn(true);
           when(() => mockSettingsService.rerankingEnabled).thenReturn(true);
           when(() => mockSettingsService.rerankTopK).thenReturn(3);
           when(() => mockSettingsService.searchTopK).thenReturn(2);
@@ -585,14 +591,19 @@ void main() {
           when(() => mockChat.addQuery(any())).thenAnswer((_) async {});
           when(
             mockChat.generateChatResponseAsync,
-          ).thenAnswer((_) => Stream<ModelResponse>.value(const TextResponse('done')));
+          ).thenAnswer(
+            (_) => Stream<ModelResponse>.value(const TextResponse('done')),
+          );
 
           final events = await service
               .askWithRAGStream(query, includeMetrics: true)
               .toList();
 
           final metadata = events.first as RAGMetadataEvent;
-          expect(metadata.sources.map((result) => result.id).toList(), ['3', '2']);
+          expect(metadata.sources.map((result) => result.id).toList(), [
+            '3',
+            '2',
+          ]);
           expect(metadata.metrics?.queryExpansionTime, isNotNull);
           expect(metadata.metrics?.rerankingTime, isNotNull);
           expect(metadata.metrics?.expandedQueryCount, 2);
