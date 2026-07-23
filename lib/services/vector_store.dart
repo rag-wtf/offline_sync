@@ -538,6 +538,18 @@ INSERT OR REPLACE INTO vectors
     }
   }
 
+  void deleteAllDocuments() {
+    _db!.execute('BEGIN TRANSACTION');
+    try {
+      _db!.execute('DELETE FROM documents');
+      _db!.execute('DELETE FROM vectors');
+      _db!.execute('COMMIT');
+    } catch (e) {
+      _db!.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+
   /// Optimize database size and performance
   void optimizeDatabase() {
     _db!.execute('VACUUM');
