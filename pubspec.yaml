@@ -4,8 +4,8 @@ version: 1.0.0+1
 publish_to: none
 
 environment:
-  sdk: ">=3.12.0 <4.0.0"
-  flutter: ">=3.44.0 <4.0.0"
+  sdk: ">=3.11.0 <4.0.0"
+  flutter: ">=3.41.0 <4.0.0"
 
 dependencies:
   archive: ^4.0.7
@@ -18,7 +18,7 @@ dependencies:
   flex_color_scheme: ^8.4.0
   flutter:
     sdk: flutter
-  flutter_gemma: ^1.2.1
+  flutter_gemma: ^0.13.6
   flutter_localizations:
     sdk: flutter
   flutter_secure_storage: ^10.0.0

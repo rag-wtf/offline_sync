@@ -9,9 +9,10 @@ import 'package:offline_sync/services/rag_settings_service.dart';
 /// RagService, QueryExpansionService, and RerankingService.
 class InferenceModelProvider {
   InferenceModelProvider({
-    this._settingsService,
-    this._activeModelLoader,
-  });
+    RagSettingsService? settingsService,
+    Future<InferenceModel?> Function({required int maxTokens})? activeModelLoader,
+  }) : _settingsService = settingsService,
+       _activeModelLoader = activeModelLoader;
 
   InferenceModel? _model;
   final RagSettingsService? _settingsService;
