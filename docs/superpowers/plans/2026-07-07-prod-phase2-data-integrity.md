@@ -101,7 +101,7 @@ git commit -m "feat(db): stamp PRAGMA user_version=1 and add gated migration hoo
 - Modify: `lib/services/document_parser_service.dart:137`
 - Test: `test/services/document_parser_service_test.dart`
 
-**Why:** `String.fromCharCodes(documentEntry.content as List<int>)` treats UTF-8 bytes as raw code units; `word/document.xml` is UTF-8, so accented/CJK/emoji/smart-quote content is mangled before chunking and embedding. Markdown/plaintext already use `utf8.decode(..., allowMalformed: true)` (`:86`) — DOCX must too.
+**Why:** `String.fromCharCodes(documentEntry.content as List<int>)` treats UTF-8 bytes as raw code units; `word/document.xml` is UTF-8, so accented/CJK/emoji/smart-quote content is mangled before chunking and embedding. Markdown/plain text already use `utf8.decode(..., allowMalformed: true)` (`:86`) — DOCX must too.
 
 - [x] **Step 1: Write the failing test**
 
