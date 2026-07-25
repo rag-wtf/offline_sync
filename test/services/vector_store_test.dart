@@ -544,5 +544,74 @@ void main() {
         expect(results.map((r) => r.id), isNot(contains('bad')));
       },
     );
+
+    test('deleteAllDocuments deletes all documents and vectors', () {
+      final document = Document(
+        id: 'del-all-doc',
+        title: 'Delete All',
+        filePath: '/del_all.txt',
+        format: DocumentFormat.plainText,
+        chunkCount: 1,
+        totalCharacters: 10,
+        contentHash: 'del-all-hash',
+        ingestedAt: DateTime.now(),
+      );
+
+      vectorStore
+        ..insertDocument(document)
+        ..insertEmbedding(
+          id: 'del-all-chunk',
+          documentId: document.id,
+          content: 'delete all content',
+          embedding: [0.1, 0.2],
+        );
+
+      expect(vectorStore.getDocument(document.id), isNotNull);
+      expect(vectorStore.getChunksForDocument(document.id), hasLength(1));
+
+      vectorStore.deleteAllDocuments();
+
+      expect(vectorStore.getDocument(document.id), isNull);
+      expect(vectorStore.getChunksForDocument(document.id), isEmpty);
+    });
+
+    test('deleteAllDocuments rolls back when vector deletion fails', () {
+      final document = Document(
+        id: 'del-fail-doc',
+        title: 'Delete Fail',
+        filePath: '/del_fail.txt',
+        format: DocumentFormat.plainText,
+        chunkCount: 1,
+        totalCharacters: 10,
+        contentHash: 'del-fail-hash',
+        ingestedAt: DateTime.now(),
+      );
+
+      vectorStore
+        ..insertDocument(document)
+        ..insertEmbedding(
+          id: 'del-fail-chunk',
+          documentId: document.id,
+          content: 'delete fail content',
+          embedding: [0.1, 0.2],
+        );
+
+      vectorStore.db!.execute('''
+        CREATE TRIGGER fail_all_vectors_delete
+        BEFORE DELETE ON vectors
+        WHEN OLD.document_id = 'del-fail-doc'
+        BEGIN
+          SELECT RAISE(ABORT, 'no delete all');
+        END
+      ''');
+
+      expect(
+        () => vectorStore.deleteAllDocuments(),
+        throwsA(isA<SqliteException>()),
+      );
+
+      expect(vectorStore.getDocument(document.id), isNotNull);
+      expect(vectorStore.getChunksForDocument(document.id), hasLength(1));
+    });
   });
 }
