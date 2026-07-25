@@ -1,11 +1,13 @@
+/// Benchmark test script.
+// ignore_for_file: avoid_print, document_ignores
+
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:sqlite3/sqlite3.dart';
 
 void main() {
-  final db = sqlite3.openInMemory();
-  db.execute('''
+  final db = sqlite3.openInMemory()
+    ..execute('''
     CREATE TABLE vectors (
       id TEXT PRIMARY KEY,
       document_id TEXT,
@@ -16,13 +18,16 @@ void main() {
     )
   ''');
 
-  final items = List.generate(1000, (i) => {
-    'id': 'id_$i',
-    'documentId': 'doc_$i',
-    'content': 'content $i',
-    'embedding': List.generate(1536, (j) => j * 0.1),
-    'metadata': {'key': 'value $i', 'index': i},
-  });
+  final items = List.generate(
+    1000,
+    (i) => {
+      'id': 'id_$i',
+      'documentId': 'doc_$i',
+      'content': 'content $i',
+      'embedding': List.generate(1536, (j) => j * 0.1),
+      'metadata': {'key': 'value $i', 'index': i},
+    },
+  );
 
   // Warmup
   _insertUnoptimized(db, items.take(10).toList());
@@ -57,25 +62,29 @@ void _insertUnoptimized(Database db, List<Map<String, dynamic>> items) {
       item['documentId'],
       item['content'],
       jsonEncode(item['embedding']),
-      item['metadata'] != null ? jsonEncode(item['metadata']) : null,
+      if (item['metadata'] != null) jsonEncode(item['metadata']) else null,
       DateTime.now().millisecondsSinceEpoch,
     ]);
   }
 
-  stmt.dispose();
+  stmt.close();
   db.execute('COMMIT');
 }
 
 void _insertOptimized(Database db, List<Map<String, dynamic>> items) {
   final now = DateTime.now().millisecondsSinceEpoch;
-  final encodedItems = items.map((item) => [
-    item['id'],
-    item['documentId'],
-    item['content'],
-    jsonEncode(item['embedding']),
-    item['metadata'] != null ? jsonEncode(item['metadata']) : null,
-    now,
-  ]).toList();
+  final encodedItems = items
+      .map(
+        (item) => [
+          item['id'],
+          item['documentId'],
+          item['content'],
+          jsonEncode(item['embedding']),
+          if (item['metadata'] != null) jsonEncode(item['metadata']) else null,
+          now,
+        ],
+      )
+      .toList();
 
   db.execute('BEGIN TRANSACTION');
   final stmt = db.prepare('''
@@ -84,10 +93,8 @@ void _insertOptimized(Database db, List<Map<String, dynamic>> items) {
     VALUES (?, ?, ?, ?, ?, ?)
   ''');
 
-  for (final item in encodedItems) {
-    stmt.execute(item);
-  }
+  encodedItems.forEach(stmt.execute);
 
-  stmt.dispose();
+  stmt.close();
   db.execute('COMMIT');
 }

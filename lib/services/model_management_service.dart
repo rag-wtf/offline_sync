@@ -159,7 +159,8 @@ class ModelManagementService {
         }
 
         log(
-          'Model ${model.id} installed: $isDownloaded (Status: ${model.status})',
+          'Model ${model.id} installed: $isDownloaded '
+          '(Status: ${model.status})',
         );
 
         // Fix: If status says downloaded but file is missing, reset status.
