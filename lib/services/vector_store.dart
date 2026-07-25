@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -411,7 +412,7 @@ INSERT OR REPLACE INTO vectors
         id,
         documentId,
         content,
-        jsonEncode(embedding),
+        base64Encode(Float64List.fromList(embedding).buffer.asUint8List()),
         if (metadata != null) jsonEncode(metadata) else null,
         DateTime.now().millisecondsSinceEpoch,
       ])
@@ -435,7 +436,9 @@ INSERT OR REPLACE INTO vectors
           item.id,
           item.documentId,
           item.content,
-          jsonEncode(item.embedding),
+          base64Encode(
+            Float64List.fromList(item.embedding).buffer.asUint8List(),
+          ),
           if (item.metadata != null) jsonEncode(item.metadata) else null,
           DateTime.now().millisecondsSinceEpoch,
         ]);
@@ -513,8 +516,7 @@ INSERT OR REPLACE INTO vectors
         id: row['id'] as String,
         documentId: row['document_id'] as String,
         content: row['content'] as String,
-        embedding: (jsonDecode(row['embedding'] as String) as List)
-            .cast<double>(),
+        embedding: _decodeEmbedding(row['embedding'] as String),
         metadata: row['metadata'] != null
             ? jsonDecode(row['metadata'] as String) as Map<String, dynamic>
             : {},
@@ -599,6 +601,15 @@ INSERT OR REPLACE INTO vectors
   }
 }
 
+List<double> _decodeEmbedding(String encodedString) {
+  if (encodedString.startsWith('[')) {
+    return (jsonDecode(encodedString) as List)
+        .map((e) => (e as num).toDouble())
+        .toList();
+  }
+  return Float64List.view(base64Decode(encodedString).buffer).toList();
+}
+
 /// Isolate function for calculating similarities(must be top-level)
 List<SearchResult> _calculateSimilarities(Map<String, dynamic> params) {
   final queryEmbedding = params['queryEmbedding'] as List<double>;
@@ -608,9 +619,7 @@ List<SearchResult> _calculateSimilarities(Map<String, dynamic> params) {
   final scored = <SearchResult>[];
   for (final item in data) {
     final storedEmbeddingJson = item['embedding'] as String;
-    final storedEmbedding = (jsonDecode(storedEmbeddingJson) as List)
-        .map((e) => (e as num).toDouble())
-        .toList();
+    final storedEmbedding = _decodeEmbedding(storedEmbeddingJson);
 
     if (storedEmbedding.length != queryEmbedding.length) {
       continue;
