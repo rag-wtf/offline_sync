@@ -39,10 +39,7 @@ class IngestionJob {
 }
 
 class IngestionResult {
-  const IngestionResult({
-    required this.succeeded,
-    required this.failed,
-  });
+  const IngestionResult({required this.succeeded, required this.failed});
 
   final List<Document> succeeded;
   final Map<String, String> failed;
@@ -116,9 +113,7 @@ class DocumentManagementService {
     if (_inFlightHashes.contains(hash)) {
       // coverage:ignore-line
       // coverage:ignore-start
-      throw Exception(
-        'This document is already being ingested',
-      );
+      throw Exception('This document is already being ingested');
       // coverage:ignore-end
     }
     _inFlightHashes.add(hash);
@@ -165,9 +160,7 @@ class DocumentManagementService {
     if (_inFlightHashes.contains(hash)) {
       // coverage:ignore-line
       // coverage:ignore-start
-      throw Exception(
-        'This document is already being ingested',
-      );
+      throw Exception('This document is already being ingested');
       // coverage:ignore-end
     }
     _inFlightHashes.add(hash);
@@ -179,10 +172,7 @@ class DocumentManagementService {
       fileName: file.name,
       filePath: file.path, // May be null on web, which is fine
       hash: hash,
-      parseParams: {
-        'bytes': bytes,
-        'fileName': file.name,
-      },
+      parseParams: {'bytes': bytes, 'fileName': file.name},
     );
   }
 
@@ -403,10 +393,7 @@ class DocumentManagementService {
 
   // coverage:ignore-start
   Future<void> deleteAllDocuments() async {
-    final docs = await getAllDocuments();
-    for (final doc in docs) {
-      await deleteDocument(doc.id);
-    }
+    _vectorStore.deleteAllDocuments();
   }
   // coverage:ignore-end
 
@@ -466,9 +453,7 @@ class DocumentManagementService {
   }
 }
 
-Future<Map<String, dynamic>> _parseAndChunk(
-  Map<String, dynamic> params,
-) async {
+Future<Map<String, dynamic>> _parseAndChunk(Map<String, dynamic> params) async {
   final parser = DocumentParserService();
   final chunker = SmartChunker();
 
