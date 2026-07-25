@@ -135,50 +135,53 @@ class ModelManagementService {
   Future<void> initialize() async {
     LoggingService.debug('ModelManagementService.initialize() called');
     log('Initializing ModelManagementService');
-    for (final model in _models) {
-      LoggingService.debug('Processing model ${model.id}');
-      final filename = model.effectiveFileName;
-      log('Checking if model ${model.id} ($filename) is installed...');
+    await Future.wait(
+      _models.map((model) async {
+        LoggingService.debug('Processing model ${model.id}');
+        final filename = model.effectiveFileName;
+        log('Checking if model ${model.id} ($filename) is installed...');
 
-      var isDownloaded = false;
-      try {
-        LoggingService.debug(
-          'Calling FlutterGemma.isModelInstalled for $filename',
-        );
-        final checker = _modelInstalledChecker ?? FlutterGemma.isModelInstalled;
-        isDownloaded = await checker(filename);
-        LoggingService.debug(
-          'FlutterGemma.isModelInstalled returned: $isDownloaded',
-        );
-      } on Object catch (e) {
-        log('Error checking model status for $filename: $e');
-        LoggingService.debug('Error checking model status: $e');
-        // Assume not downloaded if check fails
-      }
-
-      log(
-        'Model ${model.id} installed: $isDownloaded (Status: ${model.status})',
-      );
-
-      // Fix: If status says downloaded but file is missing, reset status.
-      // This allows re-downloading if the file was deleted or corrupted.
-      if (!isDownloaded && model.status == ModelStatus.downloaded) {
-        log('Model ${model.id} status mismatch: Resetting to notDownloaded.');
-        model
-          ..status = ModelStatus.notDownloaded
-          ..progress = 0.0;
-      }
-
-      if (isDownloaded) {
-        final isVerified = await _verifyDeclaredChecksum(model);
-        if (!isVerified) {
-          continue;
+        var isDownloaded = false;
+        try {
+          LoggingService.debug(
+            'Calling FlutterGemma.isModelInstalled for $filename',
+          );
+          final checker =
+              _modelInstalledChecker ?? FlutterGemma.isModelInstalled;
+          isDownloaded = await checker(filename);
+          LoggingService.debug(
+            'FlutterGemma.isModelInstalled returned: $isDownloaded',
+          );
+        } on Object catch (e) {
+          log('Error checking model status for $filename: $e');
+          LoggingService.debug('Error checking model status: $e');
+          // Assume not downloaded if check fails
         }
-        model
-          ..status = ModelStatus.downloaded
-          ..progress = 1.0;
-      }
-    }
+
+        log(
+          'Model ${model.id} installed: $isDownloaded (Status: ${model.status})',
+        );
+
+        // Fix: If status says downloaded but file is missing, reset status.
+        // This allows re-downloading if the file was deleted or corrupted.
+        if (!isDownloaded && model.status == ModelStatus.downloaded) {
+          log('Model ${model.id} status mismatch: Resetting to notDownloaded.');
+          model
+            ..status = ModelStatus.notDownloaded
+            ..progress = 0.0;
+        }
+
+        if (isDownloaded) {
+          final isVerified = await _verifyDeclaredChecksum(model);
+          if (!isVerified) {
+            return;
+          }
+          model
+            ..status = ModelStatus.downloaded
+            ..progress = 1.0;
+        }
+      }),
+    );
 
     // Now restore active models from persistence
     final savedInferenceId = _ragSettings.activeInferenceModelId;
