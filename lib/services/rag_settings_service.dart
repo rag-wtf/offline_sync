@@ -52,7 +52,7 @@ class RagSettingsService {
     _activeInferenceModelId = prefs.getString(_keyActiveInferenceModel);
     _activeEmbeddingModelId = prefs.getString(_keyActiveEmbeddingModel);
 
-    // Document Management Settings (Issue #17 fix)
+    // Document Management Settings
     _maxDocumentSizeMB = prefs.getInt(_keyMaxDocumentSizeMB) ?? 10;
     _contextualRetrievalEnabled =
         prefs.getBool(_keyContextualRetrieval) ?? false;
