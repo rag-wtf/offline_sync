@@ -614,52 +614,69 @@ INSERT OR REPLACE INTO vectors
 
 List<double> _decodeEmbedding(String encodedString) {
   if (encodedString.startsWith('[')) {
-    return (jsonDecode(encodedString) as List)
-        .map((e) => (e as num).toDouble())
-        .toList();
+    final list = jsonDecode(encodedString) as List;
+    final storedEmbedding = Float64List(list.length);
+    for (var i = 0; i < list.length; i++) {
+      storedEmbedding[i] = (list[i] as num).toDouble();
+    }
+    return storedEmbedding.toList();
   }
   return Float64List.view(base64Decode(encodedString).buffer).toList();
 }
 
 /// Isolate function for calculating similarities(must be top-level)
+class _ScoredItem {
+  _ScoredItem(this.item, this.score);
+  final Map<String, dynamic> item;
+  final double score;
+}
+
 List<SearchResult> _calculateSimilarities(Map<String, dynamic> params) {
-  final queryEmbedding = params['queryEmbedding'] as List<double>;
+  final queryEmbeddingList = params['queryEmbedding'] as List<double>;
   final data = params['data'] as List<Map<String, dynamic>>;
   final limit = params['limit'] as int;
 
-  final scored = <SearchResult>[];
+  final queryEmbedding = Float64List.fromList(queryEmbeddingList);
+  final qLen = queryEmbedding.length;
+
+  final scored = <_ScoredItem>[];
   for (final item in data) {
     final storedEmbeddingJson = item['embedding'] as String;
     final storedEmbedding = _decodeEmbedding(storedEmbeddingJson);
 
-    if (storedEmbedding.length != queryEmbedding.length) {
+    if (storedEmbedding.length != qLen) {
       continue;
     }
 
     var dotProduct = 0.0;
     var normA = 0.0;
     var normB = 0.0;
-    for (var i = 0; i < queryEmbedding.length; i++) {
-      dotProduct += queryEmbedding[i] * storedEmbedding[i];
-      normA += queryEmbedding[i] * queryEmbedding[i];
-      normB += storedEmbedding[i] * storedEmbedding[i];
+    for (var i = 0; i < qLen; i++) {
+      final q = queryEmbedding[i];
+      final s = storedEmbedding[i];
+      dotProduct += q * s;
+      normA += q * q;
+      normB += s * s;
     }
     final divisor = sqrt(normA) * sqrt(normB);
     final score = divisor == 0 ? 0.0 : dotProduct / divisor;
 
-    scored.add(
-      SearchResult(
-        id: item['id'] as String,
-        content: item['content'] as String,
-        score: score,
-        metadata:
-            jsonDecode(item['metadata'] as String? ?? '{}')
-                as Map<String, dynamic>,
-      ),
-    );
+    scored.add(_ScoredItem(item, score));
   }
 
-  return (scored..sort((a, b) => b.score.compareTo(a.score)))
+  scored.sort((a, b) => b.score.compareTo(a.score));
+
+  return scored
       .take(limit)
+      .map(
+        (e) => SearchResult(
+          id: e.item['id'] as String,
+          content: e.item['content'] as String,
+          score: e.score,
+          metadata:
+              jsonDecode(e.item['metadata'] as String? ?? '{}')
+                  as Map<String, dynamic>,
+        ),
+      )
       .toList();
 }
