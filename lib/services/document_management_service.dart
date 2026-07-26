@@ -71,12 +71,21 @@ class DocumentManagementService {
     final succeeded = <Document>[];
     final failed = <String, String>{};
 
-    for (final filePath in filePaths) {
+    final futures = filePaths.map((filePath) async {
       try {
         final doc = await addDocument(filePath);
-        succeeded.add(doc);
+        return {'doc': doc};
       } on Object catch (e) {
-        failed[filePath] = e.toString();
+        return {'filePath': filePath, 'error': e.toString()};
+      }
+    });
+
+    final results = await Future.wait(futures);
+    for (final result in results) {
+      if (result.containsKey('doc')) {
+        succeeded.add(result['doc']! as Document);
+      } else {
+        failed[result['filePath']! as String] = result['error']! as String;
       }
     }
     return IngestionResult(succeeded: succeeded, failed: failed);
@@ -226,21 +235,21 @@ class DocumentManagementService {
 
         // coverage:ignore-start
         if (await _contextualRetrievalService.isSupported) {
-          final contextualized = await _contextualRetrievalService
-              .contextualizeDocument(
-                documentContent: content,
-                chunks: chunks,
-                onProgress: (current, total) {
-                  if (job.isCancelled) throw Exception('Ingestion cancelled');
-                  _emitProgress(
-                    docId,
-                    fileName,
-                    'contextualizing',
-                    current,
-                    total,
-                  );
-                },
+          final contextualized =
+              await _contextualRetrievalService.contextualizeDocument(
+            documentContent: content,
+            chunks: chunks,
+            onProgress: (current, total) {
+              if (job.isCancelled) throw Exception('Ingestion cancelled');
+              _emitProgress(
+                docId,
+                fileName,
+                'contextualizing',
+                current,
+                total,
               );
+            },
+          );
 
           chunksToEmbed = contextualized.map((c) => c.combinedContent).toList();
           contextMetadata = contextualized
@@ -335,9 +344,8 @@ class DocumentManagementService {
 
       return doc;
     } catch (e) {
-      final status = job.isCancelled
-          ? IngestionStatus.cancelled
-          : IngestionStatus.error;
+      final status =
+          job.isCancelled ? IngestionStatus.cancelled : IngestionStatus.error;
       final msg = job.isCancelled ? 'Cancelled' : e.toString();
 
       final errorDoc = Document(
