@@ -39,12 +39,19 @@ android {
 
     signingConfigs {
         create("release") {
-            if (System.getenv("ANDROID_KEYSTORE_PATH") != null) {
-                storeFile = file(System.getenv("ANDROID_KEYSTORE_PATH"))
+            val envKeystorePath = System.getenv("ANDROID_KEYSTORE_PATH")
+            if (envKeystorePath != null) {
+                // Set-but-empty means a misconfigured caller. Fail loudly rather
+                // than falling back to key.properties, which is gitignored and
+                // would quietly sign a release with whatever local key is there.
+                require(envKeystorePath.isNotEmpty()) {
+                    "ANDROID_KEYSTORE_PATH is set but empty. Unset it to use key.properties, " +
+                        "or point it at a keystore file."
+                }
+                storeFile = file(envKeystorePath)
                 keyAlias = System.getenv("ANDROID_KEYSTORE_ALIAS")
                 keyPassword = System.getenv("ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD")
                 storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                
             } else {
                 keyAlias = keystoreProperties["keyAlias"] as String?
                 keyPassword = keystoreProperties["keyPassword"] as String?

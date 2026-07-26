@@ -85,6 +85,18 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
+      # Hosted GitHub runners ship the Android SDK, but self-hosted and
+      # container runners (e.g. `act`) do not, and without this the job cannot
+      # run there at all. Not free on ubuntu-latest: the action installs its
+      # pinned cmdline-tools and runs sdkmanager plus license acceptance for
+      # each package, roughly 30-60s per run. Gating it on `env.ANDROID_HOME`
+      # does not work — the `env` context never sees the runner's ambient
+      # environment, so the condition would be empty on hosted runners too.
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools build-tools;36.0.0 platforms;android-36"
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -109,8 +121,10 @@ jobs:
 
       - name: Build Android APK
         run: flutter build apk --${{ github.event.inputs.build_type }} --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
+        # ANDROID_KEYSTORE_PATH is deliberately not mapped here: the decode step
+        # writes it to $GITHUB_ENV, which already exports it. Mapping it would
+        # also define it as "" on debug runs, where the decode step is skipped.
         env:
-          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
           ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD }}
@@ -118,15 +132,37 @@ jobs:
       - name: Verify APK signature
         if: ${{ github.event.inputs.build_type == 'release' }}
         run: |
-          APK=$(find build/app/outputs/flutter-apk -name "*-release.apk" | head -n 1)
-          echo "Verifying $APK"
-          "$ANDROID_SDK_ROOT/build-tools"/*/apksigner verify --verbose "$APK"
+          set -euo pipefail
+          # Each lookup below ends in `|| true`: a bare VAR=$(cmd) assignment
+          # adopts the command's exit status, so under `set -e` a missing
+          # directory would abort the step before its ::error:: guard could run.
+          # -print -quit rather than `| head -n 1`: under pipefail, head closing
+          # the pipe early can kill find with SIGPIPE and fail the step.
+          APK=$(find build/app/outputs/flutter-apk -name "*-release.apk" -print -quit 2>/dev/null || true)
+          if [ -z "$APK" ]; then
+            echo "::error::No release APK found under build/app/outputs/flutter-apk"
+            exit 1
+          fi
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          if [ -z "$SDK" ]; then
+            echo "::error::Neither ANDROID_SDK_ROOT nor ANDROID_HOME is set; cannot locate apksigner."
+            exit 1
+          fi
+          # Pick the highest build-tools version; a bare glob would pass the
+          # second match as an argument to the first when several are installed.
+          APKSIGNER=$(ls -d "$SDK"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1 || true)
+          if [ -z "$APKSIGNER" ]; then
+            echo "::error::No apksigner found under $SDK/build-tools. Is the Android SDK build-tools package installed?"
+            exit 1
+          fi
+          echo "Verifying $APK with $APKSIGNER"
+          "$APKSIGNER" verify --verbose "$APK"
 
       - name: Build Android App Bundle
         if: ${{ github.event.inputs.build_type == 'release' }}
         run: flutter build appbundle --release --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
+        # See the APK step: ANDROID_KEYSTORE_PATH arrives via $GITHUB_ENV.
         env:
-          ANDROID_KEYSTORE_PATH: ${{ env.ANDROID_KEYSTORE_PATH }}
           ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD }}
@@ -136,6 +172,7 @@ jobs:
         with:
           name: android-${{ env.FLAVOR }}-apk-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
 
       - name: Upload App Bundle artifact
         if: ${{ github.event.inputs.build_type == 'release' }}
@@ -143,6 +180,7 @@ jobs:
         with:
           name: android-${{ env.FLAVOR }}-aab-release${{ env.VERSION_SUFFIX }}
           path: build/app/outputs/bundle/${{ env.FLAVOR }}Release/*.aab
+          if-no-files-found: error
 
   build-ios:
     needs: verify
@@ -181,6 +219,7 @@ jobs:
         with:
           name: ios-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}-UNSIGNED-inspection-only${{ env.VERSION_SUFFIX }}
           path: build/ios/ipa/*.ipa
+          if-no-files-found: error
 
   build-linux:
     needs: verify
@@ -271,8 +310,24 @@ jobs:
       - name: Create tarball
         run: |
           cd build/linux/x64/${{ github.event.inputs.build_type }}/bundle
-          tar -czvf ../../../../../offline_sync-linux-${{ github.event.inputs.build_type }}.tar.gz .
-      
+          # Four levels up is build/, which is where the upload step looks.
+          tar -czvf ../../../../offline_sync-linux-${{ github.event.inputs.build_type }}.tar.gz .
+
+      # upload-artifact only errors when the union of all its path patterns
+      # matches nothing, so on the two-pattern upload below a missing tarball
+      # would be masked by the AppImage. Check each file individually instead.
+      - name: Verify Linux artifacts
+        run: |
+          set -euo pipefail
+          for f in \
+            "build/offline_sync-linux-${{ github.event.inputs.build_type }}.tar.gz" \
+            "build/offline_sync-linux-${{ github.event.inputs.build_type }}.AppImage"; do
+            if [ ! -s "$f" ]; then
+              echo "::error::Expected Linux artifact is missing or empty: $f"
+              exit 1
+            fi
+          done
+
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
@@ -280,6 +335,7 @@ jobs:
           path: |
             build/offline_sync-linux-${{ github.event.inputs.build_type }}.tar.gz
             build/offline_sync-linux-${{ github.event.inputs.build_type }}.AppImage
+          if-no-files-found: error
 
   build-macos:
     needs: verify
@@ -327,13 +383,15 @@ jobs:
       - name: Create DMG
         run: |
           cd build/macos/Build/Products/${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}-${{ env.FLAVOR }}
-          hdiutil create -volname "Offline Sync" -srcfolder "Offline Sync.app" -ov -format UDZO "../../../../../offline_sync-macos-${{ github.event.inputs.build_type }}.dmg"
+          # Four levels up is build/, which is where the upload step looks.
+          hdiutil create -volname "Offline Sync" -srcfolder "Offline Sync.app" -ov -format UDZO "../../../../offline_sync-macos-${{ github.event.inputs.build_type }}.dmg"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: macos-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/offline_sync-macos-${{ github.event.inputs.build_type }}.dmg
+          if-no-files-found: error
 
   build-windows:
     needs: verify
@@ -365,6 +423,7 @@ jobs:
         with:
           name: windows-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/offline_sync-windows-${{ github.event.inputs.build_type }}.zip
+          if-no-files-found: error
 
   build-web:
     needs: verify
@@ -414,3 +473,4 @@ jobs:
         with:
           name: web-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/web
+          if-no-files-found: error
