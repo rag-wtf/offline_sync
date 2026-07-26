@@ -19,8 +19,9 @@ class StartupViewModel extends BaseViewModel {
     ModelManagementService? modelService,
     DeviceCapabilityService? deviceService,
     ModelRecommendationService? recommendationService,
-    this._ragSettingsService,
-  }) : _navigationService = navigationService ?? locator<NavigationService>(),
+    RagSettingsService? ragSettingsService,
+  }) : _ragSettingsService = ragSettingsService,
+       _navigationService = navigationService ?? locator<NavigationService>(),
        _modelService = modelService ?? locator<ModelManagementService>(),
        _deviceService = deviceService ?? DeviceCapabilityService(),
        _recommendationService =
