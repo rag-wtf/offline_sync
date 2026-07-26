@@ -17,7 +17,6 @@ void main() {
     test(
       'surfaces a clear error when no active embedder is configured',
       () async {
-        await FlutterGemma.clearActiveEmbeddingIdentity();
         final service = EmbeddingService();
 
         await expectLater(
