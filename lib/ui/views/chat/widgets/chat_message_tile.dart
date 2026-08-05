@@ -6,11 +6,7 @@ import 'package:offline_sync/services/vector_store.dart';
 import 'package:offline_sync/ui/views/chat/chat_viewmodel.dart';
 
 class ChatMessageTile extends StatelessWidget {
-  const ChatMessageTile({
-    required this.message,
-    super.key,
-    this.onSourceClick,
-  });
+  const ChatMessageTile({required this.message, super.key, this.onSourceClick});
   final ChatMessage message;
   final void Function(SearchResult)? onSourceClick;
 
@@ -115,10 +111,7 @@ class ChatMessageTile extends StatelessWidget {
                           source.metadata['documentTitle'] as String? ??
                           'Source';
                       return ActionChip(
-                        label: Text(
-                          title,
-                          style: theme.textTheme.labelSmall,
-                        ),
+                        label: Text(title, style: theme.textTheme.labelSmall),
                         avatar: Icon(
                           Icons.description_outlined,
                           size: 14,
@@ -127,9 +120,7 @@ class ChatMessageTile extends StatelessWidget {
                         onPressed: () => onSourceClick?.call(source),
                         padding: EdgeInsets.zero,
                         materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        side: BorderSide(
-                          color: colorScheme.outlineVariant,
-                        ),
+                        side: BorderSide(color: colorScheme.outlineVariant),
                       );
                     }).toList(),
                   ),

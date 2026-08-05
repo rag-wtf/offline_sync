@@ -99,9 +99,7 @@ void main() {
       () => ragService.askWithRAGStream(
         any<String>(),
         includeMetrics: any<bool>(named: 'includeMetrics'),
-        conversationHistory: any<List<String>?>(
-          named: 'conversationHistory',
-        ),
+        conversationHistory: any<List<String>?>(named: 'conversationHistory'),
         documentIds: any<List<String>?>(named: 'documentIds'),
       ),
     ).thenAnswer((_) => const Stream.empty());
@@ -115,10 +113,7 @@ void main() {
     return MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      home: ChatView(
-        viewModel: viewModel,
-        onViewModelReadyCallback: (_) {},
-      ),
+      home: ChatView(viewModel: viewModel, onViewModelReadyCallback: (_) {}),
     );
   }
 

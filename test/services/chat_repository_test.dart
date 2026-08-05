@@ -67,19 +67,11 @@ void main() {
 
     test('clearHistory removes all messages', () async {
       await chatRepository.saveMessage(
-        ChatMessage(
-          content: 'Msg 1',
-          isUser: true,
-          timestamp: DateTime.now(),
-        ),
+        ChatMessage(content: 'Msg 1', isUser: true, timestamp: DateTime.now()),
       );
 
       await chatRepository.saveMessage(
-        ChatMessage(
-          content: 'Msg 2',
-          isUser: false,
-          timestamp: DateTime.now(),
-        ),
+        ChatMessage(content: 'Msg 2', isUser: false, timestamp: DateTime.now()),
       );
 
       expect(await chatRepository.getMessageCount(), 2);
@@ -94,19 +86,11 @@ void main() {
       final time2 = DateTime.fromMillisecondsSinceEpoch(2000);
 
       await chatRepository.saveMessage(
-        ChatMessage(
-          content: 'First',
-          isUser: true,
-          timestamp: time1,
-        ),
+        ChatMessage(content: 'First', isUser: true, timestamp: time1),
       );
 
       await chatRepository.saveMessage(
-        ChatMessage(
-          content: 'Second',
-          isUser: false,
-          timestamp: time2,
-        ),
+        ChatMessage(content: 'Second', isUser: false, timestamp: time2),
       );
 
       final messages = await chatRepository.loadMessages();

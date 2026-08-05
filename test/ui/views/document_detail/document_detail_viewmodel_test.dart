@@ -37,9 +37,9 @@ void main() {
     );
 
     locator.registerSingleton<DocumentManagementService>(documentService);
-    when(() => documentService.getDocumentChunks(document.id)).thenAnswer(
-      (_) async => [chunk],
-    );
+    when(
+      () => documentService.getDocumentChunks(document.id),
+    ).thenAnswer((_) async => [chunk]);
   });
 
   tearDown(locator.reset);

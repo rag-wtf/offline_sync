@@ -91,9 +91,7 @@ class SettingsView extends StackedView<SettingsViewModel> {
                           // ignore: deprecated_member_use
                           onChanged: (value) {
                             if (value != null) {
-                              unawaited(
-                                viewModel.switchInferenceModel(value),
-                              );
+                              unawaited(viewModel.switchInferenceModel(value));
                             }
                           },
                           title: Text(
@@ -172,9 +170,7 @@ class SettingsView extends StackedView<SettingsViewModel> {
                           // ignore: deprecated_member_use
                           onChanged: (value) {
                             if (value != null) {
-                              unawaited(
-                                viewModel.switchEmbeddingModel(value),
-                              );
+                              unawaited(viewModel.switchEmbeddingModel(value));
                             }
                           },
                           title: Text(
@@ -610,9 +606,7 @@ class _ModelTile extends StatelessWidget {
       ),
       title: Text(
         model.name,
-        style: theme.textTheme.bodyLarge?.copyWith(
-          fontWeight: FontWeight.w500,
-        ),
+        style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.w500),
       ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -737,11 +731,7 @@ class _DeviceInfoRow extends StatelessWidget {
             color: colorScheme.primaryContainer.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(
-            icon,
-            size: 20,
-            color: colorScheme.primary,
-          ),
+          child: Icon(icon, size: 20, color: colorScheme.primary),
         ),
         const SizedBox(width: 16),
         Expanded(

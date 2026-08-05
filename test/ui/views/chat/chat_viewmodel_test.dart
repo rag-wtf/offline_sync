@@ -84,9 +84,7 @@ void main() {
       ),
     ).thenAnswer((_) async => DialogResponse());
     when(
-      () => snackbarService.showSnackbar(
-        message: any(named: 'message'),
-      ),
+      () => snackbarService.showSnackbar(message: any(named: 'message')),
     ).thenReturn(null);
     when(
       () => navigationService.navigateWithTransition<bool?>(
@@ -190,10 +188,7 @@ void main() {
             ).captured.single
             as List<String>;
 
-    expect(invocation, [
-      'User: third',
-      'User: hello',
-    ]);
+    expect(invocation, ['User: third', 'User: hello']);
     expect(savedMessages, isNotEmpty);
   });
 
@@ -277,9 +272,7 @@ void main() {
     when(
       () => documentService.ingestionProgressStream,
     ).thenAnswer((_) => progressController.stream);
-    when(
-      () => documentService.getAllDocuments(),
-    ).thenAnswer((_) async => []);
+    when(() => documentService.getAllDocuments()).thenAnswer((_) async => []);
 
     final viewModel = ChatViewModel();
     await viewModel.initialize();
@@ -300,9 +293,7 @@ void main() {
   });
 
   test('initialize shows snackbar when startup fails', () async {
-    when(
-      ragService.initialize,
-    ).thenThrow(Exception('bootstrap failed'));
+    when(ragService.initialize).thenThrow(Exception('bootstrap failed'));
 
     final viewModel = ChatViewModel();
     await viewModel.initialize();
@@ -455,10 +446,7 @@ void main() {
 
   test('pickAndIngestFiles returns when picker is cancelled', () async {
     ChatViewModel.pickFiles =
-        ({
-          required type,
-          required allowedExtensions,
-        }) async => null;
+        ({required type, required allowedExtensions}) async => null;
 
     final viewModel = ChatViewModel();
     await viewModel.pickAndIngestFiles();
@@ -469,16 +457,14 @@ void main() {
 
   test('pickAndIngestFiles returns when picked files have no paths', () async {
     ChatViewModel.pickFiles =
-        ({
-          required type,
-          required allowedExtensions,
-        }) async => FilePickerResult([
-          PlatformFile(
-            name: 'bytes-only.txt',
-            size: 2,
-            bytes: Uint8List.fromList([1, 2]),
-          ),
-        ]);
+        ({required type, required allowedExtensions}) async =>
+            FilePickerResult([
+              PlatformFile(
+                name: 'bytes-only.txt',
+                size: 2,
+                bytes: Uint8List.fromList([1, 2]),
+              ),
+            ]);
 
     final viewModel = ChatViewModel();
     await viewModel.pickAndIngestFiles();
@@ -489,16 +475,16 @@ void main() {
 
   test('pickAndIngestFiles reports complete failure counts', () async {
     ChatViewModel.pickFiles =
-        ({
-          required type,
-          required allowedExtensions,
-        }) async => FilePickerResult([
-          PlatformFile(name: 'first.txt', size: 1, path: '/tmp/first.txt'),
-          PlatformFile(name: 'second.txt', size: 1, path: '/tmp/second.txt'),
-        ]);
-    when(
-      () => documentService.addMultipleDocuments(any()),
-    ).thenAnswer(
+        ({required type, required allowedExtensions}) async =>
+            FilePickerResult([
+              PlatformFile(name: 'first.txt', size: 1, path: '/tmp/first.txt'),
+              PlatformFile(
+                name: 'second.txt',
+                size: 1,
+                path: '/tmp/second.txt',
+              ),
+            ]);
+    when(() => documentService.addMultipleDocuments(any())).thenAnswer(
       (_) async => const IngestionResult(
         succeeded: [],
         failed: {
@@ -519,13 +505,15 @@ void main() {
   test('pickAndIngestFiles reports partial'
       ' failures and full success', () async {
     ChatViewModel.pickFiles =
-        ({
-          required type,
-          required allowedExtensions,
-        }) async => FilePickerResult([
-          PlatformFile(name: 'first.txt', size: 1, path: '/tmp/first.txt'),
-          PlatformFile(name: 'second.txt', size: 1, path: '/tmp/second.txt'),
-        ]);
+        ({required type, required allowedExtensions}) async =>
+            FilePickerResult([
+              PlatformFile(name: 'first.txt', size: 1, path: '/tmp/first.txt'),
+              PlatformFile(
+                name: 'second.txt',
+                size: 1,
+                path: '/tmp/second.txt',
+              ),
+            ]);
     final succeededDoc = Document(
       id: 'doc-1',
       title: 'First',
@@ -536,9 +524,7 @@ void main() {
       contentHash: 'hash-1',
       ingestedAt: DateTime(2024),
     );
-    when(
-      () => documentService.addMultipleDocuments(any()),
-    ).thenAnswer(
+    when(() => documentService.addMultipleDocuments(any())).thenAnswer(
       (_) async => IngestionResult(
         succeeded: [succeededDoc],
         failed: {'/tmp/second.txt': 'parse failed'},
@@ -554,9 +540,7 @@ void main() {
       ),
     ).called(1);
 
-    when(
-      () => documentService.addMultipleDocuments(any()),
-    ).thenAnswer(
+    when(() => documentService.addMultipleDocuments(any())).thenAnswer(
       (_) async => IngestionResult(
         succeeded: [succeededDoc, succeededDoc],
         failed: const {},
@@ -574,12 +558,9 @@ void main() {
 
   test('pickAndIngestFiles reports ingestion exceptions', () async {
     ChatViewModel.pickFiles =
-        ({
-          required type,
-          required allowedExtensions,
-        }) async => FilePickerResult([
-          PlatformFile(name: 'first.txt', size: 1, path: '/tmp/first.txt'),
-        ]);
+        ({required type, required allowedExtensions}) async => FilePickerResult(
+          [PlatformFile(name: 'first.txt', size: 1, path: '/tmp/first.txt')],
+        );
     when(
       () => documentService.addMultipleDocuments(any()),
     ).thenThrow(Exception('disk full'));

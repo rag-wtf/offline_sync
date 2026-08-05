@@ -47,10 +47,7 @@ void main() {
 
   Widget buildSubject(StartupViewModel viewModel) {
     return MaterialApp(
-      home: StartupView(
-        viewModel: viewModel,
-        onViewModelReadyCallback: (_) {},
-      ),
+      home: StartupView(viewModel: viewModel, onViewModelReadyCallback: (_) {}),
     );
   }
 

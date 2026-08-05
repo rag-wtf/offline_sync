@@ -143,10 +143,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
                   ),
                   alignment: Alignment.centerRight,
                   padding: const EdgeInsets.only(right: 24),
-                  child: Icon(
-                    Icons.delete_rounded,
-                    color: colorScheme.onError,
-                  ),
+                  child: Icon(Icons.delete_rounded, color: colorScheme.onError),
                 ),
                 confirmDismiss: (direction) async {
                   return viewModel.deleteDocument(doc);
@@ -201,9 +198,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
                                     child: Text(
                                       doc.errorMessage!,
                                       style: theme.textTheme.bodySmall
-                                          ?.copyWith(
-                                            color: colorScheme.error,
-                                          ),
+                                          ?.copyWith(color: colorScheme.error),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -284,10 +279,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: stageColor.withValues(alpha: 0.3),
-          width: 2,
-        ),
+        border: Border.all(color: stageColor.withValues(alpha: 0.3), width: 2),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -300,11 +292,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
                   color: stageColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(
-                  stageIcon,
-                  color: stageColor,
-                  size: 20,
-                ),
+                child: Icon(stageIcon, color: stageColor, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(

@@ -121,9 +121,7 @@ void main() {
       () => documentService.getAllDocuments(),
     ).thenAnswer((_) => completer.future);
 
-    await tester.pumpWidget(
-      const MaterialApp(home: DocumentLibraryView()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: DocumentLibraryView()));
     await tester.pump();
 
     expect(find.text('Loading documents...'), findsOneWidget);
@@ -135,9 +133,7 @@ void main() {
   testWidgets('shows empty state when there are no documents', (tester) async {
     when(() => documentService.getAllDocuments()).thenAnswer((_) async => []);
 
-    await tester.pumpWidget(
-      const MaterialApp(home: DocumentLibraryView()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: DocumentLibraryView()));
     await tester.pumpAndSettle();
 
     expect(find.text('No documents yet'), findsOneWidget);
@@ -150,16 +146,12 @@ void main() {
 
   testWidgets(
     'renders documents, progress cards, navigation, and delete flow',
-    (
-      tester,
-    ) async {
+    (tester) async {
       when(
         () => documentService.getAllDocuments(),
       ).thenAnswer((_) async => [document]);
 
-      await tester.pumpWidget(
-        const MaterialApp(home: DocumentLibraryView()),
-      );
+      await tester.pumpWidget(const MaterialApp(home: DocumentLibraryView()));
       await tester.pumpAndSettle();
 
       expect(find.text('Knowledge Base'), findsOneWidget);
@@ -198,10 +190,7 @@ void main() {
         ),
       ).called(1);
 
-      await tester.drag(
-        find.byType(Dismissible),
-        const Offset(-500, 0),
-      );
+      await tester.drag(find.byType(Dismissible), const Offset(-500, 0));
       await tester.pumpAndSettle();
 
       verify(() => documentService.deleteDocument(document.id)).called(1);
@@ -254,9 +243,7 @@ void main() {
       () => documentService.getAllDocuments(),
     ).thenAnswer((_) async => documents);
 
-    await tester.pumpWidget(
-      const MaterialApp(home: DocumentLibraryView()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: DocumentLibraryView()));
     await tester.pumpAndSettle();
 
     expect(find.text('Pending'), findsOneWidget);
@@ -279,9 +266,7 @@ void main() {
       () => documentService.getAllDocuments(),
     ).thenAnswer((_) async => [document]);
 
-    await tester.pumpWidget(
-      const MaterialApp(home: DocumentLibraryView()),
-    );
+    await tester.pumpWidget(const MaterialApp(home: DocumentLibraryView()));
     await tester.pumpAndSettle();
 
     progressController.add(

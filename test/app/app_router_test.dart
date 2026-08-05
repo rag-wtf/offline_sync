@@ -37,9 +37,7 @@ void main() {
           id: any<int?>(named: 'id'),
           preventDuplicates: any<bool>(named: 'preventDuplicates'),
           parameters: any<Map<String, String>?>(named: 'parameters'),
-          transition: any<RouteTransitionsBuilder?>(
-            named: 'transition',
-          ),
+          transition: any<RouteTransitionsBuilder?>(named: 'transition'),
         ),
       ).thenAnswer((_) async {});
       when(
@@ -49,9 +47,7 @@ void main() {
           id: any<int?>(named: 'id'),
           preventDuplicates: any<bool>(named: 'preventDuplicates'),
           parameters: any<Map<String, String>?>(named: 'parameters'),
-          transition: any<RouteTransitionsBuilder?>(
-            named: 'transition',
-          ),
+          transition: any<RouteTransitionsBuilder?>(named: 'transition'),
         ),
       ).thenAnswer((_) async {});
     });
@@ -115,72 +111,65 @@ void main() {
       expect(detailA.toString(), contains('document'));
     });
 
-    test(
-      'navigation extension forwards navigate and replace calls',
-      () async {
-        const startupKey = ValueKey('startup-route');
-        const detailKey = ValueKey('detail-route');
+    test('navigation extension forwards navigate and replace calls', () async {
+      const startupKey = ValueKey('startup-route');
+      const detailKey = ValueKey('detail-route');
 
-        await navigationService.navigateToStartupView(key: startupKey);
-        await navigationService.navigateToChatView();
-        await navigationService.navigateToSettingsView();
-        await navigationService.navigateToDocumentLibraryView();
-        await navigationService.navigateToDocumentDetailView(
-          document: document,
-          key: detailKey,
-        );
-        await navigationService.replaceWithStartupView();
-        await navigationService.replaceWithChatView();
-        await navigationService.replaceWithSettingsView();
-        await navigationService.replaceWithDocumentLibraryView();
-        await navigationService.replaceWithDocumentDetailView(
-          document: document,
-        );
+      await navigationService.navigateToStartupView(key: startupKey);
+      await navigationService.navigateToChatView();
+      await navigationService.navigateToSettingsView();
+      await navigationService.navigateToDocumentLibraryView();
+      await navigationService.navigateToDocumentDetailView(
+        document: document,
+        key: detailKey,
+      );
+      await navigationService.replaceWithStartupView();
+      await navigationService.replaceWithChatView();
+      await navigationService.replaceWithSettingsView();
+      await navigationService.replaceWithDocumentLibraryView();
+      await navigationService.replaceWithDocumentDetailView(document: document);
 
-        final startupArguments =
-            verify(
-                  () => navigationService.navigateTo<dynamic>(
-                    Routes.startupView,
-                    arguments: captureAny<dynamic>(named: 'arguments'),
-                    id: any<int?>(named: 'id'),
-                    parameters: any<Map<String, String>?>(named: 'parameters'),
-                    transition: any<RouteTransitionsBuilder?>(
-                      named: 'transition',
-                    ),
+      final startupArguments =
+          verify(
+                () => navigationService.navigateTo<dynamic>(
+                  Routes.startupView,
+                  arguments: captureAny<dynamic>(named: 'arguments'),
+                  id: any<int?>(named: 'id'),
+                  parameters: any<Map<String, String>?>(named: 'parameters'),
+                  transition: any<RouteTransitionsBuilder?>(
+                    named: 'transition',
                   ),
-                ).captured.single
-                as StartupViewArguments;
-        expect(startupArguments.key, startupKey);
+                ),
+              ).captured.single
+              as StartupViewArguments;
+      expect(startupArguments.key, startupKey);
 
-        final detailArguments =
-            verify(
-                  () => navigationService.navigateTo<dynamic>(
-                    Routes.documentDetailView,
-                    arguments: captureAny<dynamic>(named: 'arguments'),
-                    id: any<int?>(named: 'id'),
-                    parameters: any<Map<String, String>?>(named: 'parameters'),
-                    transition: any<RouteTransitionsBuilder?>(
-                      named: 'transition',
-                    ),
+      final detailArguments =
+          verify(
+                () => navigationService.navigateTo<dynamic>(
+                  Routes.documentDetailView,
+                  arguments: captureAny<dynamic>(named: 'arguments'),
+                  id: any<int?>(named: 'id'),
+                  parameters: any<Map<String, String>?>(named: 'parameters'),
+                  transition: any<RouteTransitionsBuilder?>(
+                    named: 'transition',
                   ),
-                ).captured.single
-                as DocumentDetailViewArguments;
-        expect(detailArguments.document, document);
-        expect(detailArguments.key, detailKey);
+                ),
+              ).captured.single
+              as DocumentDetailViewArguments;
+      expect(detailArguments.document, document);
+      expect(detailArguments.key, detailKey);
 
-        verify(
-          () => navigationService.replaceWith<dynamic>(
-            Routes.documentDetailView,
-            arguments: any<dynamic>(named: 'arguments'),
-            id: any<int?>(named: 'id'),
-            parameters: any<Map<String, String>?>(named: 'parameters'),
-            transition: any<RouteTransitionsBuilder?>(
-              named: 'transition',
-            ),
-          ),
-        ).called(1);
-      },
-    );
+      verify(
+        () => navigationService.replaceWith<dynamic>(
+          Routes.documentDetailView,
+          arguments: any<dynamic>(named: 'arguments'),
+          id: any<int?>(named: 'id'),
+          parameters: any<Map<String, String>?>(named: 'parameters'),
+          transition: any<RouteTransitionsBuilder?>(named: 'transition'),
+        ),
+      ).called(1);
+    });
 
     testWidgets('route generation builds every page with its arguments', (
       tester,

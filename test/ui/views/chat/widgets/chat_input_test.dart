@@ -29,9 +29,7 @@ void main() {
   testWidgets('trims text before sending', (tester) async {
     String? sentText;
 
-    await tester.pumpWidget(
-      buildSubject(onSend: (value) => sentText = value),
-    );
+    await tester.pumpWidget(buildSubject(onSend: (value) => sentText = value));
 
     await tester.enterText(find.byType(TextField), '  hello world  ');
     await tester.tap(find.byIcon(Icons.send_rounded));
@@ -43,9 +41,7 @@ void main() {
   testWidgets('does not send whitespace-only text', (tester) async {
     var sendCount = 0;
 
-    await tester.pumpWidget(
-      buildSubject(onSend: (_) => sendCount++),
-    );
+    await tester.pumpWidget(buildSubject(onSend: (_) => sendCount++));
 
     await tester.enterText(find.byType(TextField), '   ');
     await tester.testTextInput.receiveAction(TextInputAction.send);
@@ -58,10 +54,7 @@ void main() {
     var sendCount = 0;
 
     await tester.pumpWidget(
-      buildSubject(
-        onSend: (_) => sendCount++,
-        isProcessing: true,
-      ),
+      buildSubject(onSend: (_) => sendCount++, isProcessing: true),
     );
 
     await tester.enterText(find.byType(TextField), 'hello');
@@ -97,10 +90,7 @@ void main() {
     var sendCount = 0;
 
     await tester.pumpWidget(
-      buildSubject(
-        onSend: (_) => sendCount++,
-        isProcessing: true,
-      ),
+      buildSubject(onSend: (_) => sendCount++, isProcessing: true),
     );
 
     await tester.enterText(find.byType(TextField), 'hello');

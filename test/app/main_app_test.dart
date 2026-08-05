@@ -23,9 +23,7 @@ void main() {
     locator.registerSingleton<VectorStore>(mockVectorStore);
 
     await tester.pumpWidget(
-      const AppLifecycleRoot(
-        child: MaterialApp(home: SizedBox()),
-      ),
+      const AppLifecycleRoot(child: MaterialApp(home: SizedBox())),
     );
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.detached);
@@ -41,9 +39,9 @@ void main() {
     final modelService = locator<ModelManagementService>();
     final settingsService = locator<RagSettingsService>();
 
-    when(() => modelService.modelStatusStream).thenAnswer(
-      (_) => const Stream<List<ModelInfo>>.empty(),
-    );
+    when(
+      () => modelService.modelStatusStream,
+    ).thenAnswer((_) => const Stream<List<ModelInfo>>.empty());
     when(modelService.initialize).thenAnswer((_) async {});
     when(() => modelService.models).thenReturn(const <ModelInfo>[]);
     when(() => modelService.activeInferenceModel).thenReturn(null);
@@ -90,13 +88,9 @@ void main() {
 
   testWidgets(
     'AppLifecycleRoot handles detach without a registered VectorStore',
-    (
-      tester,
-    ) async {
+    (tester) async {
       await tester.pumpWidget(
-        const AppLifecycleRoot(
-          child: MaterialApp(home: SizedBox()),
-        ),
+        const AppLifecycleRoot(child: MaterialApp(home: SizedBox())),
       );
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.detached);

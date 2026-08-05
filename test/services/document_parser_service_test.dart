@@ -116,10 +116,7 @@ void main() {
 
           expect(result.content, content);
           expect(result.format, DocumentFormat.unknown);
-          expect(
-            result.metadata,
-            containsPair('fileName', 'notes.custom'),
-          );
+          expect(result.metadata, containsPair('fileName', 'notes.custom'));
           expect(result.metadata, containsPair('fileSize', content.length));
           expect(result.metadata, containsPair('extension', 'unknown'));
         },
@@ -179,11 +176,7 @@ void main() {
         () async {
           final archive = Archive()
             ..addFile(
-              ArchiveFile(
-                'word/styles.xml',
-                8,
-                utf8.encode('<styles/>'),
-              ),
+              ArchiveFile('word/styles.xml', 8, utf8.encode('<styles/>')),
             );
           final encoded = ZipEncoder().encode(archive);
 

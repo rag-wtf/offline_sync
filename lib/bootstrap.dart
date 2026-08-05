@@ -135,12 +135,10 @@ Future<void> _requestAndroidNotificationPermissionIfNeeded() async {
   await requestAndroidNotificationPermissionIfNeeded(
     sdkIntProvider: () async =>
         (await DeviceInfoPlugin().androidInfo).version.sdkInt,
-    permissionStatusProvider: () async => FileDownloader().permissions.status(
-      PermissionType.notifications,
-    ),
-    permissionRequest: () async => FileDownloader().permissions.request(
-      PermissionType.notifications,
-    ),
+    permissionStatusProvider: () async =>
+        FileDownloader().permissions.status(PermissionType.notifications),
+    permissionRequest: () async =>
+        FileDownloader().permissions.request(PermissionType.notifications),
   );
 }
 // coverage:ignore-end
@@ -189,14 +187,11 @@ Future<void> requestAndroidNotificationPermissionIfNeeded({
 
     await (permissionRequest ??
         // coverage:ignore-start
-        () async => FileDownloader().permissions.request(
-          PermissionType.notifications,
-        )
+        () async =>
+            FileDownloader().permissions.request(PermissionType.notifications)
     // coverage:ignore-end
     )();
   } on Object catch (error, stackTrace) {
-    debugPrint(
-      'Notification permission request failed: $error\n$stackTrace',
-    );
+    debugPrint('Notification permission request failed: $error\n$stackTrace');
   }
 }

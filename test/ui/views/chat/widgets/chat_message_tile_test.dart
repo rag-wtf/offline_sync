@@ -14,10 +14,7 @@ void main() {
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(
-        body: ChatMessageTile(
-          message: message,
-          onSourceClick: onSourceClick,
-        ),
+        body: ChatMessageTile(message: message, onSourceClick: onSourceClick),
       ),
     );
   }

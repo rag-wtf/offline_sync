@@ -4,19 +4,13 @@ import 'package:offline_sync/services/device_capability_service.dart';
 void main() {
   group('DeviceCapabilityService', () {
     test('returns conservative web defaults', () async {
-      final service = DeviceCapabilityService(
-        isWebOverride: true,
-      );
+      final service = DeviceCapabilityService(isWebOverride: true);
 
       expect(
         await service.getCapabilities(),
         const TypeMatcher<DeviceCapabilities>()
             .having((c) => c.totalRamMB, 'totalRamMB', 2048)
-            .having(
-              (c) => c.availableStorageMB,
-              'availableStorageMB',
-              2048,
-            )
+            .having((c) => c.availableStorageMB, 'availableStorageMB', 2048)
             .having((c) => c.hasGpu, 'hasGpu', false)
             .having((c) => c.platform, 'platform', 'web'),
       );
@@ -34,11 +28,7 @@ void main() {
         await service.getCapabilities(),
         const TypeMatcher<DeviceCapabilities>()
             .having((c) => c.totalRamMB, 'totalRamMB', 8192)
-            .having(
-              (c) => c.availableStorageMB,
-              'availableStorageMB',
-              6144,
-            )
+            .having((c) => c.availableStorageMB, 'availableStorageMB', 6144)
             .having((c) => c.hasGpu, 'hasGpu', true)
             .having((c) => c.platform, 'platform', 'android'),
       );
@@ -56,11 +46,7 @@ void main() {
         await service.getCapabilities(),
         const TypeMatcher<DeviceCapabilities>()
             .having((c) => c.totalRamMB, 'totalRamMB', 2048)
-            .having(
-              (c) => c.availableStorageMB,
-              'availableStorageMB',
-              4096,
-            ),
+            .having((c) => c.availableStorageMB, 'availableStorageMB', 4096),
       );
     });
 

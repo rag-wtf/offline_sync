@@ -8,10 +8,7 @@ import 'package:offline_sync/services/rag_settings_service.dart';
 /// This service ensures consistent model initialization across
 /// RagService, QueryExpansionService, and RerankingService.
 class InferenceModelProvider {
-  InferenceModelProvider({
-    this._settingsService,
-    this._activeModelLoader,
-  });
+  InferenceModelProvider({this._settingsService, this._activeModelLoader});
 
   InferenceModel? _model;
   final RagSettingsService? _settingsService;

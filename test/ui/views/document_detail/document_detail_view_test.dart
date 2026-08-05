@@ -46,9 +46,9 @@ void main() {
 
   testWidgets('shows loading state while chunks are fetched', (tester) async {
     final completer = Completer<List<EmbeddingData>>();
-    when(() => documentService.getDocumentChunks(document.id)).thenAnswer(
-      (_) => completer.future,
-    );
+    when(
+      () => documentService.getDocumentChunks(document.id),
+    ).thenAnswer((_) => completer.future);
 
     await tester.pumpWidget(
       MaterialApp(home: DocumentDetailView(document: document)),
@@ -64,9 +64,9 @@ void main() {
   testWidgets('renders empty state when the document has no chunks', (
     tester,
   ) async {
-    when(() => documentService.getDocumentChunks(document.id)).thenAnswer(
-      (_) async => [],
-    );
+    when(
+      () => documentService.getDocumentChunks(document.id),
+    ).thenAnswer((_) async => []);
 
     await tester.pumpWidget(
       MaterialApp(home: DocumentDetailView(document: document)),
@@ -80,9 +80,9 @@ void main() {
   testWidgets('renders chunk details and metadata when chunks exist', (
     tester,
   ) async {
-    when(() => documentService.getDocumentChunks(document.id)).thenAnswer(
-      (_) async => [chunk],
-    );
+    when(
+      () => documentService.getDocumentChunks(document.id),
+    ).thenAnswer((_) async => [chunk]);
 
     await tester.pumpWidget(
       MaterialApp(home: DocumentDetailView(document: document)),

@@ -159,9 +159,7 @@ class DocumentDetailView extends StackedView<DocumentDetailViewModel> {
                                           SelectableText(
                                             chunk.content,
                                             style: theme.textTheme.bodyMedium
-                                                ?.copyWith(
-                                                  height: 1.5,
-                                                ),
+                                                ?.copyWith(height: 1.5),
                                           ),
                                         ],
                                       ),

@@ -162,10 +162,7 @@ void main() {
     await tester.pump();
     verify(() => ragSettings.setQueryExpansionEnabled(value: true)).called(1);
 
-    await tester.scrollUntilVisible(
-      find.text('Manage Knowledge Base'),
-      300,
-    );
+    await tester.scrollUntilVisible(find.text('Manage Knowledge Base'), 300);
     expect(find.text('Manage Knowledge Base'), findsOneWidget);
     await tester.tap(find.text('Manage Knowledge Base'));
     await tester.pump();
@@ -187,9 +184,7 @@ void main() {
 
   testWidgets(
     'renders active embedding models and delegates embedding switch',
-    (
-      tester,
-    ) async {
+    (tester) async {
       models[3].status = ModelStatus.downloaded;
       when(() => modelService.downloadedEmbeddingModels).thenReturn(
         models.where((model) => model.type == AppModelType.embedding).toList(),
@@ -276,9 +271,7 @@ void main() {
 
   testWidgets(
     'omits optional sections when models and capabilities are absent',
-    (
-      tester,
-    ) async {
+    (tester) async {
       when(
         () => modelService.downloadedInferenceModels,
       ).thenReturn([models.first]);

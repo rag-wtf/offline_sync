@@ -1,10 +1,9 @@
 import 'package:flutter_gemma/flutter_gemma.dart';
 
 class EmbeddingService {
-  EmbeddingService({
-    Future<EmbeddingModel> Function()? activeEmbedderLoader,
-  }) : _activeEmbedderLoader =
-           activeEmbedderLoader ?? FlutterGemma.getActiveEmbedder;
+  EmbeddingService({Future<EmbeddingModel> Function()? activeEmbedderLoader})
+    : _activeEmbedderLoader =
+          activeEmbedderLoader ?? FlutterGemma.getActiveEmbedder;
 
   final Future<EmbeddingModel> Function() _activeEmbedderLoader;
 

@@ -272,8 +272,9 @@ class ChatViewModel extends BaseViewModel {
 
         if (paths.isEmpty) return;
 
-        final ingestionResult =
-            await _documentService.addMultipleDocuments(paths);
+        final ingestionResult = await _documentService.addMultipleDocuments(
+          paths,
+        );
 
         if (ingestionResult.hasErrors) {
           final failedCount = ingestionResult.failed.length;

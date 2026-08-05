@@ -40,18 +40,18 @@ void main() {
     if (dbFile.existsSync()) {
       try {
         dbFile.deleteSync();
-      } catch (_) {
+      } on Object catch (_) {
         try {
-          final tempDb = sqlite3.open('vectors.db');
-          tempDb.execute('DROP TABLE IF EXISTS vectors');
-          tempDb.execute('DROP TABLE IF EXISTS documents');
-          tempDb.execute('DROP TABLE IF EXISTS vectors_fts');
-          tempDb.execute('DROP TABLE IF EXISTS chat_messages');
-          tempDb.execute('DROP TRIGGER IF EXISTS vectors_ai');
-          tempDb.execute('DROP TRIGGER IF EXISTS vectors_ad');
-          tempDb.execute('DROP TRIGGER IF EXISTS vectors_bd');
-          tempDb.close();
-        } catch (_) {}
+          sqlite3.open('vectors.db')
+            ..execute('DROP TABLE IF EXISTS vectors')
+            ..execute('DROP TABLE IF EXISTS documents')
+            ..execute('DROP TABLE IF EXISTS vectors_fts')
+            ..execute('DROP TABLE IF EXISTS chat_messages')
+            ..execute('DROP TRIGGER IF EXISTS vectors_ai')
+            ..execute('DROP TRIGGER IF EXISTS vectors_ad')
+            ..execute('DROP TRIGGER IF EXISTS vectors_bd')
+            ..close();
+        } on Object catch (_) {}
       }
     }
 
@@ -67,7 +67,7 @@ void main() {
       if (dbFile.existsSync()) {
         dbFile.deleteSync();
       }
-    } catch (_) {}
+    } on Object catch (_) {}
 
     await locator.reset();
   });
@@ -190,10 +190,7 @@ void main() {
     );
 
     test('sanitizes operator-only keyword queries without throwing', () async {
-      expect(
-        await vectorStore.hybridSearch('OR AND NOT', [0.1, 0.2]),
-        isEmpty,
-      );
+      expect(await vectorStore.hybridSearch('OR AND NOT', [0.1, 0.2]), isEmpty);
     });
 
     test('falls back to LIKE search when FTS query execution fails', () async {
@@ -272,10 +269,11 @@ void main() {
         const expectedSemanticOnly = 0.7 / (k + 1);
         const expectedKeywordOnly = 0.3 / (k + 2);
 
-        expect(
-          results.map((result) => result.id).toList(),
-          ['shared', 'semantic-first', 'keyword-only'],
-        );
+        expect(results.map((result) => result.id).toList(), [
+          'shared',
+          'semantic-first',
+          'keyword-only',
+        ]);
         expect(results[0].score, closeTo(expectedShared, 0.0000001));
         expect(results[1].score, closeTo(expectedSemanticOnly, 0.0000001));
         expect(results[2].score, closeTo(expectedKeywordOnly, 0.0000001));
@@ -553,11 +551,11 @@ void main() {
             embedding: [0.1, 0.2],
           );
 
-        final results = await vectorStore.hybridSearch(
-          'query',
-          [0.1, 0.2, 0.3],
-          semanticWeight: 1,
-        );
+        final results = await vectorStore.hybridSearch('query', [
+          0.1,
+          0.2,
+          0.3,
+        ], semanticWeight: 1);
 
         expect(results.map((r) => r.id), contains('ok'));
         expect(results.map((r) => r.id), isNot(contains('bad')));

@@ -5,11 +5,7 @@ import 'package:offline_sync/services/auth_token_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class TokenInputDialog extends StatefulWidget {
-  const TokenInputDialog({
-    this.onSaveToken,
-    this.onLaunchUrl,
-    super.key,
-  });
+  const TokenInputDialog({this.onSaveToken, this.onLaunchUrl, super.key});
 
   final Future<void> Function(String token)? onSaveToken;
   final Future<bool> Function(Uri uri)? onLaunchUrl;

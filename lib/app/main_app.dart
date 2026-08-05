@@ -27,11 +27,7 @@ class MainApp extends StatelessWidget {
 }
 
 class AppLifecycleRoot extends StatefulWidget {
-  const AppLifecycleRoot({
-    required this.child,
-    this.onDetached,
-    super.key,
-  });
+  const AppLifecycleRoot({required this.child, this.onDetached, super.key});
 
   final Widget child;
   final VoidCallback? onDetached;

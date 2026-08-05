@@ -208,18 +208,17 @@ void main() {
         when(
           () => mockModelService.modelStatusStream,
         ).thenAnswer((_) => controller.stream);
-        when(() => mockModelService.models).thenReturn([
-          inferenceModel,
-          embeddingModel,
-        ]);
+        when(
+          () => mockModelService.models,
+        ).thenReturn([inferenceModel, embeddingModel]);
         when(mockModelService.initialize).thenAnswer((_) async {});
         when(ragSettings.initialize).thenAnswer((_) async {});
-        when(() => mockModelService.activeInferenceModel).thenReturn(
-          inferenceModel,
-        );
-        when(() => mockModelService.activeEmbeddingModel).thenReturn(
-          embeddingModel,
-        );
+        when(
+          () => mockModelService.activeInferenceModel,
+        ).thenReturn(inferenceModel);
+        when(
+          () => mockModelService.activeEmbeddingModel,
+        ).thenReturn(embeddingModel);
         when(
           () => mockNavigationService.replaceWith<dynamic>(
             any(),
@@ -419,10 +418,9 @@ void main() {
         );
         ragSettings = getAndRegisterMockRagSettingsService();
 
-        when(() => mockModelService.models).thenReturn([
-          inferenceModel,
-          embeddingModel,
-        ]);
+        when(
+          () => mockModelService.models,
+        ).thenReturn([inferenceModel, embeddingModel]);
         when(
           () => mockModelService.modelStatusStream,
         ).thenAnswer((_) => const Stream.empty());

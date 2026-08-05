@@ -33,10 +33,7 @@ class RerankingService {
               inferenceModel,
               query,
               candidate.content,
-            ).timeout(
-              const Duration(seconds: 15),
-              onTimeout: () => 5.0,
-            );
+            ).timeout(const Duration(seconds: 15), onTimeout: () => 5.0);
             return _ScoredResult(result: candidate, score: score);
           }),
         );
@@ -81,7 +78,8 @@ class RerankingService {
         ? '${content.substring(0, maxChars)}...'
         : content;
 
-    final prompt = '''
+    final prompt =
+        '''
 Rate the relevance of the following document to the query on a scale of 0-10.
 Return ONLY the numeric score, nothing else.
 

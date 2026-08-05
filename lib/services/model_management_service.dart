@@ -660,10 +660,7 @@ class ModelManagementService {
   }
   // coverage:ignore-end
 
-  static Future<bool> verifyFileSha256(
-    File file,
-    String expectedSha256,
-  ) async {
+  static Future<bool> verifyFileSha256(File file, String expectedSha256) async {
     try {
       if (!file.existsSync()) {
         return false;

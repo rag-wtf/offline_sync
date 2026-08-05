@@ -60,14 +60,10 @@ void main() {
     ];
 
     when(() => modelService.models).thenReturn(models);
-    when(
-      () => modelService.downloadedInferenceModels,
-    ).thenReturn(
+    when(() => modelService.downloadedInferenceModels).thenReturn(
       models.where((m) => m.type == AppModelType.inference).toList(),
     );
-    when(
-      () => modelService.downloadedEmbeddingModels,
-    ).thenReturn(
+    when(() => modelService.downloadedEmbeddingModels).thenReturn(
       models.where((m) => m.type == AppModelType.embedding).toList(),
     );
     when(() => modelService.activeInferenceModel).thenReturn(models.first);

@@ -85,17 +85,15 @@ class ChatRepository {
           List<SearchResult>? sources;
           if (row['sources'] != null) {
             final sourcesJson = jsonDecode(row['sources'] as String) as List;
-            sources = sourcesJson.map(
-              (s) {
-                final sourceMap = s as Map<String, dynamic>;
-                return SearchResult(
-                  id: sourceMap['id'] as String,
-                  content: sourceMap['content'] as String,
-                  score: sourceMap['score'] as double,
-                  metadata: sourceMap['metadata'] as Map<String, dynamic>,
-                );
-              },
-            ).toList();
+            sources = sourcesJson.map((s) {
+              final sourceMap = s as Map<String, dynamic>;
+              return SearchResult(
+                id: sourceMap['id'] as String,
+                content: sourceMap['content'] as String,
+                score: sourceMap['score'] as double,
+                metadata: sourceMap['metadata'] as Map<String, dynamic>,
+              );
+            }).toList();
           }
 
           RAGMetrics? metrics;

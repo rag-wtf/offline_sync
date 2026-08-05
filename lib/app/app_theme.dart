@@ -69,9 +69,7 @@ class AppTheme {
       ),
       visualDensity: FlexColorScheme.comfortablePlatformDensity,
       fontFamily: _fontFamily,
-    ).copyWith(
-      textTheme: _buildTextTheme(Brightness.light),
-    );
+    ).copyWith(textTheme: _buildTextTheme(Brightness.light));
   }
 
   /// Dark theme
@@ -104,9 +102,7 @@ class AppTheme {
       ),
       visualDensity: FlexColorScheme.comfortablePlatformDensity,
       fontFamily: _fontFamily,
-    ).copyWith(
-      textTheme: _buildTextTheme(Brightness.dark),
-    );
+    ).copyWith(textTheme: _buildTextTheme(Brightness.dark));
   }
 
   static TextTheme _buildTextTheme(Brightness brightness) {

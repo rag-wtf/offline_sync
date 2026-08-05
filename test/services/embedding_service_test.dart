@@ -44,10 +44,7 @@ void main() {
         activeEmbedderLoader: () async => embedder,
       );
 
-      expect(
-        await service.generateEmbedding('hello world'),
-        equals(embedding),
-      );
+      expect(await service.generateEmbedding('hello world'), equals(embedding));
     });
   });
 }

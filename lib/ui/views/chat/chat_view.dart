@@ -7,11 +7,7 @@ import 'package:offline_sync/ui/views/chat/widgets/chat_message_tile.dart';
 import 'package:stacked/stacked.dart';
 
 class ChatView extends StackedView<ChatViewModel> {
-  const ChatView({
-    this.viewModel,
-    this.onViewModelReadyCallback,
-    super.key,
-  });
+  const ChatView({this.viewModel, this.onViewModelReadyCallback, super.key});
 
   final ChatViewModel? viewModel;
   final void Function(ChatViewModel viewModel)? onViewModelReadyCallback;
@@ -81,9 +77,7 @@ class ChatView extends StackedView<ChatViewModel> {
                         itemBuilder: (context, index) {
                           final doc = viewModel.availableDocuments[index];
                           final isSelected = viewModel.selectedDocumentIds
-                              .contains(
-                                doc.id,
-                              );
+                              .contains(doc.id);
                           return CheckboxListTile(
                             title: Text(
                               doc.title,
@@ -172,9 +166,7 @@ class ChatView extends StackedView<ChatViewModel> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        CircularProgressIndicator(
-                          color: colorScheme.primary,
-                        ),
+                        CircularProgressIndicator(color: colorScheme.primary),
                         const SizedBox(height: 16),
                         Text(
                           AppLocalizations.of(context).loading,

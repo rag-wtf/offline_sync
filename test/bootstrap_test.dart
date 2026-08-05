@@ -27,10 +27,7 @@ void main() {
 
       final prefs = await SharedPreferences.getInstance();
       expect(requestCount, 1);
-      expect(
-        prefs.getBool(notificationPermissionRequestAttemptedKey),
-        isTrue,
-      );
+      expect(prefs.getBool(notificationPermissionRequestAttemptedKey), isTrue);
     },
   );
 
@@ -69,10 +66,7 @@ void main() {
 
     final prefs = await SharedPreferences.getInstance();
     expect(requestCount, 0);
-    expect(
-      prefs.getBool(notificationPermissionRequestAttemptedKey),
-      isTrue,
-    );
+    expect(prefs.getBool(notificationPermissionRequestAttemptedKey), isTrue);
   });
 
   test('swallows notification permission failures', () async {
@@ -127,36 +121,33 @@ void main() {
     );
   });
 
-  testWidgets(
-    'bootstrap can use locator-provided environment'
-    ' service and default platform lookup',
-    (tester) async {
-      await locator.reset();
-      final environmentService = EnvironmentService();
-      locator.registerSingleton<EnvironmentService>(environmentService);
-      addTearDown(locator.reset);
+  testWidgets('bootstrap can use locator-provided environment'
+      ' service and default platform lookup', (tester) async {
+    await locator.reset();
+    final environmentService = EnvironmentService();
+    locator.registerSingleton<EnvironmentService>(environmentService);
+    addTearDown(locator.reset);
 
-      Widget? renderedApp;
+    Widget? renderedApp;
 
-      await bootstrap(
-        () async => const Directionality(
-          textDirection: TextDirection.ltr,
-          child: Text('web bootstrap'),
-        ),
-        flavor: 'web-test',
-        isWebOverride: true,
-        flutterGemmaInitialize: () async {},
-        initializeSqliteOverride: () async {},
-        setupLocatorOverride: () async {},
-        runAppOverride: (app) {
-          renderedApp = app;
-        },
-      );
+    await bootstrap(
+      () async => const Directionality(
+        textDirection: TextDirection.ltr,
+        child: Text('web bootstrap'),
+      ),
+      flavor: 'web-test',
+      isWebOverride: true,
+      flutterGemmaInitialize: () async {},
+      initializeSqliteOverride: () async {},
+      setupLocatorOverride: () async {},
+      runAppOverride: (app) {
+        renderedApp = app;
+      },
+    );
 
-      expect(environmentService.flavor, 'web-test');
-      expect(renderedApp, isA<Directionality>());
-    },
-  );
+    expect(environmentService.flavor, 'web-test');
+    expect(renderedApp, isA<Directionality>());
+  });
 
   testWidgets('bootstrap initializes services, flavor, and runs builder', (
     tester,
@@ -205,59 +196,54 @@ void main() {
     expect(renderedApp, isA<Directionality>());
   });
 
-  testWidgets(
-    'bootstrap runs Android-specific configuration'
-    ' hooks and swallows zone errors',
-    (
-      tester,
-    ) async {
-      final previousOnError = FlutterError.onError;
-      final previousPresentError = FlutterError.presentError;
-      FlutterError.presentError = (_) {};
-      addTearDown(() {
-        FlutterError.onError = previousOnError;
-        FlutterError.presentError = previousPresentError;
-      });
+  testWidgets('bootstrap runs Android-specific configuration'
+      ' hooks and swallows zone errors', (tester) async {
+    final previousOnError = FlutterError.onError;
+    final previousPresentError = FlutterError.presentError;
+    FlutterError.presentError = (_) {};
+    addTearDown(() {
+      FlutterError.onError = previousOnError;
+      FlutterError.presentError = previousPresentError;
+    });
 
-      final environmentService = EnvironmentService();
-      var configureDownloaderCalls = 0;
-      var configureNotificationCalls = 0;
-      var requestPermissionCalls = 0;
+    final environmentService = EnvironmentService();
+    var configureDownloaderCalls = 0;
+    var configureNotificationCalls = 0;
+    var requestPermissionCalls = 0;
 
-      await bootstrap(
-        () async => throw StateError('builder failed'),
-        flavor: 'android',
-        isWebOverride: false,
-        targetPlatformOverride: TargetPlatform.android,
-        flutterGemmaInitialize: () async {},
-        initializeSqliteOverride: () async {},
-        setupLocatorOverride: () async {},
-        environmentServiceOverride: environmentService,
-        runAppOverride: (_) {},
-        requestNotificationPermissionOverride: () async {
-          requestPermissionCalls += 1;
-        },
-        configureDownloaderOverride: () async {
-          configureDownloaderCalls += 1;
-        },
-        configureDownloaderNotificationOverride: () {
-          configureNotificationCalls += 1;
-        },
-      );
+    await bootstrap(
+      () async => throw StateError('builder failed'),
+      flavor: 'android',
+      isWebOverride: false,
+      targetPlatformOverride: TargetPlatform.android,
+      flutterGemmaInitialize: () async {},
+      initializeSqliteOverride: () async {},
+      setupLocatorOverride: () async {},
+      environmentServiceOverride: environmentService,
+      runAppOverride: (_) {},
+      requestNotificationPermissionOverride: () async {
+        requestPermissionCalls += 1;
+      },
+      configureDownloaderOverride: () async {
+        configureDownloaderCalls += 1;
+      },
+      configureDownloaderNotificationOverride: () {
+        configureNotificationCalls += 1;
+      },
+    );
 
-      expect(configureDownloaderCalls, 1);
-      expect(configureNotificationCalls, 1);
-      expect(requestPermissionCalls, 1);
-      expect(environmentService.flavor, 'android');
+    expect(configureDownloaderCalls, 1);
+    expect(configureNotificationCalls, 1);
+    expect(requestPermissionCalls, 1);
+    expect(environmentService.flavor, 'android');
 
-      final handler = FlutterError.onError;
-      expect(handler, isNotNull);
-      handler!(
-        FlutterErrorDetails(
-          exception: StateError('framework failed'),
-          stack: StackTrace.current,
-        ),
-      );
-    },
-  );
+    final handler = FlutterError.onError;
+    expect(handler, isNotNull);
+    handler!(
+      FlutterErrorDetails(
+        exception: StateError('framework failed'),
+        stack: StackTrace.current,
+      ),
+    );
+  });
 }

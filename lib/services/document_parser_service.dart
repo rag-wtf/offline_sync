@@ -191,20 +191,11 @@ class DocumentParserService {
       // Helper to strip HTML tags
       String stripHtml(String html) {
         final withoutScriptAndStyle = html
-            .replaceAll(
-              _scriptTagRegex,
-              ' ',
-            )
-            .replaceAll(
-              _styleTagRegex,
-              ' ',
-            );
+            .replaceAll(_scriptTagRegex, ' ')
+            .replaceAll(_styleTagRegex, ' ');
 
         return withoutScriptAndStyle
-            .replaceAll(
-              _htmlTagsRegex,
-              ' ',
-            )
+            .replaceAll(_htmlTagsRegex, ' ')
             .replaceAll('&amp;', '&')
             .replaceAll('&lt;', '<')
             .replaceAll('&gt;', '>')

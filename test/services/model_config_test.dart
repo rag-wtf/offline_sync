@@ -42,10 +42,7 @@ void main() {
 
   group('ModelDefinition', () {
     test('fileName extracts the trailing path segment', () {
-      expect(
-        EmbeddingModels.gecko64.fileName,
-        'Gecko_64_quant.tflite',
-      );
+      expect(EmbeddingModels.gecko64.fileName, 'Gecko_64_quant.tflite');
     });
 
     test('sizeFormatted renders KB, MB, and GB thresholds', () {

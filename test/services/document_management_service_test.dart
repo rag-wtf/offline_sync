@@ -357,43 +357,37 @@ void main() {
         () => mockSettingsService.maxDocumentSizeMB,
       ).thenReturn(0); // Tiny limit (0 means >0 fails)
 
-      expect(
-        () => service.addDocument(file.path),
-        throwsA(isA<Exception>()),
-      );
+      expect(() => service.addDocument(file.path), throwsA(isA<Exception>()));
 
       await file.delete();
     });
 
-    test(
-      'addDocumentFromPlatformFile uses path-backed size validation '
-      'before reading bytes',
-      () async {
-        final file = File('oversized_platform_file.txt');
-        await file.writeAsString('oversized content');
+    test('addDocumentFromPlatformFile uses path-backed size validation '
+        'before reading bytes', () async {
+      final file = File('oversized_platform_file.txt');
+      await file.writeAsString('oversized content');
 
-        when(() => mockSettingsService.maxDocumentSizeMB).thenReturn(0);
+      when(() => mockSettingsService.maxDocumentSizeMB).thenReturn(0);
 
-        final platformFile = PlatformFile(
-          path: file.path,
-          name: 'oversized_platform_file.txt',
-          size: await file.length(),
-        );
+      final platformFile = PlatformFile(
+        path: file.path,
+        name: 'oversized_platform_file.txt',
+        size: await file.length(),
+      );
 
-        await expectLater(
-          service.addDocumentFromPlatformFile(platformFile),
-          throwsA(
-            isA<Exception>().having(
-              (error) => error.toString(),
-              'message',
-              contains('exceeds limit'),
-            ),
+      await expectLater(
+        service.addDocumentFromPlatformFile(platformFile),
+        throwsA(
+          isA<Exception>().having(
+            (error) => error.toString(),
+            'message',
+            contains('exceeds limit'),
           ),
-        );
+        ),
+      );
 
-        await file.delete();
-      },
-    );
+      await file.delete();
+    });
 
     test('refreshDocument keeps old document when reingestion fails', () async {
       final file = File('refresh_failure.txt');
@@ -443,9 +437,9 @@ void main() {
           ingestedAt: DateTime.now(),
         );
 
-        when(() => mockVectorStore.getDocument('bytes_doc')).thenReturn(
-          byteBackedDoc,
-        );
+        when(
+          () => mockVectorStore.getDocument('bytes_doc'),
+        ).thenReturn(byteBackedDoc);
 
         final result = await service.refreshDocument('bytes_doc');
 
@@ -454,57 +448,51 @@ void main() {
       },
     );
 
-    test(
-      'refreshDocument reingests file-backed documents '
-      'even when hash is unchanged',
-      () async {
-        final file = File('refresh_same_hash.txt');
-        await file.writeAsString('Refresh content');
+    test('refreshDocument reingests file-backed documents '
+        'even when hash is unchanged', () async {
+      final file = File('refresh_same_hash.txt');
+      await file.writeAsString('Refresh content');
 
-        final oldDoc = Document(
-          id: 'old_doc',
-          title: 'refresh_same_hash.txt',
-          filePath: file.path,
-          format: DocumentFormat.plainText,
-          chunkCount: 1,
-          totalCharacters: 15,
-          contentHash: 'placeholder-hash',
-          ingestedAt: DateTime.now(),
-          status: IngestionStatus.complete,
-        );
+      final oldDoc = Document(
+        id: 'old_doc',
+        title: 'refresh_same_hash.txt',
+        filePath: file.path,
+        format: DocumentFormat.plainText,
+        chunkCount: 1,
+        totalCharacters: 15,
+        contentHash: 'placeholder-hash',
+        ingestedAt: DateTime.now(),
+        status: IngestionStatus.complete,
+      );
 
-        when(() => mockVectorStore.getDocument('old_doc')).thenReturn(oldDoc);
-        when(
-          () => mockVectorStore.findByHash(any<String>()),
-        ).thenReturn(oldDoc);
-        when(
-          () => mockParserService.detectFormat(any<String>()),
-        ).thenReturn(DocumentFormat.plainText);
-        when(
-          () => mockEmbeddingService.generateEmbedding(any<String>()),
-        ).thenAnswer((_) async => [0.1, 0.2]);
-        when(
-          () => mockVectorStore.insertDocument(any<Document>()),
-        ).thenReturn(null);
-        when(
-          () => mockVectorStore.updateDocument(any<Document>()),
-        ).thenReturn(null);
-        when(
-          () =>
-              mockVectorStore.insertEmbeddingsBatch(any<List<EmbeddingData>>()),
-        ).thenReturn(null);
-        when(() => mockVectorStore.deleteDocument('old_doc')).thenReturn(null);
+      when(() => mockVectorStore.getDocument('old_doc')).thenReturn(oldDoc);
+      when(() => mockVectorStore.findByHash(any<String>())).thenReturn(oldDoc);
+      when(
+        () => mockParserService.detectFormat(any<String>()),
+      ).thenReturn(DocumentFormat.plainText);
+      when(
+        () => mockEmbeddingService.generateEmbedding(any<String>()),
+      ).thenAnswer((_) async => [0.1, 0.2]);
+      when(
+        () => mockVectorStore.insertDocument(any<Document>()),
+      ).thenReturn(null);
+      when(
+        () => mockVectorStore.updateDocument(any<Document>()),
+      ).thenReturn(null);
+      when(
+        () => mockVectorStore.insertEmbeddingsBatch(any<List<EmbeddingData>>()),
+      ).thenReturn(null);
+      when(() => mockVectorStore.deleteDocument('old_doc')).thenReturn(null);
 
-        final result = await service.refreshDocument('old_doc');
+      final result = await service.refreshDocument('old_doc');
 
-        expect(result, isNotNull);
-        expect(result!.id, isNot(oldDoc.id));
-        expect(result.status, IngestionStatus.complete);
-        verify(() => mockVectorStore.insertDocument(any<Document>())).called(1);
-        verify(() => mockVectorStore.deleteDocument('old_doc')).called(1);
+      expect(result, isNotNull);
+      expect(result!.id, isNot(oldDoc.id));
+      expect(result.status, IngestionStatus.complete);
+      verify(() => mockVectorStore.insertDocument(any<Document>())).called(1);
+      verify(() => mockVectorStore.deleteDocument('old_doc')).called(1);
 
-        await file.delete();
-      },
-    );
+      await file.delete();
+    });
   });
 }

@@ -26,15 +26,9 @@ void main() {
 
     group('buildHistoryWithBudget -', () {
       test('when budget is large enough, should return all history', () {
-        final history = [
-          'User: Hello',
-          'Model: Hi there!',
-        ];
+        final history = ['User: Hello', 'Model: Hi there!'];
 
-        final result = manager.buildHistoryWithBudget(
-          history,
-          100,
-        );
+        final result = manager.buildHistoryWithBudget(history, 100);
 
         expect(result, contains('User: Hello'));
         expect(result, contains('Model: Hi there!'));
@@ -59,16 +53,10 @@ void main() {
       });
 
       test('when budget is extremely small, should stay within budget', () {
-        final history = [
-          'Message 1',
-          'Message 2',
-        ];
+        final history = ['Message 1', 'Message 2'];
 
         // One message: "Message 2" -> 9 chars -> 3 tokens
-        final result = manager.buildHistoryWithBudget(
-          history,
-          3,
-        );
+        final result = manager.buildHistoryWithBudget(history, 3);
 
         expect(result, isNot(contains('Message 1')));
         expect(result, contains('Message 2'));
@@ -79,10 +67,10 @@ void main() {
       });
 
       test('still keeps the newest message when it alone exceeds budget', () {
-        final result = manager.buildHistoryWithBudget(
-          ['old', 'this newest message is definitely too long'],
-          1,
-        );
+        final result = manager.buildHistoryWithBudget([
+          'old',
+          'this newest message is definitely too long',
+        ], 1);
 
         expect(result, contains('this newest message is definitely too long'));
         expect(result, isNot(contains('old')));

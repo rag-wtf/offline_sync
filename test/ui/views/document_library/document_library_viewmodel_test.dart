@@ -61,9 +61,7 @@ void main() {
         description: any(named: 'description'),
         confirmationTitle: any(named: 'confirmationTitle'),
       ),
-    ).thenAnswer(
-      (_) async => DialogResponse(),
-    );
+    ).thenAnswer((_) async => DialogResponse());
     when(
       () => dialogService.showDialog(
         title: any(named: 'title'),
@@ -111,12 +109,10 @@ void main() {
         description: any(named: 'description'),
         confirmationTitle: any(named: 'confirmationTitle'),
       ),
-    ).thenAnswer(
-      (_) async => DialogResponse(confirmed: true),
-    );
-    when(() => documentService.deleteDocument(document.id)).thenAnswer(
-      (_) async {},
-    );
+    ).thenAnswer((_) async => DialogResponse(confirmed: true));
+    when(
+      () => documentService.deleteDocument(document.id),
+    ).thenAnswer((_) async {});
 
     final viewModel = DocumentLibraryViewModel();
 
@@ -126,56 +122,49 @@ void main() {
     verify(() => documentService.deleteDocument(document.id)).called(1);
   });
 
-  test(
-    'initialize handles progress updates, refreshes'
-    ' documents, and shows errors',
-    () async {
-      when(
-        documentService.getAllDocuments,
-      ).thenAnswer((_) async => [document]);
+  test('initialize handles progress updates, refreshes'
+      ' documents, and shows errors', () async {
+    when(documentService.getAllDocuments).thenAnswer((_) async => [document]);
 
-      final viewModel = DocumentLibraryViewModel();
-      await viewModel.initialize();
+    final viewModel = DocumentLibraryViewModel();
+    await viewModel.initialize();
 
-      progressController.add(
-        const IngestionProgress(
-          documentId: 'doc-1',
-          documentTitle: 'Quarterly Report',
-          stage: 'embedding',
-          currentChunk: 1,
-          totalChunks: 2,
-        ),
-      );
-      await Future<void>.delayed(Duration.zero);
-      expect(viewModel.isIngesting, isTrue);
-      expect(viewModel.activeIngestions['doc-1']?.stage, 'embedding');
+    progressController.add(
+      const IngestionProgress(
+        documentId: 'doc-1',
+        documentTitle: 'Quarterly Report',
+        stage: 'embedding',
+        currentChunk: 1,
+        totalChunks: 2,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+    expect(viewModel.isIngesting, isTrue);
+    expect(viewModel.activeIngestions['doc-1']?.stage, 'embedding');
 
-      progressController.add(
-        const IngestionProgress(
-          documentId: 'doc-1',
-          documentTitle: 'Quarterly Report',
-          stage: 'error',
-        ),
-      );
-      await Future<void>.delayed(const Duration(milliseconds: 2200));
+    progressController.add(
+      const IngestionProgress(
+        documentId: 'doc-1',
+        documentTitle: 'Quarterly Report',
+        stage: 'error',
+      ),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 2200));
 
-      expect(viewModel.documents, [document]);
-      expect(viewModel.activeIngestions, isEmpty);
-      verify(
-        () => dialogService.showDialog(
-          title: any(named: 'title'),
-          description: any(named: 'description'),
-        ),
-      ).called(1);
-    },
-  );
+    expect(viewModel.documents, [document]);
+    expect(viewModel.activeIngestions, isEmpty);
+    verify(
+      () => dialogService.showDialog(
+        title: any(named: 'title'),
+        description: any(named: 'description'),
+      ),
+    ).called(1);
+  });
 
   test(
     'initialize removes completed progress and refreshes documents',
     () async {
-      when(
-        documentService.getAllDocuments,
-      ).thenAnswer((_) async => [document]);
+      when(documentService.getAllDocuments).thenAnswer((_) async => [document]);
 
       final viewModel = DocumentLibraryViewModel();
       await viewModel.initialize();
@@ -206,10 +195,7 @@ void main() {
     'pickAndIngestFile returns without refreshing when picker is cancelled',
     () async {
       DocumentLibraryViewModel.pickFiles =
-          ({
-            required type,
-            required allowedExtensions,
-          }) async => null;
+          ({required type, required allowedExtensions}) async => null;
 
       final viewModel = DocumentLibraryViewModel();
 
@@ -236,10 +222,7 @@ void main() {
         bytes: Uint8List.fromList([3, 4]),
       );
       DocumentLibraryViewModel.pickFiles =
-          ({
-            required type,
-            required allowedExtensions,
-          }) async {
+          ({required type, required allowedExtensions}) async {
             expect(type, FileType.custom);
             expect(allowedExtensions, containsAll(['pdf', 'docx', 'txt']));
             return FilePickerResult([goodFile, badFile]);
@@ -250,9 +233,7 @@ void main() {
       when(
         () => documentService.addDocumentFromPlatformFile(badFile),
       ).thenThrow(Exception('parse failed'));
-      when(
-        documentService.getAllDocuments,
-      ).thenAnswer((_) async => [document]);
+      when(documentService.getAllDocuments).thenAnswer((_) async => [document]);
 
       final viewModel = DocumentLibraryViewModel();
 

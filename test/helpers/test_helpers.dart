@@ -39,9 +39,7 @@ void registerTestHelpers() {
 
   locator
     ..registerSingleton<NavigationService>(MockNavigationService())
-    ..registerSingleton<ModelManagementService>(
-      MockModelManagementService(),
-    )
+    ..registerSingleton<ModelManagementService>(MockModelManagementService())
     ..registerSingleton<RagSettingsService>(MockRagSettingsService())
     ..registerSingleton<VectorStore>(MockVectorStore())
     ..registerSingleton<InferenceModelProvider>(MockInferenceModelProvider())

@@ -16,16 +16,13 @@ void main() {
       AppTheme.googleFontsFamilyOverride = null;
       AppTheme.googleFontsFamilyBuilder = () => 'Inter';
       AppTheme.googleFontsTextStyleBuilder =
-          ({
-            required fontSize,
-            required fontWeight,
-            required color,
-          }) => TextStyle(
-            fontFamily: 'Inter',
-            fontSize: fontSize,
-            fontWeight: fontWeight,
-            color: color,
-          );
+          ({required fontSize, required fontWeight, required color}) =>
+              TextStyle(
+                fontFamily: 'Inter',
+                fontSize: fontSize,
+                fontWeight: fontWeight,
+                color: color,
+              );
       AppTheme.googleFontsTextThemeBuilder = () => const TextTheme();
     });
 
@@ -34,16 +31,13 @@ void main() {
       AppTheme.googleFontsFamilyOverride = null;
       AppTheme.googleFontsFamilyBuilder = () => 'Inter';
       AppTheme.googleFontsTextStyleBuilder =
-          ({
-            required fontSize,
-            required fontWeight,
-            required color,
-          }) => TextStyle(
-            fontFamily: 'Inter',
-            fontSize: fontSize,
-            fontWeight: fontWeight,
-            color: color,
-          );
+          ({required fontSize, required fontWeight, required color}) =>
+              TextStyle(
+                fontFamily: 'Inter',
+                fontSize: fontSize,
+                fontWeight: fontWeight,
+                color: color,
+              );
       AppTheme.googleFontsTextThemeBuilder = () => const TextTheme();
     });
 
@@ -71,16 +65,13 @@ void main() {
       AppTheme.useGoogleFonts = true;
       AppTheme.googleFontsFamilyOverride = 'GoogleInter';
       AppTheme.googleFontsTextStyleBuilder =
-          ({
-            required fontSize,
-            required fontWeight,
-            required color,
-          }) => TextStyle(
-            fontFamily: 'GoogleInter',
-            fontSize: fontSize,
-            fontWeight: fontWeight,
-            color: color,
-          );
+          ({required fontSize, required fontWeight, required color}) =>
+              TextStyle(
+                fontFamily: 'GoogleInter',
+                fontSize: fontSize,
+                fontWeight: fontWeight,
+                color: color,
+              );
       AppTheme.googleFontsTextThemeBuilder = () => const TextTheme();
 
       final lightTheme = AppTheme.lightTheme;
@@ -94,16 +85,13 @@ void main() {
       AppTheme.useGoogleFonts = true;
       AppTheme.googleFontsFamilyBuilder = () => 'BuilderInter';
       AppTheme.googleFontsTextStyleBuilder =
-          ({
-            required fontSize,
-            required fontWeight,
-            required color,
-          }) => TextStyle(
-            fontFamily: 'BuilderInter',
-            fontSize: fontSize,
-            fontWeight: fontWeight,
-            color: color,
-          );
+          ({required fontSize, required fontWeight, required color}) =>
+              TextStyle(
+                fontFamily: 'BuilderInter',
+                fontSize: fontSize,
+                fontWeight: fontWeight,
+                color: color,
+              );
       AppTheme.googleFontsTextThemeBuilder = () => const TextTheme();
 
       final theme = AppTheme.lightTheme;

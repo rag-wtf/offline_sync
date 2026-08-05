@@ -670,49 +670,46 @@ void main() {
         },
       );
 
-      test(
-        'verifyDeclaredChecksumForTest deletes'
-        ' mismatched files and marks error',
-        () async {
-          final tempDir = await Directory.systemTemp.createTemp(
-            'model-checksum-mismatch-',
-          );
-          addTearDown(() async {
-            if (tempDir.existsSync()) {
-              tempDir.deleteSync(recursive: true);
-            }
-          });
+      test('verifyDeclaredChecksumForTest deletes'
+          ' mismatched files and marks error', () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'model-checksum-mismatch-',
+        );
+        addTearDown(() async {
+          if (tempDir.existsSync()) {
+            tempDir.deleteSync(recursive: true);
+          }
+        });
 
-          const expected = EmbeddingModels.gecko64;
-          final file = File('${tempDir.path}/${expected.fileName}');
-          await file.writeAsBytes(const [1, 2, 3]);
+        const expected = EmbeddingModels.gecko64;
+        final file = File('${tempDir.path}/${expected.fileName}');
+        await file.writeAsBytes(const [1, 2, 3]);
 
-          final service = ModelManagementService(
-            installedModelPathResolver: (_) async => file.path,
-          );
-          addTearDown(service.dispose);
+        final service = ModelManagementService(
+          installedModelPathResolver: (_) async => file.path,
+        );
+        addTearDown(service.dispose);
 
-          final errors = <Object>[];
-          final subscription = service.modelStatusStream.listen(
-            (_) {},
-            onError: errors.add,
-          );
-          addTearDown(subscription.cancel);
+        final errors = <Object>[];
+        final subscription = service.modelStatusStream.listen(
+          (_) {},
+          onError: errors.add,
+        );
+        addTearDown(subscription.cancel);
 
-          final model = service.models.firstWhere(
-            (candidate) => candidate.id == expected.id,
-          );
+        final model = service.models.firstWhere(
+          (candidate) => candidate.id == expected.id,
+        );
 
-          final verified = await service.verifyDeclaredChecksumForTest(model);
-          await Future<void>.delayed(Duration.zero);
+        final verified = await service.verifyDeclaredChecksumForTest(model);
+        await Future<void>.delayed(Duration.zero);
 
-          expect(verified, isFalse);
-          expect(file.existsSync(), isFalse);
-          expect(model.status, ModelStatus.error);
-          expect(model.errorMessage, contains('Checksum mismatch'));
-          expect(errors, contains('Checksum mismatch for ${expected.id}.'));
-        },
-      );
+        expect(verified, isFalse);
+        expect(file.existsSync(), isFalse);
+        expect(model.status, ModelStatus.error);
+        expect(model.errorMessage, contains('Checksum mismatch'));
+        expect(errors, contains('Checksum mismatch for ${expected.id}.'));
+      });
 
       test('should have at least one inference model', () {
         final inferenceModels = service.models.where(

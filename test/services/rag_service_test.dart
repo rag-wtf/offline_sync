@@ -42,10 +42,7 @@ void main() {
 
     group('buildHistoryWithBudget -', () {
       test('when budget is large enough, should return all history', () {
-        final history = [
-          'User: Hello',
-          'Model: Hi there!',
-        ];
+        final history = ['User: Hello', 'Model: Hi there!'];
 
         final result = locator<RagTokenManager>().buildHistoryWithBudget(
           history,
@@ -57,11 +54,7 @@ void main() {
       });
 
       test('when budget is small, should truncate history from oldest', () {
-        final history = [
-          'Message 1',
-          'Message 2',
-          'Message 3',
-        ];
+        final history = ['Message 1', 'Message 2', 'Message 3'];
 
         final result = locator<RagTokenManager>().buildHistoryWithBudget(
           history,
@@ -215,9 +208,7 @@ void main() {
         final result = await service.askWithRAG(query);
 
         expect(result.response, 'Mocked response');
-        verify(
-          () => mockVectorStore.hybridSearch(query, embedding),
-        ).called(1);
+        verify(() => mockVectorStore.hybridSearch(query, embedding)).called(1);
       });
 
       test('uses expanded queries when query expansion is enabled', () async {
@@ -259,59 +250,54 @@ void main() {
         verifyNever(() => mockVectorStore.hybridSearch(any(), any()));
       });
 
-      test(
-        'falls back to hybrid search when expansion'
-        ' returns only the original query',
-        () async {
-          const query = 'Test query';
-          final embedding = [0.1, 0.2, 0.3];
+      test('falls back to hybrid search when expansion'
+          ' returns only the original query', () async {
+        const query = 'Test query';
+        final embedding = [0.1, 0.2, 0.3];
 
-          when(() => mockVectorStore.initialize()).thenAnswer((_) async {});
-          await service.initialize();
+        when(() => mockVectorStore.initialize()).thenAnswer((_) async {});
+        await service.initialize();
 
-          when(
-            () => mockEmbeddingService.generateEmbedding(query),
-          ).thenAnswer((_) async => embedding);
-          when(
-            () => mockSettingsService.queryExpansionEnabled,
-          ).thenReturn(true);
-          when(() => mockSettingsService.rerankingEnabled).thenReturn(false);
-          when(() => mockSettingsService.searchTopK).thenReturn(3);
-          when(
-            () => mockQueryExpansionService.expandQuery(query),
-          ).thenAnswer((_) async => [query]);
-          when(
-            () => mockVectorStore.hybridSearch(
-              query,
-              embedding,
-              limit: any(named: 'limit'),
-              documentIds: any(named: 'documentIds'),
-            ),
-          ).thenAnswer((_) async => []);
-          await arrangeGeneration();
+        when(
+          () => mockEmbeddingService.generateEmbedding(query),
+        ).thenAnswer((_) async => embedding);
+        when(() => mockSettingsService.queryExpansionEnabled).thenReturn(true);
+        when(() => mockSettingsService.rerankingEnabled).thenReturn(false);
+        when(() => mockSettingsService.searchTopK).thenReturn(3);
+        when(
+          () => mockQueryExpansionService.expandQuery(query),
+        ).thenAnswer((_) async => [query]);
+        when(
+          () => mockVectorStore.hybridSearch(
+            query,
+            embedding,
+            limit: any(named: 'limit'),
+            documentIds: any(named: 'documentIds'),
+          ),
+        ).thenAnswer((_) async => []);
+        await arrangeGeneration();
 
-          final result = await service.askWithRAG(query, includeMetrics: true);
+        final result = await service.askWithRAG(query, includeMetrics: true);
 
-          verifyNever(
-            () => mockQueryExpansionService.searchWithExpandedQueries(
-              any(),
-              any(),
-              limit: any(named: 'limit'),
-              documentIds: any(named: 'documentIds'),
-            ),
-          );
-          verify(
-            () => mockVectorStore.hybridSearch(
-              query,
-              embedding,
-              limit: 3,
-              documentIds: any(named: 'documentIds'),
-            ),
-          ).called(1);
-          expect(result.metrics?.expandedQueryCount, 1);
-          expect(result.metrics?.queryExpansionTime, isNotNull);
-        },
-      );
+        verifyNever(
+          () => mockQueryExpansionService.searchWithExpandedQueries(
+            any(),
+            any(),
+            limit: any(named: 'limit'),
+            documentIds: any(named: 'documentIds'),
+          ),
+        );
+        verify(
+          () => mockVectorStore.hybridSearch(
+            query,
+            embedding,
+            limit: 3,
+            documentIds: any(named: 'documentIds'),
+          ),
+        ).called(1);
+        expect(result.metrics?.expandedQueryCount, 1);
+        expect(result.metrics?.queryExpansionTime, isNotNull);
+      });
 
       test('reranks results and trims them to searchTopK', () async {
         const query = 'Test query';
@@ -356,18 +342,10 @@ void main() {
         final result = await service.askWithRAG(query);
 
         verify(
-          () => mockVectorStore.hybridSearch(
-            query,
-            embedding,
-            limit: 3,
-          ),
+          () => mockVectorStore.hybridSearch(query, embedding, limit: 3),
         ).called(1);
         verify(
-          () => mockRerankingService.rerank(
-            query,
-            initialResults,
-            topK: 3,
-          ),
+          () => mockRerankingService.rerank(query, initialResults, topK: 3),
         ).called(1);
         expect(result.sources.map((source) => source.id).toList(), ['3', '2']);
       });
@@ -530,87 +508,80 @@ void main() {
         ).called(1);
       });
 
-      test(
-        'expands, reranks, and reports metrics when'
-        ' streaming with includeMetrics',
-        () async {
-          const query = 'Stream query';
-          final embedding = [0.1, 0.2, 0.3];
-          final initialResults = [
-            SearchResult(id: '1', content: 'First', score: 0.1, metadata: {}),
-            SearchResult(id: '2', content: 'Second', score: 0.2, metadata: {}),
-            SearchResult(id: '3', content: 'Third', score: 0.3, metadata: {}),
-          ];
-          final rerankedResults = [
-            SearchResult(id: '3', content: 'Third', score: 9, metadata: {}),
-            SearchResult(id: '2', content: 'Second', score: 8, metadata: {}),
-            SearchResult(id: '1', content: 'First', score: 7, metadata: {}),
-          ];
+      test('expands, reranks, and reports metrics when'
+          ' streaming with includeMetrics', () async {
+        const query = 'Stream query';
+        final embedding = [0.1, 0.2, 0.3];
+        final initialResults = [
+          SearchResult(id: '1', content: 'First', score: 0.1, metadata: {}),
+          SearchResult(id: '2', content: 'Second', score: 0.2, metadata: {}),
+          SearchResult(id: '3', content: 'Third', score: 0.3, metadata: {}),
+        ];
+        final rerankedResults = [
+          SearchResult(id: '3', content: 'Third', score: 9, metadata: {}),
+          SearchResult(id: '2', content: 'Second', score: 8, metadata: {}),
+          SearchResult(id: '1', content: 'First', score: 7, metadata: {}),
+        ];
 
-          when(() => mockVectorStore.initialize()).thenAnswer((_) async {});
-          await service.initialize();
+        when(() => mockVectorStore.initialize()).thenAnswer((_) async {});
+        await service.initialize();
 
-          when(
-            () => mockEmbeddingService.generateEmbedding(query),
-          ).thenAnswer((_) async => embedding);
-          when(
-            () => mockSettingsService.queryExpansionEnabled,
-          ).thenReturn(true);
-          when(() => mockSettingsService.rerankingEnabled).thenReturn(true);
-          when(() => mockSettingsService.rerankTopK).thenReturn(3);
-          when(() => mockSettingsService.searchTopK).thenReturn(2);
-          when(
-            () => mockQueryExpansionService.expandQuery(query),
-          ).thenAnswer((_) async => [query, 'Expanded']);
-          when(
-            () => mockQueryExpansionService.searchWithExpandedQueries(
-              query,
-              [query, 'Expanded'],
-              limit: any(named: 'limit'),
-              documentIds: any(named: 'documentIds'),
-            ),
-          ).thenAnswer((_) async => initialResults);
-          when(
-            () => mockRerankingService.rerank(
-              query,
-              initialResults,
-              topK: any(named: 'topK'),
-            ),
-          ).thenAnswer((_) async => rerankedResults);
-          when(
-            () => mockModelProvider.getModel(),
-          ).thenAnswer((_) async => mockInferenceModel);
+        when(
+          () => mockEmbeddingService.generateEmbedding(query),
+        ).thenAnswer((_) async => embedding);
+        when(() => mockSettingsService.queryExpansionEnabled).thenReturn(true);
+        when(() => mockSettingsService.rerankingEnabled).thenReturn(true);
+        when(() => mockSettingsService.rerankTopK).thenReturn(3);
+        when(() => mockSettingsService.searchTopK).thenReturn(2);
+        when(
+          () => mockQueryExpansionService.expandQuery(query),
+        ).thenAnswer((_) async => [query, 'Expanded']);
+        when(
+          () => mockQueryExpansionService.searchWithExpandedQueries(
+            query,
+            [query, 'Expanded'],
+            limit: any(named: 'limit'),
+            documentIds: any(named: 'documentIds'),
+          ),
+        ).thenAnswer((_) async => initialResults);
+        when(
+          () => mockRerankingService.rerank(
+            query,
+            initialResults,
+            topK: any(named: 'topK'),
+          ),
+        ).thenAnswer((_) async => rerankedResults);
+        when(
+          () => mockModelProvider.getModel(),
+        ).thenAnswer((_) async => mockInferenceModel);
 
-          final mockChat = MockInferenceChat();
-          when(
-            () => mockInferenceModel.createChat(
-              temperature: any(named: 'temperature'),
-            ),
-          ).thenAnswer((_) async => mockChat);
-          when(mockChat.initSession).thenAnswer((_) async {});
-          when(() => mockChat.addQuery(any())).thenAnswer((_) async {});
-          when(
-            mockChat.generateChatResponseAsync,
-          ).thenAnswer(
-            (_) => Stream<ModelResponse>.value(const TextResponse('done')),
-          );
+        final mockChat = MockInferenceChat();
+        when(
+          () => mockInferenceModel.createChat(
+            temperature: any(named: 'temperature'),
+          ),
+        ).thenAnswer((_) async => mockChat);
+        when(mockChat.initSession).thenAnswer((_) async {});
+        when(() => mockChat.addQuery(any())).thenAnswer((_) async {});
+        when(mockChat.generateChatResponseAsync).thenAnswer(
+          (_) => Stream<ModelResponse>.value(const TextResponse('done')),
+        );
 
-          final events = await service
-              .askWithRAGStream(query, includeMetrics: true)
-              .toList();
+        final events = await service
+            .askWithRAGStream(query, includeMetrics: true)
+            .toList();
 
-          final metadata = events.first as RAGMetadataEvent;
-          expect(metadata.sources.map((result) => result.id).toList(), [
-            '3',
-            '2',
-          ]);
-          expect(metadata.metrics?.queryExpansionTime, isNotNull);
-          expect(metadata.metrics?.rerankingTime, isNotNull);
-          expect(metadata.metrics?.expandedQueryCount, 2);
-          expect(events.whereType<RAGTokenEvent>().single.token, 'done');
-          expect(events.last, isA<RAGCompleteEvent>());
-        },
-      );
+        final metadata = events.first as RAGMetadataEvent;
+        expect(metadata.sources.map((result) => result.id).toList(), [
+          '3',
+          '2',
+        ]);
+        expect(metadata.metrics?.queryExpansionTime, isNotNull);
+        expect(metadata.metrics?.rerankingTime, isNotNull);
+        expect(metadata.metrics?.expandedQueryCount, 2);
+        expect(events.whereType<RAGTokenEvent>().single.token, 'done');
+        expect(events.last, isA<RAGCompleteEvent>());
+      });
     });
   });
 }

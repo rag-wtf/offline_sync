@@ -47,20 +47,17 @@ void main() {
     });
 
     test('wrapper log methods can be invoked without throwing', () {
-      expect(
-        () {
-          LoggingService.log('generic', level: Level.warning);
-          LoggingService.info('info');
-          LoggingService.debug('debug');
-          LoggingService.warning('warn');
-          LoggingService.error(
-            'error',
-            error: ArgumentError('bad arg'),
-            stackTrace: StackTrace.empty,
-          );
-        },
-        returnsNormally,
-      );
+      expect(() {
+        LoggingService.log('generic', level: Level.warning);
+        LoggingService.info('info');
+        LoggingService.debug('debug');
+        LoggingService.warning('warn');
+        LoggingService.error(
+          'error',
+          error: ArgumentError('bad arg'),
+          stackTrace: StackTrace.empty,
+        );
+      }, returnsNormally);
     });
   });
 }

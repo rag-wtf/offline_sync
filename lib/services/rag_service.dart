@@ -561,10 +561,7 @@ Answer based only on the provided context. If the answer is not in the context, 
   }
 
   /// Build context from search results with token budget
-  String _buildContextWithBudget(
-    List<SearchResult> results,
-    int tokenBudget,
-  ) {
+  String _buildContextWithBudget(List<SearchResult> results, int tokenBudget) {
     if (results.isEmpty) return 'No relevant context found.';
 
     // Results already sorted by relevance score

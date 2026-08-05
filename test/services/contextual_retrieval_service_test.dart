@@ -266,64 +266,58 @@ void main() {
         expect(response, isEmpty);
       });
 
-      test(
-        'should contextualize chunks with full document context and '
-        'report progress',
-        () async {
-          final testService = TestContextualRetrievalService(
-            contexts: {
-              'Chunk 1': 'Context for chunk 1',
-              'Chunk 2': 'Context for chunk 2',
-            },
-          );
-          final chunks = ['Chunk 1', 'Chunk 2'];
-          const documentContent = 'Full document content here.';
+      test('should contextualize chunks with full document context and '
+          'report progress', () async {
+        final testService = TestContextualRetrievalService(
+          contexts: {
+            'Chunk 1': 'Context for chunk 1',
+            'Chunk 2': 'Context for chunk 2',
+          },
+        );
+        final chunks = ['Chunk 1', 'Chunk 2'];
+        const documentContent = 'Full document content here.';
 
-          var progressCalls = 0;
-          var lastCompleted = 0;
-          var lastTotal = 0;
+        var progressCalls = 0;
+        var lastCompleted = 0;
+        var lastTotal = 0;
 
-          final results = await testService.contextualizeDocument(
-            documentContent: documentContent,
-            chunks: chunks,
-            onProgress: (completed, total) {
-              progressCalls++;
-              lastCompleted = completed;
-              lastTotal = total;
-            },
-          );
+        final results = await testService.contextualizeDocument(
+          documentContent: documentContent,
+          chunks: chunks,
+          onProgress: (completed, total) {
+            progressCalls++;
+            lastCompleted = completed;
+            lastTotal = total;
+          },
+        );
 
-          expect(progressCalls, equals(chunks.length));
-          expect(lastCompleted, equals(chunks.length));
-          expect(lastTotal, equals(chunks.length));
-          expect(testService.capturedChunks, equals(chunks));
-          expect(
-            testService.capturedDocumentContent,
-            everyElement(equals(documentContent)),
-          );
-          expect(results.length, equals(chunks.length));
-          expect(results[0].originalContent, 'Chunk 1');
-          expect(results[0].context, 'Context for chunk 1');
-          expect(results[0].combinedContent, 'Context for chunk 1\n\nChunk 1');
-          expect(results[1].combinedContent, 'Context for chunk 2\n\nChunk 2');
-        },
-      );
+        expect(progressCalls, equals(chunks.length));
+        expect(lastCompleted, equals(chunks.length));
+        expect(lastTotal, equals(chunks.length));
+        expect(testService.capturedChunks, equals(chunks));
+        expect(
+          testService.capturedDocumentContent,
+          everyElement(equals(documentContent)),
+        );
+        expect(results.length, equals(chunks.length));
+        expect(results[0].originalContent, 'Chunk 1');
+        expect(results[0].context, 'Context for chunk 1');
+        expect(results[0].combinedContent, 'Context for chunk 1\n\nChunk 1');
+        expect(results[1].combinedContent, 'Context for chunk 2\n\nChunk 2');
+      });
 
-      test(
-        'should preserve original chunk when contextual generation returns '
-        'empty',
-        () async {
-          final testService = TestContextualRetrievalService();
-          final results = await testService.contextualizeDocument(
-            documentContent: 'Full document content here.',
-            chunks: const ['Chunk 1'],
-          );
+      test('should preserve original chunk when contextual generation returns '
+          'empty', () async {
+        final testService = TestContextualRetrievalService();
+        final results = await testService.contextualizeDocument(
+          documentContent: 'Full document content here.',
+          chunks: const ['Chunk 1'],
+        );
 
-          expect(results.single.originalContent, 'Chunk 1');
-          expect(results.single.context, isEmpty);
-          expect(results.single.combinedContent, 'Chunk 1');
-        },
-      );
+        expect(results.single.originalContent, 'Chunk 1');
+        expect(results.single.context, isEmpty);
+        expect(results.single.combinedContent, 'Chunk 1');
+      });
 
       test('should use sliding window for large documents', () async {
         final testService = TestContextualRetrievalService(
@@ -356,23 +350,20 @@ void main() {
         );
       });
 
-      test(
-        'should use the leading window when chunk is absent from a large '
-        'document',
-        () async {
-          final testService = TestContextualRetrievalService();
-          final largeDocument = '${'Lead' * 3000}${'Tail' * 3000}';
+      test('should use the leading window when chunk is absent from a large '
+          'document', () async {
+        final testService = TestContextualRetrievalService();
+        final largeDocument = '${'Lead' * 3000}${'Tail' * 3000}';
 
-          await testService.contextualizeDocument(
-            documentContent: largeDocument,
-            chunks: const ['Missing chunk'],
-          );
+        await testService.contextualizeDocument(
+          documentContent: largeDocument,
+          chunks: const ['Missing chunk'],
+        );
 
-          final captured = testService.capturedDocumentContent.single;
-          expect(captured.length, lessThan(largeDocument.length));
-          expect(captured, equals(largeDocument.substring(0, captured.length)));
-        },
-      );
+        final captured = testService.capturedDocumentContent.single;
+        expect(captured.length, lessThan(largeDocument.length));
+        expect(captured, equals(largeDocument.substring(0, captured.length)));
+      });
 
       test('should process all chunks and call progress callback', () async {
         final chunks = ['Chunk 1', 'Chunk 2', 'Chunk 3'];
