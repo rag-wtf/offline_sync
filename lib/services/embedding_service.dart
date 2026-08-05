@@ -18,7 +18,9 @@ class EmbeddingService {
     // Note: getEmbedding might return a List<double> or a proprietary object
     // depending on version. Standardizing to List<double>.
     // Using dynamic to bypass analyzer issues with library types.
-    final result = await embedder.generateEmbedding(text);
+    final result = await embedder
+        .generateEmbedding(text)
+        .timeout(const Duration(seconds: 30));
     return result;
   }
 }

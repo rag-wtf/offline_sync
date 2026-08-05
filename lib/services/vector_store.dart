@@ -165,20 +165,25 @@ class VectorStore {
 
   void _createFtsObjects() {
     try {
+      _db!.execute('DROP TRIGGER IF EXISTS vectors_ad');
+      _db!.execute('DROP TRIGGER IF EXISTS vectors_bd');
+
       _db!.execute('''
         CREATE VIRTUAL TABLE IF NOT EXISTS vectors_fts 
         USING fts5(content, content=vectors, content_rowid=rowid)
       ''');
 
+      _db!.execute('DROP TRIGGER IF EXISTS vectors_ad');
+
       _db!.execute('''
         CREATE TRIGGER IF NOT EXISTS vectors_ai AFTER INSERT ON vectors BEGIN
-          INSERT INTO vectors_fts(rowid, content) VALUES (new.rowid, new.content);
+          INSERT OR IGNORE INTO vectors_fts(rowid, content) VALUES (new.rowid, new.content);
         END
       ''');
 
       _db!.execute('''
-        CREATE TRIGGER IF NOT EXISTS vectors_ad AFTER DELETE ON vectors BEGIN
-          INSERT INTO vectors_fts(vectors_fts, rowid, content) 
+        CREATE TRIGGER IF NOT EXISTS vectors_bd BEFORE DELETE ON vectors BEGIN
+          INSERT OR IGNORE INTO vectors_fts(vectors_fts, rowid, content) 
           VALUES ('delete', old.rowid, old.content);
         END
       ''');
@@ -239,12 +244,15 @@ class VectorStore {
           );
     // coverage:ignore-end
 
-    // 2. Compute Semantic Search (using Candidates from FTS5 if possible,
-    // or all if small)
+    final keywordCandidates = keywordResults.map((r) => r.id).toList();
+
+    // 2. Compute Semantic Search (using FTS candidate IDs as pre-filter
+    // when available, or bounded scan capped at candidate pool size)
     final semanticResults = await _semanticSearchAsync(
       queryEmbedding,
       limit: limit * 2,
       documentIds: documentIds,
+      candidateIds: keywordCandidates.isNotEmpty ? keywordCandidates : null,
     );
 
     return mergeResults(
@@ -259,17 +267,32 @@ class VectorStore {
     List<double> embedding, {
     required int limit,
     List<String>? documentIds,
+    List<String>? candidateIds,
   }) async {
-    // Fetch all embeddings and IDs from DB
-    // Filter by documentIds if provided
     var sql = 'SELECT id, content, embedding, metadata FROM vectors';
-    var params = <Object?>[];
+    final params = <Object?>[];
+    final conditions = <String>[];
+
+    if (candidateIds != null && candidateIds.isNotEmpty) {
+      final placeholders = List.filled(candidateIds.length, '?').join(', ');
+      conditions.add('id IN ($placeholders)');
+      params.addAll(candidateIds);
+    }
 
     if (documentIds != null && documentIds.isNotEmpty) {
       final placeholders = List.filled(documentIds.length, '?').join(', ');
-      sql += ' WHERE document_id IN ($placeholders)';
-      params = documentIds;
+      conditions.add('document_id IN ($placeholders)');
+      params.addAll(documentIds);
     }
+
+    if (conditions.isNotEmpty) {
+      sql += ' WHERE ${conditions.join(' AND ')}';
+    }
+
+    // Always cap row scan to prevent uncapped full-table scan on large DBs
+    const candidatePoolCap = RagConstants.hybridSearchCandidatePoolSize * 5;
+    final maxScan = max(limit * 2, candidatePoolCap);
+    sql += ' LIMIT $maxScan';
 
     final rows = _db!.select(sql, params);
 
@@ -533,7 +556,7 @@ INSERT OR REPLACE INTO vectors
       _db!.execute('DELETE FROM vectors WHERE document_id = ?', [id]);
 
       _db!.execute('COMMIT');
-    } catch (e) {
+    } on Object catch (_) {
       _db!.execute('ROLLBACK');
       rethrow;
     }
@@ -542,10 +565,10 @@ INSERT OR REPLACE INTO vectors
   void deleteAllDocuments() {
     _db!.execute('BEGIN TRANSACTION');
     try {
-      _db!.execute('DELETE FROM documents');
-      _db!.execute('DELETE FROM vectors');
+      _db!.execute('DELETE FROM vectors WHERE 1=1');
+      _db!.execute('DELETE FROM documents WHERE 1=1');
       _db!.execute('COMMIT');
-    } catch (e) {
+    } on Object catch (_) {
       _db!.execute('ROLLBACK');
       rethrow;
     }

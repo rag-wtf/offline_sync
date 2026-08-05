@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
@@ -191,6 +192,7 @@ class ChatViewModel extends BaseViewModel {
             ? _selectedDocumentIds.toList()
             : null,
       )) {
+        if (disposed) break;
         if (event is RAGMetadataEvent) {
           // Store sources and metrics for later
           sources = event.sources;
@@ -244,15 +246,6 @@ class ChatViewModel extends BaseViewModel {
 
   /// Opens file picker and starts ingestion for one or more files
   Future<void> pickAndIngestFiles() async {
-    // Use DocumentLibraryViewModel's logic or delegate?
-    // Duplicate logic is fine for now but ideally we use the service.
-
-    // Actually, why not just navigate to DocumentLibraryView?
-    // User might want to ingest *while* in chat.
-
-    final docService = locator<DocumentManagementService>();
-    // ... use docService.addDocument ...
-
     final result = await pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'docx', 'txt', 'md', 'epub', 'json'],
@@ -263,36 +256,47 @@ class ChatViewModel extends BaseViewModel {
     setBusy(true);
 
     try {
-      final paths = result.files
-          .where((f) => f.path != null)
-          .map((f) => f.path!)
-          .toList();
+      if (kIsWeb) {
+        for (final file in result.files) {
+          await _documentService.addDocumentFromPlatformFile(file);
+        }
+        await _refreshDocuments();
+        _snackbarService.showSnackbar(
+          message: 'Ingested ${result.files.length} document(s)',
+        );
+      } else {
+        final paths = result.files
+            .where((f) => f.path != null)
+            .map((f) => f.path!)
+            .toList();
 
-      if (paths.isEmpty) return;
+        if (paths.isEmpty) return;
 
-      final ingestionResult = await docService.addMultipleDocuments(paths);
+        final ingestionResult =
+            await _documentService.addMultipleDocuments(paths);
 
-      if (ingestionResult.hasErrors) {
-        final failedCount = ingestionResult.failed.length;
-        final successCount = ingestionResult.succeeded.length;
+        if (ingestionResult.hasErrors) {
+          final failedCount = ingestionResult.failed.length;
+          final successCount = ingestionResult.succeeded.length;
 
-        if (successCount == 0) {
-          _snackbarService.showSnackbar(
-            message: 'Failed to ingest $failedCount file(s)',
-          );
+          if (successCount == 0) {
+            _snackbarService.showSnackbar(
+              message: 'Failed to ingest $failedCount file(s)',
+            );
+          } else {
+            _snackbarService.showSnackbar(
+              message:
+                  'Ingested $successCount file(s). '
+                  'Failed to ingest $failedCount file(s).',
+            );
+          }
         } else {
           _snackbarService.showSnackbar(
             message:
-                'Ingested $successCount file(s). '
-                'Failed to ingest $failedCount file(s).',
+                'Successfully ingested '
+                '${ingestionResult.succeeded.length} file(s)',
           );
         }
-      } else {
-        _snackbarService.showSnackbar(
-          message:
-              'Successfully ingested '
-              '${ingestionResult.succeeded.length} file(s)',
-        );
       }
     } on Exception catch (e) {
       _snackbarService.showSnackbar(message: 'Ingestion error: $e');

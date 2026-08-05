@@ -33,11 +33,13 @@ Variants:''';
 
       final response = StringBuffer();
       final stream = chat.generateChatResponseAsync();
-      await for (final modelResponse in stream) {
-        if (modelResponse is TextResponse) {
-          response.write(modelResponse.token);
+      await Future.sync(() async {
+        await for (final modelResponse in stream) {
+          if (modelResponse is TextResponse) {
+            response.write(modelResponse.token);
+          }
         }
-      }
+      }).timeout(const Duration(seconds: 15));
 
       // Parse variants from response
       final variants = response
@@ -70,7 +72,7 @@ Variants:''';
     double? semanticWeight,
     List<String>? documentIds,
   }) async {
-    final allResults = <SearchResult>[];
+    final variantResultsList = <List<SearchResult>>[];
 
     // Search with each variant
     for (final variant in queryVariants) {
@@ -82,27 +84,29 @@ Variants:''';
         semanticWeight: semanticWeight,
         documentIds: documentIds,
       );
-      allResults.addAll(results);
+      variantResultsList.add(results);
     }
 
     // Deduplicate and merge using RRF
-    return _mergeResultsWithRRF(allResults, limit);
+    return _mergeResultsWithRRF(variantResultsList, limit);
   }
 
   /// Merge results from multiple queries using Reciprocal Rank Fusion
   List<SearchResult> _mergeResultsWithRRF(
-    List<SearchResult> results,
+    List<List<SearchResult>> variantResultsList,
     int limit,
   ) {
     const k = RagConstants.rrfConstant;
     final scores = <String, double>{};
     final items = <String, SearchResult>{};
 
-    // Group by ID and calculate RRF score based on position in each list
-    for (var i = 0; i < results.length; i++) {
-      final result = results[i];
-      scores[result.id] = (scores[result.id] ?? 0) + 1.0 / (k + i + 1);
-      items[result.id] ??= result;
+    // Group by ID and calculate RRF score based on rank in each list
+    for (final variantResults in variantResultsList) {
+      for (var rank = 0; rank < variantResults.length; rank++) {
+        final result = variantResults[rank];
+        scores[result.id] = (scores[result.id] ?? 0) + 1.0 / (k + rank + 1);
+        items[result.id] ??= result;
+      }
     }
 
     // Sort by RRF score

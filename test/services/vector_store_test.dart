@@ -38,7 +38,21 @@ void main() {
 
     final dbFile = File('vectors.db');
     if (dbFile.existsSync()) {
-      dbFile.deleteSync();
+      try {
+        dbFile.deleteSync();
+      } catch (_) {
+        try {
+          final tempDb = sqlite3.open('vectors.db');
+          tempDb.execute('DROP TABLE IF EXISTS vectors');
+          tempDb.execute('DROP TABLE IF EXISTS documents');
+          tempDb.execute('DROP TABLE IF EXISTS vectors_fts');
+          tempDb.execute('DROP TABLE IF EXISTS chat_messages');
+          tempDb.execute('DROP TRIGGER IF EXISTS vectors_ai');
+          tempDb.execute('DROP TRIGGER IF EXISTS vectors_ad');
+          tempDb.execute('DROP TRIGGER IF EXISTS vectors_bd');
+          tempDb.close();
+        } catch (_) {}
+      }
     }
 
     vectorStore = VectorStore();
@@ -49,9 +63,11 @@ void main() {
     vectorStore.close();
 
     final dbFile = File('vectors.db');
-    if (dbFile.existsSync()) {
-      dbFile.deleteSync();
-    }
+    try {
+      if (dbFile.existsSync()) {
+        dbFile.deleteSync();
+      }
+    } catch (_) {}
 
     await locator.reset();
   });
@@ -197,6 +213,9 @@ void main() {
           metadata: const {'kind': 'exclude'},
         );
 
+      vectorStore.db!.execute('DROP TRIGGER IF EXISTS vectors_ai');
+      vectorStore.db!.execute('DROP TRIGGER IF EXISTS vectors_bd');
+      vectorStore.db!.execute('DROP TRIGGER IF EXISTS vectors_ad');
       vectorStore.db!.execute('DROP TABLE vectors_fts');
 
       final results = await vectorStore.hybridSearch(

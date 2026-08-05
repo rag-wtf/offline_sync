@@ -55,10 +55,19 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
       _isSaving = true;
     });
 
-    await (widget.onSaveToken ?? AuthTokenService.saveToken)(token);
+    try {
+      await (widget.onSaveToken ?? AuthTokenService.saveToken)(token);
 
-    if (mounted) {
-      Navigator.of(context).pop(true); // Return true to indicate success
+      if (mounted) {
+        Navigator.of(context).pop(true); // Return true to indicate success
+      }
+    } on Object catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to save token: $e';
+          _isSaving = false;
+        });
+      }
     }
   }
 

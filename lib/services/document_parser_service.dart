@@ -133,13 +133,15 @@ class DocumentParserService {
   }
 
   Future<String> _parsePdf(Uint8List bytes) async {
+    PdfDocument? document;
     try {
-      final document = PdfDocument(inputBytes: bytes);
+      document = PdfDocument(inputBytes: bytes);
       final text = PdfTextExtractor(document).extractText();
-      document.dispose();
       return text;
     } catch (e) {
       throw Exception('Failed to parse PDF: $e');
+    } finally {
+      document?.dispose();
     }
   }
 

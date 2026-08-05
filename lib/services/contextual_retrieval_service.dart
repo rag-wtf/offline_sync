@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/services/rag_constants.dart';
@@ -100,15 +101,22 @@ Make the explanation standalone so the chunk can be understood without the full 
       await chat.initSession();
       await chat.addQuery(Message(text: prompt, isUser: true));
 
-      var response = '';
-      await for (final token in chat.generateChatResponseAsync()) {
-        if (token is TextResponse) {
-          response += token.token;
+      final response = StringBuffer();
+      await Future.sync(() async {
+        await for (final token in chat.generateChatResponseAsync()) {
+          if (token is TextResponse) {
+            response.write(token.token);
+          }
         }
-      }
-      return response.trim();
-    } on Exception catch (_) {
-      // Fallback or log error
+      }).timeout(const Duration(seconds: 20));
+      return response.toString().trim();
+    } on Exception catch (e, stack) {
+      LoggingService.error(
+        'Error generating chunk context',
+        name: 'ContextualRetrievalService',
+        error: e,
+        stackTrace: stack,
+      );
       return '';
     }
   }
@@ -123,19 +131,39 @@ Make the explanation standalone so the chunk can be understood without the full 
     final results = <ContextualizedChunk>[];
     final maxChars = _calculateMaxDocumentChars(_modelMaxTokens);
     final useSlidingWindow = documentContent.length > maxChars;
+    var lastIndex = 0;
 
     for (var i = 0; i < chunks.length; i++) {
       final chunk = chunks[i];
       var contextSource = documentContent;
 
       if (useSlidingWindow) {
-        contextSource = _getRelevantWindow(documentContent, chunk, maxChars);
+        final windowResult = _getRelevantWindow(
+          documentContent,
+          chunk,
+          maxChars,
+          searchFrom: lastIndex,
+        );
+        contextSource = windowResult.window;
+        lastIndex = windowResult.foundIndex != -1
+            ? windowResult.foundIndex
+            : lastIndex;
       }
 
-      final context = await generateChunkContext(
-        documentContent: contextSource,
-        chunk: chunk,
-      );
+      var context = '';
+      try {
+        context = await generateChunkContext(
+          documentContent: contextSource,
+          chunk: chunk,
+        ).timeout(const Duration(seconds: 20));
+      } on Exception catch (e, stack) {
+        LoggingService.error(
+          'Timeout or error contextualizing chunk $i',
+          name: 'ContextualRetrievalService',
+          error: e,
+          stackTrace: stack,
+        );
+      }
 
       results.add(
         ContextualizedChunk(
@@ -151,14 +179,40 @@ Make the explanation standalone so the chunk can be understood without the full 
     return results;
   }
 
-  String _getRelevantWindow(String fullDoc, String chunk, int maxChars) {
-    final chunkStart = fullDoc.indexOf(chunk);
+  _WindowResult _getRelevantWindow(
+    String fullDoc,
+    String chunk,
+    int maxChars, {
+    int searchFrom = 0,
+  }) {
+    final chunkStart = fullDoc.indexOf(chunk, searchFrom);
     if (chunkStart == -1) {
-      return fullDoc.substring(0, min(fullDoc.length, maxChars));
+      final fallbackStart = fullDoc.indexOf(chunk);
+      if (fallbackStart == -1) {
+        return _WindowResult(
+          window: fullDoc.substring(0, min(fullDoc.length, maxChars)),
+          foundIndex: -1,
+        );
+      }
+      final windowStart = max(0, fallbackStart - maxChars ~/ 2);
+      final windowEnd = min(fullDoc.length, windowStart + maxChars);
+      return _WindowResult(
+        window: fullDoc.substring(windowStart, windowEnd),
+        foundIndex: fallbackStart,
+      );
     }
 
     final windowStart = max(0, chunkStart - maxChars ~/ 2);
     final windowEnd = min(fullDoc.length, windowStart + maxChars);
-    return fullDoc.substring(windowStart, windowEnd);
+    return _WindowResult(
+      window: fullDoc.substring(windowStart, windowEnd),
+      foundIndex: chunkStart,
+    );
   }
+}
+
+class _WindowResult {
+  _WindowResult({required this.window, required this.foundIndex});
+  final String window;
+  final int foundIndex;
 }
