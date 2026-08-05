@@ -74,7 +74,9 @@ void main() {
     expect(find.byType(TokenInputDialog), findsNothing);
   });
 
-  testWidgets('shows error message when onSaveToken throws exception', (tester) async {
+  testWidgets('shows error message when onSaveToken throws exception', (
+    tester,
+  ) async {
     await openDialog(
       tester,
       buildSubject(

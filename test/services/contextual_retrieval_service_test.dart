@@ -448,35 +448,44 @@ void main() {
         expect(testService.capturedDocumentContent.single, isEmpty);
       });
 
-      test('should log error and return empty context when generateChunkContext throws', () async {
-        final testService = TestContextualRetrievalService(shouldThrow: true);
-        final results = await testService.contextualizeDocument(
-          documentContent: 'Doc content',
-          chunks: const ['Chunk 1'],
-        );
+      test(
+        'should log error and return empty context when '
+        'generateChunkContext throws',
+        () async {
+          final testService = TestContextualRetrievalService(shouldThrow: true);
+          final results = await testService.contextualizeDocument(
+            documentContent: 'Doc content',
+            chunks: const ['Chunk 1'],
+          );
 
-        expect(results.single.originalContent, 'Chunk 1');
-        expect(results.single.context, isEmpty);
-      });
+          expect(results.single.originalContent, 'Chunk 1');
+          expect(results.single.context, isEmpty);
+        },
+      );
 
-      test('should fallback to searching from beginning when chunk occurs before searchFrom in large doc', () async {
-        final testService = TestContextualRetrievalService(
-          contexts: {'Chunk A': 'Ctx A', 'Chunk B': 'Ctx B'},
-        );
-        final padding = 'X' * 8000;
-        final documentContent = 'Chunk B $padding Chunk A $padding UniqueEnd';
-        // Chunk A will move searchFrom to index > 8000. Chunk B is only at index 0, so searchFrom > Chunk B position.
-        // indexOf('Chunk B', searchFrom) returns -1, fallbackStart returns 0.
+      test(
+        'should fallback to searching from beginning when chunk occurs '
+        'before searchFrom in large doc',
+        () async {
+          final testService = TestContextualRetrievalService(
+            contexts: {'Chunk A': 'Ctx A', 'Chunk B': 'Ctx B'},
+          );
+          final padding = 'X' * 8000;
+          final documentContent = 'Chunk B $padding Chunk A $padding UniqueEnd';
+          // Chunk A will move searchFrom to index > 8000. Chunk B is only
+          // at index 0, so searchFrom > Chunk B position.
+          // indexOf('Chunk B', searchFrom) returns -1, fallbackStart returns 0.
 
-        final results = await testService.contextualizeDocument(
-          documentContent: documentContent,
-          chunks: const ['Chunk A', 'Chunk B'],
-        );
+          final results = await testService.contextualizeDocument(
+            documentContent: documentContent,
+            chunks: const ['Chunk A', 'Chunk B'],
+          );
 
-        expect(results.length, equals(2));
-        expect(results[0].originalContent, 'Chunk A');
-        expect(results[1].originalContent, 'Chunk B');
-      });
+          expect(results.length, equals(2));
+          expect(results[0].originalContent, 'Chunk A');
+          expect(results[1].originalContent, 'Chunk B');
+        },
+      );
     });
   });
 }

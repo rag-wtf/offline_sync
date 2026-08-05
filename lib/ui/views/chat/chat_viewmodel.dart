@@ -266,7 +266,7 @@ class ChatViewModel extends BaseViewModel {
           message: 'Ingested ${result.files.length} document(s)',
         );
       } else {
-      // coverage:ignore-end
+        // coverage:ignore-end
         final paths = result.files
             .where((f) => f.path != null)
             .map((f) => f.path!)
