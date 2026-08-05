@@ -21,10 +21,13 @@ class MockInferenceModel extends Mock implements InferenceModel {}
 class MockInferenceChat extends Mock implements InferenceChat {}
 
 class TestContextualRetrievalService extends ContextualRetrievalService {
-  TestContextualRetrievalService({Map<String, String>? contexts})
-    : _contexts = contexts ?? const {};
+  TestContextualRetrievalService({
+    Map<String, String>? contexts,
+    this.shouldThrow = false,
+  }) : _contexts = contexts ?? const {};
 
   final Map<String, String> _contexts;
+  final bool shouldThrow;
   final List<String> capturedDocumentContent = [];
   final List<String> capturedChunks = [];
 
@@ -33,6 +36,9 @@ class TestContextualRetrievalService extends ContextualRetrievalService {
     required String documentContent,
     required String chunk,
   }) async {
+    if (shouldThrow) {
+      throw Exception('Failed to generate context');
+    }
     capturedDocumentContent.add(documentContent);
     capturedChunks.add(chunk);
     return _contexts[chunk] ?? '';
@@ -440,6 +446,36 @@ void main() {
 
         expect(results.length, equals(1));
         expect(testService.capturedDocumentContent.single, isEmpty);
+      });
+
+      test('should log error and return empty context when generateChunkContext throws', () async {
+        final testService = TestContextualRetrievalService(shouldThrow: true);
+        final results = await testService.contextualizeDocument(
+          documentContent: 'Doc content',
+          chunks: const ['Chunk 1'],
+        );
+
+        expect(results.single.originalContent, 'Chunk 1');
+        expect(results.single.context, isEmpty);
+      });
+
+      test('should fallback to searching from beginning when chunk occurs before searchFrom in large doc', () async {
+        final testService = TestContextualRetrievalService(
+          contexts: {'Chunk A': 'Ctx A', 'Chunk B': 'Ctx B'},
+        );
+        final padding = 'X' * 8000;
+        final documentContent = 'Chunk B $padding Chunk A $padding UniqueEnd';
+        // Chunk A will move searchFrom to index > 8000. Chunk B is only at index 0, so searchFrom > Chunk B position.
+        // indexOf('Chunk B', searchFrom) returns -1, fallbackStart returns 0.
+
+        final results = await testService.contextualizeDocument(
+          documentContent: documentContent,
+          chunks: const ['Chunk A', 'Chunk B'],
+        );
+
+        expect(results.length, equals(2));
+        expect(results[0].originalContent, 'Chunk A');
+        expect(results[1].originalContent, 'Chunk B');
       });
     });
   });

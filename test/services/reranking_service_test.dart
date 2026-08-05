@@ -105,6 +105,40 @@ void main() {
         expect(result.single.id, '1');
         expect(result.single.score, 5.0);
       });
+
+      test('truncates content longer than maxCharsForReranking', () async {
+        const query = 'test query';
+        final longContent = 'A' * 600;
+        final candidates = [
+          SearchResult(id: '1', content: longContent, score: 0.5, metadata: {}),
+        ];
+
+        when(
+          () => mockModelProvider.getModel(),
+        ).thenAnswer((_) async => mockInferenceModel);
+
+        final mockChat = MockInferenceChat();
+        when(
+          () => mockInferenceModel.createChat(
+            temperature: any(named: 'temperature'),
+          ),
+        ).thenAnswer((_) async => mockChat);
+
+        when(mockChat.initSession).thenAnswer((_) async {});
+        Message? capturedMessage;
+        when(() => mockChat.addQuery(any())).thenAnswer((invocation) async {
+          capturedMessage = invocation.positionalArguments.first as Message;
+        });
+        when(mockChat.generateChatResponseAsync).thenAnswer(
+          (_) => Stream.fromIterable([const TextResponse('9.0')]),
+        );
+
+        final results = await service.rerank(query, candidates, topK: 1);
+
+        expect(results.single.score, 9.0);
+        expect(capturedMessage, isNotNull);
+        expect(capturedMessage!.text, contains('...'));
+      });
     });
   });
 }

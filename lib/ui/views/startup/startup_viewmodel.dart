@@ -152,12 +152,21 @@ class StartupViewModel extends BaseViewModel {
       log('RAG settings initialized', name: 'StartupViewModel');
 
       // 5. Download recommended models if not present
-      final inferenceModel = _modelService.models.firstWhere(
-        (m) => m.id == recommended.inferenceModel.id,
-      );
-      final embeddingModel = _modelService.models.firstWhere(
-        (m) => m.id == recommended.embeddingModel.id,
-      );
+      final inferenceModel = _modelService.models
+          .where((m) => m.id == recommended.inferenceModel.id)
+          .firstOrNull;
+      final embeddingModel = _modelService.models
+          .where((m) => m.id == recommended.embeddingModel.id)
+          .firstOrNull;
+
+      if (inferenceModel == null || embeddingModel == null) {
+        log(
+          'Recommended models not found in model service',
+          name: 'StartupViewModel',
+        );
+        setError('Recommended models not available.');
+        return;
+      }
 
       if (inferenceModel.status != ModelStatus.downloaded) {
         log('Downloading recommended inference model: ${inferenceModel.name}');

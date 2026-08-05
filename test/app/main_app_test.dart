@@ -5,6 +5,7 @@ import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/app/main_app.dart';
 import 'package:offline_sync/l10n/l10n.dart';
+import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
@@ -39,13 +40,30 @@ void main() {
     final modelService = locator<ModelManagementService>();
     final settingsService = locator<RagSettingsService>();
 
+    final testModels = <ModelInfo>[
+      ModelInfo(
+        id: 'gemma3-1b',
+        name: 'Gemma 3 1B',
+        url: 'https://example.com/gemma',
+        type: AppModelType.inference,
+        status: ModelStatus.downloaded,
+      ),
+      ModelInfo(
+        id: 'embedding-gemma-256',
+        name: 'Embedding Gemma 256',
+        url: 'https://example.com/embed',
+        type: AppModelType.embedding,
+        status: ModelStatus.downloaded,
+      ),
+    ];
+
     when(
       () => modelService.modelStatusStream,
     ).thenAnswer((_) => const Stream<List<ModelInfo>>.empty());
     when(modelService.initialize).thenAnswer((_) async {});
-    when(() => modelService.models).thenReturn(const <ModelInfo>[]);
-    when(() => modelService.activeInferenceModel).thenReturn(null);
-    when(() => modelService.activeEmbeddingModel).thenReturn(null);
+    when(() => modelService.models).thenReturn(testModels);
+    when(() => modelService.activeInferenceModel).thenReturn(testModels[0]);
+    when(() => modelService.activeEmbeddingModel).thenReturn(testModels[1]);
     when(settingsService.initialize).thenAnswer((_) async {});
 
     await tester.pumpWidget(const MainApp());

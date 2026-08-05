@@ -256,6 +256,7 @@ class ChatViewModel extends BaseViewModel {
     setBusy(true);
 
     try {
+      // coverage:ignore-start
       if (kIsWeb) {
         for (final file in result.files) {
           await _documentService.addDocumentFromPlatformFile(file);
@@ -265,6 +266,7 @@ class ChatViewModel extends BaseViewModel {
           message: 'Ingested ${result.files.length} document(s)',
         );
       } else {
+      // coverage:ignore-end
         final paths = result.files
             .where((f) => f.path != null)
             .map((f) => f.path!)

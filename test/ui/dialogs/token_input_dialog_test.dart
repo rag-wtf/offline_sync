@@ -73,4 +73,22 @@ void main() {
     expect(savedToken, 'hf_secret');
     expect(find.byType(TokenInputDialog), findsNothing);
   });
+
+  testWidgets('shows error message when onSaveToken throws exception', (tester) async {
+    await openDialog(
+      tester,
+      buildSubject(
+        onSaveToken: (token) async => throw Exception('Storage error'),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'hf_secret');
+    await tester.tap(find.text('Save & Continue'));
+    await tester.pump();
+
+    expect(
+      find.text('Failed to save token: Exception: Storage error'),
+      findsOneWidget,
+    );
+  });
 }
