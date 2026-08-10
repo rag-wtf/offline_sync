@@ -168,7 +168,7 @@ jobs:
           ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD }}
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: android-${{ env.FLAVOR }}-apk-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/app/outputs/flutter-apk/*.apk
@@ -176,7 +176,7 @@ jobs:
 
       - name: Upload App Bundle artifact
         if: ${{ github.event.inputs.build_type == 'release' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: android-${{ env.FLAVOR }}-aab-release${{ env.VERSION_SUFFIX }}
           path: build/app/outputs/bundle/${{ env.FLAVOR }}Release/*.aab
@@ -215,7 +215,7 @@ jobs:
           zip -r ../ipa/offline_sync-${{ github.event.inputs.build_type }}-UNSIGNED.ipa Payload
 
       - name: Upload iOS artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ios-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}-UNSIGNED-inspection-only${{ env.VERSION_SUFFIX }}
           path: build/ios/ipa/*.ipa
@@ -329,7 +329,7 @@ jobs:
           done
 
       - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: linux-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: |
@@ -387,7 +387,7 @@ jobs:
           hdiutil create -volname "Offline Sync" -srcfolder "Offline Sync.app" -ov -format UDZO "../../../../offline_sync-macos-${{ github.event.inputs.build_type }}.dmg"
 
       - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: macos-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/offline_sync-macos-${{ github.event.inputs.build_type }}.dmg
@@ -419,7 +419,7 @@ jobs:
           Compress-Archive -Path "build\windows\x64\runner\${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}\*" -DestinationPath "build\offline_sync-windows-${{ github.event.inputs.build_type }}.zip"
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: windows-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/offline_sync-windows-${{ github.event.inputs.build_type }}.zip
@@ -469,7 +469,7 @@ jobs:
         uses: actions/deploy-pages@v4
 
       - name: Upload Web build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: web-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/web
