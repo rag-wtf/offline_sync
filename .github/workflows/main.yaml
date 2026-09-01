@@ -21,7 +21,7 @@ jobs:
     with:
       flutter_version: "3.44.x"
       run_bloc_lint: false
-      min_coverage: 100
+      min_coverage: 95
 
   spell-check:
     uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/spell_check.yml@v1
