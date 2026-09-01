@@ -355,28 +355,6 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: "temurin"
-          java-version: "21"
-
-      - name: Pre-build LiteRT-LM JAR
-        run: |
-          GEMMA_PATH=$(find $HOME/.pub-cache/hosted/pub.dev -maxdepth 1 -type d -name "flutter_gemma-*" | head -n 1)
-          if [ -z "$GEMMA_PATH" ]; then
-            GEMMA_PATH=$(find $HOME/.pub-cache/git -maxdepth 1 -type d -name "flutter_gemma*" | head -n 1)
-          fi
-          if [ -d "$GEMMA_PATH/macos/litertlm-server" ]; then
-            echo "Pre-building JAR in $GEMMA_PATH..."
-            cd "$GEMMA_PATH/macos/litertlm-server"
-            chmod +x gradlew
-            ./gradlew fatJar --no-daemon
-          else
-            echo "::error::flutter_gemma/macos/litertlm-server not found in pub cache ($GEMMA_PATH). macOS build would ship without the LiteRT-LM backend."
-            exit 1
-          fi
-
       - name: Build macOS
         run: flutter build macos --${{ github.event.inputs.build_type }} --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
 
