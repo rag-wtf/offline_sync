@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
@@ -476,6 +477,7 @@ void main() {
               await file.writeAsBytes(const [1, 2, 3]);
               return file.path;
             },
+            fileChecksumVerifier: (file, expectedSha256) async => true,
             inferenceModelActivator: (_) async {},
             embeddingModelActivator: (_) async {},
           );
@@ -515,6 +517,7 @@ void main() {
               await file.writeAsBytes(const [7, 8, 9]);
               return file.path;
             },
+            fileChecksumVerifier: (file, expectedSha256) async => true,
             inferenceModelActivator: (_) async {},
           );
           addTearDown(service.dispose);
@@ -626,8 +629,8 @@ void main() {
 
           expect(inference.status, ModelStatus.error);
           expect(
-            errors,
-            contains('Unauthorized (401). Please check your HF Token.'),
+            errors.any((e) => e is AuthenticationRequiredException),
+            isTrue,
           );
         },
       );

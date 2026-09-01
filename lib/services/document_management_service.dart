@@ -9,6 +9,7 @@ import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/contextual_retrieval_service.dart';
 import 'package:offline_sync/services/document_parser_service.dart';
 import 'package:offline_sync/services/embedding_service.dart';
+import 'package:offline_sync/services/rag_constants.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/smart_chunker.dart';
 import 'package:offline_sync/services/vector_store.dart';
@@ -120,13 +121,16 @@ class DocumentManagementService {
 
     final docId = const Uuid().v4();
     final fileName = filePath.split(Platform.pathSeparator).last;
+    final overlapChars =
+        (RagConstants.maxCharsPerChunk * _settingsService.chunkOverlapPercent)
+            .round();
 
     return _processIngestion(
       docId: docId,
       fileName: fileName,
       filePath: filePath,
       hash: hash,
-      parseParams: {'filePath': filePath},
+      parseParams: {'filePath': filePath, 'overlapChars': overlapChars},
     );
   }
 
@@ -166,13 +170,20 @@ class DocumentManagementService {
     _inFlightHashes.add(hash);
 
     final docId = const Uuid().v4();
+    final overlapChars =
+        (RagConstants.maxCharsPerChunk * _settingsService.chunkOverlapPercent)
+            .round();
 
     return _processIngestion(
       docId: docId,
       fileName: file.name,
       filePath: file.path, // May be null on web, which is fine
       hash: hash,
-      parseParams: {'bytes': bytes, 'fileName': file.name},
+      parseParams: {
+        'bytes': bytes,
+        'fileName': file.name,
+        'overlapChars': overlapChars,
+      },
     );
   }
 
@@ -257,8 +268,8 @@ class DocumentManagementService {
 
       _emitProgress(docId, fileName, 'embedding', 0, chunksToEmbed.length);
 
-      // 5. Embed & Store
-      final embeddingDataList = <EmbeddingData>[];
+      // 5. Embed & Store in batches of 10 to avoid high memory watermark
+      final activeEmbeddingModelId = _settingsService.activeEmbeddingModelId;
       const batchSize = 10;
 
       for (var i = 0; i < chunksToEmbed.length; i += batchSize) {
@@ -305,17 +316,15 @@ class DocumentManagementService {
             content: chunkContent,
             embedding: embedding,
             metadata: metadata,
+            embeddingModelId: activeEmbeddingModelId,
           );
         });
 
         final batchResults = await Future.wait(futures);
-        embeddingDataList.addAll(batchResults);
+        _vectorStore.insertEmbeddingsBatch(batchResults);
 
         _emitProgress(docId, fileName, 'embedding', end, chunks.length);
       }
-
-      // Store in DB
-      _vectorStore.insertEmbeddingsBatch(embeddingDataList);
 
       // 6. Update Document Status
       doc = Document(
@@ -467,7 +476,8 @@ Future<Map<String, dynamic>> _parseAndChunk(Map<String, dynamic> params) async {
     parsed = await parser.parseDocument(filePath);
   }
 
-  final chunks = chunker.chunk(parsed.content);
+  final overlapChars = params['overlapChars'] as int? ?? 50;
+  final chunks = chunker.chunk(parsed.content, overlapChars: overlapChars);
 
   return {
     'content': parsed.content,

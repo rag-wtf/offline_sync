@@ -11,6 +11,7 @@ class InferenceModelProvider {
   InferenceModelProvider({this._settingsService, this._activeModelLoader});
 
   InferenceModel? _model;
+  Future<InferenceModel>? _inFlightFuture;
   final RagSettingsService? _settingsService;
   final Future<InferenceModel?> Function({required int maxTokens})?
   _activeModelLoader;
@@ -23,11 +24,13 @@ class InferenceModelProvider {
   /// Throws an [Exception] if:
   /// - The model fails to load
   /// - No active model is available (e.g., still downloading)
-  Future<InferenceModel> getModel() async {
-    // Use local variable to avoid potential null safety issues
+  Future<InferenceModel> getModel() {
     final currentModel = _model;
-    if (currentModel != null) return currentModel;
+    if (currentModel != null) return Future.value(currentModel);
+    return _inFlightFuture ??= _loadModel();
+  }
 
+  Future<InferenceModel> _loadModel() async {
     try {
       // Get maxTokens from user settings or model config
       final settings = _settingsService ?? locator<RagSettingsService>();
@@ -43,6 +46,7 @@ class InferenceModelProvider {
           _activeModelLoader ?? FlutterGemma.getActiveModel;
       _model = await activeModelLoader(maxTokens: maxTokens);
     } catch (e) {
+      _inFlightFuture = null;
       throw Exception(
         'Failed to get active inference model: $e. '
         'The model may still be downloading. Please wait and try again.',
@@ -51,6 +55,7 @@ class InferenceModelProvider {
 
     final loadedModel = _model;
     if (loadedModel == null) {
+      _inFlightFuture = null;
       throw Exception(
         'No active inference model found. '
         'The model may still be downloading. Please wait and try again, '
@@ -68,5 +73,6 @@ class InferenceModelProvider {
   /// new active model.
   void clearCache() {
     _model = null;
+    _inFlightFuture = null;
   }
 }

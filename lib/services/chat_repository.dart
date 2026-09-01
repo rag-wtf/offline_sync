@@ -74,7 +74,7 @@ class ChatRepository {
     final results = db.select(
       '''
       SELECT * FROM chat_messages 
-      ORDER BY timestamp DESC 
+      ORDER BY timestamp DESC, id DESC 
       LIMIT ?
     ''',
       [limit],

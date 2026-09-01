@@ -170,10 +170,10 @@ class ChatViewModel extends BaseViewModel {
     notifyListeners();
 
     try {
-      // Build history from last 10 messages (excluding current placeholder)
+      // Build history (excluding placeholder AI message & current user query)
       final maxHistoryMessages = _ragSettings.maxHistoryMessages;
       final history = messages.reversed
-          .skip(1) // Skip the placeholder AI message
+          .skip(2) // Skip placeholder AI message and current user query
           .take(maxHistoryMessages)
           .toList()
           .reversed

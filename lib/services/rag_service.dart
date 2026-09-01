@@ -1,6 +1,5 @@
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/embedding_service.dart';
@@ -301,40 +300,6 @@ class RagService {
     yield RAGCompleteEvent();
   }
 
-  Future<void> ingestDocument(String documentId, String content) async {
-    final settings = locator<RagSettingsService>();
-
-    // Chunk text to fit embedding model's 256 token limit
-    // (254 usable after special tokens)
-    // Using very conservative 80 words (~100-160 tokens for code/markdown content)
-    // Markdown/code can tokenize at 2-3 tokens per word vs 1.3 for regular text
-    final chunks = splitIntoChunks(
-      content,
-      80,
-      overlapPercent: settings.chunkOverlapPercent,
-    );
-
-    // Collect all embeddings first
-    final embeddingDataList = <EmbeddingData>[];
-    for (var i = 0; i < chunks.length; i++) {
-      final chunk = chunks[i];
-      final embedding = await _embeddingService.generateEmbedding(chunk);
-
-      embeddingDataList.add(
-        EmbeddingData(
-          id: '${documentId}_$i',
-          documentId: documentId,
-          content: chunk,
-          embedding: embedding,
-          metadata: {'seq': i},
-        ),
-      );
-    }
-
-    // Batch insert all embeddings in a single transaction
-    _vectorStore.insertEmbeddingsBatch(embeddingDataList);
-  }
-
   Future<String> _generate(
     String query,
     List<SearchResult> searchResults, {
@@ -344,11 +309,18 @@ class RagService {
     final modelConfig = ModelConfig.activeInferenceModelOrDefault(
       settings.activeInferenceModelId,
     );
-    // Calculate token budget using constants from RagConstants
-    final maxTokens = modelConfig.maxTokens;
+    // Calculate token budget honoring user maxTokens override
+    final maxTokens = settings.maxTokens ?? modelConfig.maxTokens;
     final outputReserve = (maxTokens * RagConstants.outputReserveRatio).floor();
     final queryTokens = _tokenManager.estimateTokens(query);
-    final availableForPrompt = maxTokens - outputReserve - queryTokens;
+    final rawAvailable = maxTokens - outputReserve - queryTokens;
+    if (rawAvailable <= 0) {
+      LoggingService.warning(
+        'Token budget exhausted: maxTokens=$maxTokens, '
+        'reserve=$outputReserve, queryTokens=$queryTokens',
+      );
+    }
+    final availableForPrompt = max(0, rawAvailable);
 
     // Allocate using defined ratios
     final contextBudget = (availableForPrompt * RagConstants.contextBudgetRatio)
@@ -362,19 +334,13 @@ class RagService {
     );
     final context = _buildContextWithBudget(searchResults, contextBudget);
 
-    final prompt =
-        '''
-
-<start_of_turn>user
+    final prompt = '''
 ${historySection}Context:
 $context
 
 Question: $query
 
-Answer based only on the provided context. If the answer is not in the context, say "I don't have enough information."
-<end_of_turn>
-<start_of_turn>model
-''';
+Answer based only on the provided context. If the answer is not in the context, say "I don't have enough information."''';
 
     final response = StringBuffer();
     final inferenceModel = await _inferenceModelProvider.getModel();
@@ -386,8 +352,10 @@ Answer based only on the provided context. If the answer is not in the context, 
     // Add the prompt as a query
     await chat.addQuery(Message(text: prompt, isUser: true));
 
-    // Get the streaming response
-    final stream = chat.generateChatResponseAsync();
+    // Get the streaming response with inactivity timeout
+    final stream = chat
+        .generateChatResponseAsync()
+        .timeout(const Duration(seconds: 30));
     await for (final modelResponse in stream) {
       if (modelResponse is TextResponse) {
         response.write(modelResponse.token);
@@ -407,11 +375,18 @@ Answer based only on the provided context. If the answer is not in the context, 
     final modelConfig = ModelConfig.activeInferenceModelOrDefault(
       settings.activeInferenceModelId,
     );
-    // Calculate token budget using constants from RagConstants
-    final maxTokens = modelConfig.maxTokens;
+    // Calculate token budget honoring user maxTokens override
+    final maxTokens = settings.maxTokens ?? modelConfig.maxTokens;
     final outputReserve = (maxTokens * RagConstants.outputReserveRatio).floor();
     final queryTokens = _tokenManager.estimateTokens(query);
-    final availableForPrompt = maxTokens - outputReserve - queryTokens;
+    final rawAvailable = maxTokens - outputReserve - queryTokens;
+    if (rawAvailable <= 0) {
+      LoggingService.warning(
+        'Token budget exhausted: maxTokens=$maxTokens, '
+        'reserve=$outputReserve, queryTokens=$queryTokens',
+      );
+    }
+    final availableForPrompt = max(0, rawAvailable);
 
     // Allocate using defined ratios
     final contextBudget = (availableForPrompt * RagConstants.contextBudgetRatio)
@@ -425,19 +400,13 @@ Answer based only on the provided context. If the answer is not in the context, 
     );
     final context = _buildContextWithBudget(searchResults, contextBudget);
 
-    final prompt =
-        '''
-
-<start_of_turn>user
+    final prompt = '''
 ${historySection}Context:
 $context
 
 Question: $query
 
-Answer based only on the provided context. If the answer is not in the context, say "I don't have enough information."
-<end_of_turn>
-<start_of_turn>model
-''';
+Answer based only on the provided context. If the answer is not in the context, say "I don't have enough information."''';
 
     LoggingService.debug(
       'Generated prompt (${prompt.length} chars). '
@@ -453,111 +422,15 @@ Answer based only on the provided context. If the answer is not in the context, 
     // Add the prompt as a query
     await chat.addQuery(Message(text: prompt, isUser: true));
 
-    // Stream tokens as they arrive
-    final stream = chat.generateChatResponseAsync();
+    // Stream tokens as they arrive with inactivity timeout
+    final stream = chat
+        .generateChatResponseAsync()
+        .timeout(const Duration(seconds: 30));
     await for (final modelResponse in stream) {
       if (modelResponse is TextResponse) {
         yield modelResponse.token;
       }
     }
-  }
-
-  /// Split text into chunks using character limit with line-based boundaries
-  /// This handles markdown content (bullet points, tables, code) that
-  /// lacks sentence endings. Implements sliding window with configurable
-  /// overlap.
-  @visibleForTesting
-  List<String> splitIntoChunks(
-    String text,
-    int targetWords, {
-    double overlapPercent = 0.15,
-  }) {
-    // Use character limit from RagConstants
-    const maxChars = RagConstants.maxCharsPerChunk;
-    final overlapChars = (maxChars * overlapPercent).round();
-
-    // Split on newlines to preserve markdown structure
-    final lines = text.split('\n');
-
-    if (text.length <= maxChars) return [text];
-
-    final chunks = <String>[];
-    final buffer = StringBuffer();
-    var previousChunkTail = '';
-
-    for (final line in lines) {
-      // If adding this line would exceed limit, finalize current chunk
-      if (buffer.length + line.length + 1 > maxChars && buffer.isNotEmpty) {
-        // coverage:ignore-start
-        final chunk = buffer.toString().trim();
-        chunks.add(chunk);
-
-        // Save the tail for overlap
-        if (overlapChars > 0 && chunk.length > overlapChars) {
-          previousChunkTail = chunk.substring(
-            max(0, chunk.length - overlapChars),
-          );
-        }
-
-        buffer.clear();
-
-        // Add overlap from previous chunk to new chunk
-        if (previousChunkTail.isNotEmpty) {
-          buffer
-            ..write(previousChunkTail)
-            ..write('\n');
-        }
-        // coverage:ignore-end
-      }
-
-      // If a single line exceeds the limit, split it by characters
-      if (line.length > maxChars) {
-        // Finalize current buffer first
-        if (buffer.isNotEmpty) {
-          // coverage:ignore-start
-          final chunk = buffer.toString().trim();
-          chunks.add(chunk);
-
-          if (overlapChars > 0 && chunk.length > overlapChars) {
-            previousChunkTail = chunk.substring(
-              max(0, chunk.length - overlapChars),
-            );
-          }
-
-          buffer.clear();
-          // coverage:ignore-end
-        }
-
-        // Split long line into fixed-size chunks with overlap
-        for (var i = 0; i < line.length; i += maxChars - overlapChars) {
-          final end = (i + maxChars < line.length) ? i + maxChars : line.length;
-          final lineChunk = line.substring(i, end);
-          chunks.add(lineChunk);
-
-          if (overlapChars > 0 && lineChunk.length > overlapChars) {
-            // coverage:ignore-start
-            previousChunkTail = lineChunk.substring(
-              max(0, lineChunk.length - overlapChars),
-            );
-            // coverage:ignore-end
-          }
-        }
-      } else {
-        // coverage:ignore-start
-        if (buffer.isNotEmpty) buffer.write('\n');
-        buffer.write(line);
-        // coverage:ignore-end
-      }
-    }
-
-    // Add remaining content
-    if (buffer.isNotEmpty) {
-      // coverage:ignore-start
-      chunks.add(buffer.toString().trim());
-      // coverage:ignore-end
-    }
-
-    return chunks.where((c) => c.isNotEmpty).toList();
   }
 
   /// Build context from search results with token budget

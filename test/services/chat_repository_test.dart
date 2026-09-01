@@ -14,6 +14,9 @@ class MockPathProviderPlatform extends PathProviderPlatform {
 
   @override
   Future<String?> getApplicationDocumentsPath() async => tempDir.path;
+
+  @override
+  Future<String?> getApplicationSupportPath() async => tempDir.path;
 }
 
 void main() {

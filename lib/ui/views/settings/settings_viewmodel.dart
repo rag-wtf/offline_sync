@@ -68,23 +68,17 @@ class SettingsViewModel extends BaseViewModel {
     final userValue = _ragSettings.maxTokens;
     if (userValue != null) return userValue;
 
-    // Return model default
-    return ModelConfig.allModels
-        .firstWhere(
-          (m) => m.type == AppModelType.inference,
-          orElse: () => InferenceModels.gemma3_270M, // coverage:ignore-line
-        )
-        .maxTokens;
+    // Return active model default
+    return ModelConfig.activeInferenceModelOrDefault(
+      _ragSettings.activeInferenceModelId,
+    ).maxTokens;
   }
 
   // Get the model's default maxTokens for display
   int get modelDefaultMaxTokens {
-    return ModelConfig.allModels
-        .firstWhere(
-          (m) => m.type == AppModelType.inference,
-          orElse: () => InferenceModels.gemma3_270M, // coverage:ignore-line
-        )
-        .maxTokens;
+    return ModelConfig.activeInferenceModelOrDefault(
+      _ragSettings.activeInferenceModelId,
+    ).maxTokens;
   }
 
   // Whether user has overridden the default

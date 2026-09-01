@@ -54,12 +54,14 @@ class EmbeddingData {
     required this.content,
     required this.embedding,
     this.metadata,
+    this.embeddingModelId,
   });
   final String id;
   final String documentId;
   final String content;
   final List<double> embedding;
   final Map<String, dynamic>? metadata;
+  final String? embeddingModelId;
 }
 
 class VectorStore {
@@ -74,7 +76,7 @@ class VectorStore {
 
   /// Current on-disk schema version. Bump when the schema changes and add a
   /// matching branch in [_migrate].
-  static const int schemaVersion = 2;
+  static const int schemaVersion = 3;
 
   CommonDatabase? _db;
   bool _hasFts5 = true;
@@ -90,6 +92,7 @@ class VectorStore {
     final dbPath = await path_helper.getDatabasePath('vectors.db');
 
     _db = sqlite3.open(dbPath);
+    _db!.execute('PRAGMA recursive_triggers = ON;');
     _onCreate();
 
     final currentVersion =
@@ -118,7 +121,8 @@ class VectorStore {
         content TEXT NOT NULL,
         embedding TEXT NOT NULL,
         metadata TEXT,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        embedding_model_id TEXT
       )
     ''');
 
@@ -216,6 +220,11 @@ class VectorStore {
         ON documents(content_hash)
       ''');
     }
+    if (fromVersion < 3) {
+      try {
+        _db!.execute('ALTER TABLE vectors ADD COLUMN embedding_model_id TEXT');
+      } on Object catch (_) {}
+    }
   }
 
   Future<List<SearchResult>> hybridSearch(
@@ -268,10 +277,21 @@ class VectorStore {
     required int limit,
     List<String>? documentIds,
     List<String>? candidateIds,
+    String? embeddingModelId,
   }) async {
     var sql = 'SELECT id, content, embedding, metadata FROM vectors';
     final params = <Object?>[];
     final conditions = <String>[];
+
+    final activeModelId =
+        embeddingModelId ??
+        (locator.isRegistered<RagSettingsService>()
+            ? locator<RagSettingsService>().activeEmbeddingModelId
+            : null);
+    if (activeModelId != null) {
+      conditions.add('(embedding_model_id = ? OR embedding_model_id IS NULL)');
+      params.add(activeModelId);
+    }
 
     if (candidateIds != null && candidateIds.isNotEmpty) {
       final placeholders = List.filled(candidateIds.length, '?').join(', ');
@@ -292,7 +312,7 @@ class VectorStore {
     // Always cap row scan to prevent uncapped full-table scan on large DBs
     const candidatePoolCap = RagConstants.hybridSearchCandidatePoolSize * 5;
     final maxScan = max(limit * 2, candidatePoolCap);
-    sql += ' LIMIT $maxScan';
+    sql += ' ORDER BY created_at DESC, id ASC LIMIT $maxScan';
 
     final rows = _db!.select(sql, params);
 
@@ -398,7 +418,7 @@ class VectorStore {
       params.addAll(documentIds);
     }
 
-    sql += ' LIMIT ?';
+    sql += ' ORDER BY created_at DESC, id ASC LIMIT ?';
     params.add(limit);
 
     final results = _db!.select(sql, params);
@@ -424,21 +444,26 @@ class VectorStore {
     required String content,
     required List<double> embedding,
     Map<String, dynamic>? metadata,
+    String? embeddingModelId,
   }) {
-    _db!.prepare('''
-INSERT OR REPLACE INTO vectors 
-         (id, document_id, content, embedding, metadata, created_at) 
-         VALUES (?, ?, ?, ?, ?, ?)
-''')
-      ..execute([
+    final stmt = _db!.prepare('''
+      INSERT OR REPLACE INTO vectors 
+      (id, document_id, content, embedding, metadata, created_at, embedding_model_id) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    ''');
+    try {
+      stmt.execute([
         id,
         documentId,
         content,
-        base64Encode(Float64List.fromList(embedding).buffer.asUint8List()),
+        base64Encode(Float32List.fromList(embedding).buffer.asUint8List()),
         if (metadata != null) jsonEncode(metadata) else null,
         DateTime.now().millisecondsSinceEpoch,
-      ])
-      ..close();
+        embeddingModelId,
+      ]);
+    } finally {
+      stmt.close();
+    }
   }
 
   /// Batch insert embeddings within a single transaction for better performance
@@ -449,24 +474,26 @@ INSERT OR REPLACE INTO vectors
     try {
       final stmt = _db!.prepare('''
         INSERT OR REPLACE INTO vectors 
-        (id, document_id, content, embedding, metadata, created_at) 
-        VALUES (?, ?, ?, ?, ?, ?)
+        (id, document_id, content, embedding, metadata, created_at, embedding_model_id) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       ''');
-
-      for (final item in items) {
-        stmt.execute([
-          item.id,
-          item.documentId,
-          item.content,
-          base64Encode(
-            Float64List.fromList(item.embedding).buffer.asUint8List(),
-          ),
-          if (item.metadata != null) jsonEncode(item.metadata) else null,
-          DateTime.now().millisecondsSinceEpoch,
-        ]);
+      try {
+        for (final item in items) {
+          stmt.execute([
+            item.id,
+            item.documentId,
+            item.content,
+            base64Encode(
+              Float32List.fromList(item.embedding).buffer.asUint8List(),
+            ),
+            if (item.metadata != null) jsonEncode(item.metadata) else null,
+            DateTime.now().millisecondsSinceEpoch,
+            item.embeddingModelId,
+          ]);
+        }
+      } finally {
+        stmt.close();
       }
-
-      stmt.close();
       _db!.execute('COMMIT');
     } catch (e) {
       _db!.execute('ROLLBACK');
@@ -477,14 +504,27 @@ INSERT OR REPLACE INTO vectors
   // --- Document Management Methods (NEW) ---
 
   void insertDocument(Document doc) {
-    _db!.prepare('''
-      INSERT OR REPLACE INTO documents (
+    final stmt = _db!.prepare('''
+      INSERT INTO documents (
         id, title, file_path, format, chunk_count, total_characters, 
         content_hash, ingested_at, last_refreshed, status, 
         contextual_retrieval, error_message
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ''')
-      ..execute([
+      ON CONFLICT(id) DO UPDATE SET
+        title = excluded.title,
+        file_path = excluded.file_path,
+        format = excluded.format,
+        chunk_count = excluded.chunk_count,
+        total_characters = excluded.total_characters,
+        content_hash = excluded.content_hash,
+        ingested_at = excluded.ingested_at,
+        last_refreshed = excluded.last_refreshed,
+        status = excluded.status,
+        contextual_retrieval = excluded.contextual_retrieval,
+        error_message = excluded.error_message
+    ''');
+    try {
+      stmt.execute([
         doc.id,
         doc.title,
         doc.filePath,
@@ -497,12 +537,14 @@ INSERT OR REPLACE INTO vectors
         doc.status.name,
         if (doc.contextualRetrievalEnabled) 1 else 0,
         doc.errorMessage,
-      ])
-      ..close();
+      ]);
+    } finally {
+      stmt.close();
+    }
   }
 
   void updateDocument(Document doc) {
-    insertDocument(doc); // REPLACE covers update since ID is primary key
+    insertDocument(doc);
   }
 
   Document? getDocument(String id) {
@@ -529,7 +571,11 @@ INSERT OR REPLACE INTO vectors
 
   List<EmbeddingData> getChunksForDocument(String documentId) {
     final results = _db!.select(
-      'SELECT * FROM vectors WHERE document_id = ? ORDER BY id ASC',
+      r'''
+      SELECT * FROM vectors 
+      WHERE document_id = ? 
+      ORDER BY CAST(json_extract(metadata, '$.seq') AS INTEGER) ASC, id ASC
+      ''',
       [documentId],
     );
 
@@ -542,6 +588,7 @@ INSERT OR REPLACE INTO vectors
         metadata: row['metadata'] != null
             ? jsonDecode(row['metadata'] as String) as Map<String, dynamic>
             : {},
+        embeddingModelId: row['embedding_model_id'] as String?,
       );
     }).toList();
   }
@@ -635,13 +682,27 @@ INSERT OR REPLACE INTO vectors
   }
 }
 
-List<double> _decodeEmbedding(String encodedString) {
+List<double> _decodeEmbedding(String encodedString, {int? targetDimension}) {
   if (encodedString.startsWith('[')) {
     return (jsonDecode(encodedString) as List)
         .map((e) => (e as num).toDouble())
         .toList();
   }
-  return Float64List.view(base64Decode(encodedString).buffer).toList();
+  final bytes = base64Decode(encodedString);
+  if (targetDimension != null) {
+    if (bytes.lengthInBytes == targetDimension * 4) {
+      return Float32List.view(bytes.buffer).toList();
+    } else if (bytes.lengthInBytes == targetDimension * 8) {
+      return Float64List.view(bytes.buffer).toList();
+    }
+  }
+  if (bytes.lengthInBytes == 6144) {
+    return Float64List.view(bytes.buffer).toList();
+  }
+  if (bytes.lengthInBytes % 4 == 0) {
+    return Float32List.view(bytes.buffer).toList();
+  }
+  return Float64List.view(bytes.buffer).toList();
 }
 
 /// Isolate function for calculating similarities(must be top-level)
@@ -653,7 +714,10 @@ List<SearchResult> _calculateSimilarities(Map<String, dynamic> params) {
   final scored = <SearchResult>[];
   for (final item in data) {
     final storedEmbeddingJson = item['embedding'] as String;
-    final storedEmbedding = _decodeEmbedding(storedEmbeddingJson);
+    final storedEmbedding = _decodeEmbedding(
+      storedEmbeddingJson,
+      targetDimension: queryEmbedding.length,
+    );
 
     if (storedEmbedding.length != queryEmbedding.length) {
       continue;

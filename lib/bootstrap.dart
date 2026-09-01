@@ -102,32 +102,28 @@ Future<void> bootstrap(
   await (setupLocatorOverride ?? setupLocator)();
   environmentService.flavor = flavor;
 
-  await runZonedGuarded(
-    () async {
-      try {
-        runAppFn(await builder());
-      } on Object catch (error, stackTrace) {
-        unawaited(
-          LoggingService.recordCrash(
-            'Unhandled zone error',
-            error: error,
-            stackTrace: stackTrace,
-          ),
-        );
-      }
-    },
-    // coverage:ignore-start
-    (error, stackTrace) {
-      unawaited(
-        LoggingService.recordCrash(
-          'Unhandled zone error',
-          error: error,
-          stackTrace: stackTrace,
-        ),
-      );
-    },
-    // coverage:ignore-end
-  );
+  PlatformDispatcher.instance.onError = (error, stackTrace) {
+    unawaited(
+      LoggingService.recordCrash(
+        'Unhandled platform error',
+        error: error,
+        stackTrace: stackTrace,
+      ),
+    );
+    return true;
+  };
+
+  try {
+    runAppFn(await builder());
+  } on Object catch (error, stackTrace) {
+    unawaited(
+      LoggingService.recordCrash(
+        'Unhandled bootstrap error',
+        error: error,
+        stackTrace: stackTrace,
+      ),
+    );
+  }
 }
 
 // coverage:ignore-start

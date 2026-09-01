@@ -14,12 +14,10 @@ class ChatView extends StackedView<ChatViewModel> {
 
   void _scrollToBottom(ChatViewModel viewModel) {
     if (viewModel.scrollController.hasClients) {
-      unawaited(
-        viewModel.scrollController.animateTo(
-          viewModel.scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        ),
+      viewModel.scrollController.animateTo(
+        viewModel.scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
       );
     }
   }

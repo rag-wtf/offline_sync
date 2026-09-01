@@ -122,9 +122,12 @@ class DocumentLibraryViewModel extends BaseViewModel {
     final confirmed = response?.confirmed ?? false;
     if (confirmed) {
       setBusy(true);
-      await _documentService.deleteDocument(doc.id);
-      await _refreshDocuments();
-      setBusy(false);
+      try {
+        await _documentService.deleteDocument(doc.id);
+        await _refreshDocuments();
+      } finally {
+        setBusy(false);
+      }
     }
 
     return confirmed;

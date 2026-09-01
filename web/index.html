@@ -39,9 +39,9 @@
   <script src="cache_api.js"></script>
   <script type="module" src="litert_embeddings.js"></script>
 
-  <!-- MediaPipe GenAI for .task inference models -->
+  <!-- MediaPipe GenAI for .task inference models (self-hosted) -->
   <script type="module">
-    import { FilesetResolver, LlmInference } from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-genai@0.10.27';
+    import { FilesetResolver, LlmInference } from './genai_bundle.mjs';
     window.FilesetResolver = FilesetResolver;
     window.LlmInference = LlmInference;
   </script>

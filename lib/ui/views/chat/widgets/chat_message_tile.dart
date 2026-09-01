@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:offline_sync/services/vector_store.dart';
@@ -152,7 +150,7 @@ class _BlinkingCursorState extends State<_BlinkingCursor>
       duration: const Duration(milliseconds: 530),
       vsync: this,
     );
-    unawaited(_controller.repeat(reverse: true));
+    _controller.repeat(reverse: true);
   }
 
   @override

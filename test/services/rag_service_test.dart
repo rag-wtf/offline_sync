@@ -84,36 +84,6 @@ void main() {
       verify(() => mockVectorStore.initialize()).called(1);
     });
 
-    test('splitIntoChunks keeps short text intact and splits long lines', () {
-      expect(service.splitIntoChunks('short text', 80), ['short text']);
-      final chunks = service.splitIntoChunks('x' * 5000, 80, overlapPercent: 0);
-      expect(chunks.length, greaterThan(1));
-      expect(chunks.join().length, 5000);
-    });
-
-    test('ingestDocument embeds chunks and writes a batch', () async {
-      when(() => mockSettingsService.chunkOverlapPercent).thenReturn(0);
-      when(
-        () => mockEmbeddingService.generateEmbedding(any<String>()),
-      ).thenAnswer((_) async => [0.1, 0.2]);
-      when(
-        () => mockVectorStore.insertEmbeddingsBatch(any<List<EmbeddingData>>()),
-      ).thenReturn(null);
-
-      await service.ingestDocument('doc', 'A short document');
-
-      verify(
-        () => mockEmbeddingService.generateEmbedding('A short document'),
-      ).called(1);
-      final captured =
-          verify(
-                () => mockVectorStore.insertEmbeddingsBatch(captureAny()),
-              ).captured.single
-              as List<EmbeddingData>;
-      expect(captured.single.documentId, 'doc');
-      expect(captured.single.metadata, {'seq': 0});
-    });
-
     test('stream emits metadata, text tokens, and completion', () async {
       when(() => mockVectorStore.initialize()).thenAnswer((_) async {});
       await service.initialize();

@@ -42,6 +42,7 @@ class InferenceModels {
     requiresGpu: false,
     tier: DeviceTier.low,
     maxTokens: 1024, // Conservative for low-end devices
+    sha256: '0f7147f1c22eaf758b819bbf7841793e4c90096c9352cde7fbe5c631f2265ef5',
   );
 
   // Mid tier: Gemma 3 1B
@@ -56,6 +57,7 @@ class InferenceModels {
     requiresGpu: false,
     tier: DeviceTier.mid,
     maxTokens: 2048, // Moderate context for mid-tier devices
+    sha256: '1325ae366d31950f137c9c357b9fa89448b176d76998180c08ceaca78bba98be',
   );
 
   // High tier: Gemma 3n E2B (multimodal)
@@ -70,6 +72,7 @@ class InferenceModels {
     requiresGpu: true,
     tier: DeviceTier.high,
     maxTokens: 4096, // Larger context for high-end devices
+    sha256: 'a7f544cfee68f579fabadb22aa9284faa4020a0f5358d0e15b49fdd4cefe4200',
   );
 
   // Premium tier: Gemma 3n E4B (multimodal, largest)
@@ -84,6 +87,7 @@ class InferenceModels {
     requiresGpu: true,
     tier: DeviceTier.premium,
     maxTokens: 8192, // Maximum context for premium devices
+    sha256: '2b8e9d04bf8c5c50346d248c5e24a7e65102251c94dee6f04d5dce5ce3e6ac4f',
   );
 
   static List<ModelDefinition> get all => [
@@ -128,6 +132,7 @@ class EmbeddingModels {
     requiresGpu: false,
     tier: DeviceTier.mid,
     maxTokens: 256, // Sequence length
+    sha256: '37115ef7bff76cd37dd86abe503ff511b1032bf85fc624a85c49c84899e92bc5',
   );
 
   // High tier: EmbeddingGemma 512
@@ -144,6 +149,7 @@ class EmbeddingModels {
     requiresGpu: false,
     tier: DeviceTier.high,
     maxTokens: 512, // Sequence length
+    sha256: 'ad09e81557203cb0e177abf9bf8727dfe138a7d394aa0f70f0b2ed16432e121a',
   );
 
   // Premium tier: EmbeddingGemma 1024
@@ -160,6 +166,7 @@ class EmbeddingModels {
     requiresGpu: false,
     tier: DeviceTier.premium,
     maxTokens: 1024, // Sequence length
+    sha256: '8b0b8bbd0aa95f9f747c25a6c87cd05a8286933282660f6a50da877662917e31',
   );
 
   static List<ModelDefinition> get all => [

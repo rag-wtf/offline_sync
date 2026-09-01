@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
@@ -75,9 +76,14 @@ class StartupViewModel extends BaseViewModel {
         } else {
           final error = models.where((m) => m.status == ModelStatus.error);
           if (error.isNotEmpty) {
-            // Check if any of the errors indicate a 401
+            // Check if any of the errors indicate a 401 or auth requirement
             final has401Error = error.any(
-              (m) => m.errorMessage?.contains('401') ?? false,
+              (m) =>
+                  (m.errorMessage?.contains('401') ?? false) ||
+                  (m.errorMessage?.contains(
+                        'AuthenticationRequiredException',
+                      ) ??
+                      false),
             );
 
             if (has401Error) {
@@ -95,12 +101,12 @@ class StartupViewModel extends BaseViewModel {
         }
       },
       onError: (Object e) {
-        final msg = e.toString();
-        if (msg.contains('401')) {
+        if (e is AuthenticationRequiredException ||
+            e.toString().contains('401')) {
           _needsToken = true;
           setError('Authentication Failed (401)');
         } else {
-          setError(msg);
+          setError(e.toString());
         }
       },
     );

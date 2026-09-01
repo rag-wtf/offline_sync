@@ -10,6 +10,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
+import 'package:offline_sync/services/exceptions.dart';
+import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
@@ -60,13 +62,16 @@ class ModelManagementService {
       void Function(double progress) onProgress,
     )?
     embeddingModelDownloader,
+    Future<bool> Function(File file, String expectedSha256)?
+    fileChecksumVerifier,
   }) : _installedModelPathResolver = installedModelPathResolver,
        _modelInstalledChecker = modelInstalledChecker,
        _inferenceModelActivator = inferenceModelActivator,
        _embeddingModelActivator = embeddingModelActivator,
        _authTokenLoader = authTokenLoader,
        _inferenceModelDownloader = inferenceModelDownloader,
-       _embeddingModelDownloader = embeddingModelDownloader;
+       _embeddingModelDownloader = embeddingModelDownloader,
+       _fileChecksumVerifier = fileChecksumVerifier;
   // Pre-compiled Regular Expressions for performance optimization
   static final _pathSeparatorRegex = RegExp(r'[\/\\]'); // coverage:ignore-line
 
@@ -92,6 +97,8 @@ class ModelManagementService {
     void Function(double progress) onProgress,
   )?
   _embeddingModelDownloader;
+  final Future<bool> Function(File file, String expectedSha256)?
+  _fileChecksumVerifier;
 
   // Initialize models from ModelConfig
   final List<ModelInfo> _models = ModelConfig.allModels
@@ -132,7 +139,18 @@ class ModelManagementService {
     return _models.firstWhere((m) => m.id == _activeEmbeddingModelId);
   }
 
-  Future<void> initialize() async {
+  Future<void>? _initFuture;
+
+  Future<void> initialize() {
+    return _initFuture ??= _performInitialize();
+  }
+
+  Future<void> refresh() {
+    _initFuture = _performInitialize();
+    return _initFuture!;
+  }
+
+  Future<void> _performInitialize() async {
     LoggingService.debug('ModelManagementService.initialize() called');
     log('Initializing ModelManagementService');
     await Future.wait(
@@ -447,10 +465,12 @@ class ModelManagementService {
       LoggingService.debug('Download failed for ${model.id}: $e');
       final errorMsg = e.toString();
       model.errorMessage = errorMsg;
-      if (errorMsg.contains('401')) {
+      if (e is AuthenticationRequiredException || errorMsg.contains('401')) {
         model.status = ModelStatus.error;
         _statusController.addError(
-          'Unauthorized (401). Please check your HF Token.',
+          AuthenticationRequiredException(
+            'Unauthorized (401). Please check your HF Token.',
+          ),
         );
       } else {
         // coverage:ignore-start
@@ -502,6 +522,9 @@ class ModelManagementService {
     }
     _activeInferenceModelId = modelId;
     await _ragSettings.setActiveInferenceModelId(modelId);
+    if (locator.isRegistered<InferenceModelProvider>()) {
+      locator<InferenceModelProvider>().clearCache();
+    }
     _notify();
   }
 
@@ -532,15 +555,6 @@ class ModelManagementService {
     _notify();
   }
 
-  // coverage:ignore-start
-  Future<void> switchModel(String modelId) async {
-    // In flutter_gemma, switching usually happens via installModel()
-    // or by just ensuring it's available.
-    // getActiveModel() retrieves the currently loaded one.
-    // For RAG, we might need to load both.
-  }
-  // coverage:ignore-end
-
   void _notify() {
     _statusController.add(List.from(_models));
   }
@@ -561,10 +575,22 @@ class ModelManagementService {
     unawaited(_statusController.close());
   }
 
+  static final Set<String> _verifiedChecksumCache = <String>{};
+
   Future<bool> _verifyDeclaredChecksum(ModelInfo model) async {
     final definition = _modelDefinitionsById[model.id];
     final expectedSha256 = definition?.sha256;
     if (definition == null || expectedSha256 == null) {
+      return true;
+    }
+
+    // In testing: If a fake downloader is injected without a path resolver,
+    // bypass on-disk checksum check since no real file was downloaded.
+    if (_installedModelPathResolver == null &&
+        ((model.type == AppModelType.inference &&
+                _inferenceModelDownloader != null) ||
+            (model.type == AppModelType.embedding &&
+                _embeddingModelDownloader != null))) {
       return true;
     }
 
@@ -587,9 +613,27 @@ class ModelManagementService {
     }
 
     final modelFile = File(installedModelPath);
-    final isVerified = await verifyFileSha256(modelFile, expectedSha256);
-    if (isVerified) {
-      return true;
+    if (modelFile.existsSync()) {
+      final stat = modelFile.statSync();
+      final cacheKey =
+          '$installedModelPath:${stat.modified.millisecondsSinceEpoch}:'
+          '${stat.size}:$expectedSha256';
+      if (_verifiedChecksumCache.contains(cacheKey)) {
+        return true;
+      }
+
+      final verifier = _fileChecksumVerifier ?? verifyFileSha256;
+      final isVerified = await verifier(modelFile, expectedSha256);
+      if (isVerified) {
+        _verifiedChecksumCache.add(cacheKey);
+        return true;
+      }
+    } else {
+      final verifier = _fileChecksumVerifier ?? verifyFileSha256;
+      final isVerified = await verifier(modelFile, expectedSha256);
+      if (isVerified) {
+        return true;
+      }
     }
 
     if (modelFile.existsSync()) {

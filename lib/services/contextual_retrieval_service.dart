@@ -78,9 +78,7 @@ class ContextualRetrievalService {
     required String documentContent,
     required String chunk,
   }) async {
-    final prompt =
-        '''
-<start_of_turn>user
+    final prompt = '''
 Target chunk:
 "$chunk"
 
@@ -91,8 +89,6 @@ Task:
 Explain the context of the target chunk within the full document in 2-3 sentences. 
 Does it refer to specific entities, dates, or concepts defined elsewhere? 
 Make the explanation standalone so the chunk can be understood without the full document.
-<end_of_turn>
-<start_of_turn>model
 ''';
 
     try {

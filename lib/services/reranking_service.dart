@@ -22,22 +22,17 @@ class RerankingService {
       final inferenceModel = await _inferenceModelProvider.getModel();
       final candidatesToScore = candidates.take(topK).toList();
 
-      // Bound concurrency by scoring candidates in batches of 5
+      // Score candidates sequentially (concurrency 1) to respect the
+      // singleton session lane semantics of flutter_gemma and avoid premature
+      // closing
       final scoredResults = <_ScoredResult>[];
-      const batchSize = 5;
-      for (var i = 0; i < candidatesToScore.length; i += batchSize) {
-        final batch = candidatesToScore.skip(i).take(batchSize);
-        final batchScored = await Future.wait(
-          batch.map((candidate) async {
-            final score = await _scoreRelevance(
-              inferenceModel,
-              query,
-              candidate.content,
-            ).timeout(const Duration(seconds: 15), onTimeout: () => 5.0);
-            return _ScoredResult(result: candidate, score: score);
-          }),
-        );
-        scoredResults.addAll(batchScored);
+      for (final candidate in candidatesToScore) {
+        final score = await _scoreRelevance(
+          inferenceModel,
+          query,
+          candidate.content,
+        ).timeout(const Duration(seconds: 15), onTimeout: () => 5.0);
+        scoredResults.add(_ScoredResult(result: candidate, score: score));
       }
 
       // Sort by relevance score (highest first)

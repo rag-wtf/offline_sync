@@ -188,7 +188,7 @@ void main() {
             ).captured.single
             as List<String>;
 
-    expect(invocation, ['User: third', 'User: hello']);
+    expect(invocation, ['AI: second', 'User: third']);
     expect(savedMessages, isNotEmpty);
   });
 

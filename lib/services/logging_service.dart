@@ -85,4 +85,14 @@ class LoggingService {
     }
     await prefs.setStringList(_crashLogKey, crashLogs);
   }
+
+  static Future<List<String>> getCrashLogs() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_crashLogKey) ?? <String>[];
+  }
+
+  static Future<void> clearCrashLogs() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_crashLogKey);
+  }
 }
