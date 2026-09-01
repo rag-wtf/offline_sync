@@ -4,12 +4,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/services/rag_constants.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 
+/// Represents a chunk with its generated context
 class ContextualizedChunk {
   const ContextualizedChunk({
     required this.originalContent,
@@ -30,8 +32,12 @@ class ContextualRetrievalService {
   final RagSettingsService _settingsService = locator<RagSettingsService>();
 
   @visibleForTesting
-  static Future<InferenceModel> Function() getActiveModel =
-      FlutterGemma.getActiveModel;
+  static Future<InferenceModel> Function() getActiveModel = () {
+    if (locator.isRegistered<InferenceModelProvider>()) {
+      return locator<InferenceModelProvider>().getModel();
+    }
+    return FlutterGemma.getActiveModel();
+  };
 
   // Only supported on High or Premium tiers due to context window requirements
   Future<bool> get isSupported async {
