@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:cross_file/cross_file.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -10,6 +14,42 @@ import 'package:offline_sync/services/rag_token_manager.dart';
 import 'package:offline_sync/services/reranking_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
 import 'package:stacked_services/stacked_services.dart';
+
+base class FakePlatformFile extends PlatformFile {
+  FakePlatformFile({
+    required this.name,
+    this.bytes,
+    this.path,
+    int? size,
+  }) : _size = size ?? bytes?.length ?? 0;
+
+  @override
+  final String name;
+
+  final Uint8List? bytes;
+
+  @override
+  final String? path;
+
+  final int _size;
+
+  @override
+  Uri get uri => path != null ? Uri.file(path!) : Uri.parse('memory://$name');
+
+  @override
+  XFile get xFile => bytes != null
+      ? XFile.fromData(bytes!, name: name, path: path)
+      : XFile(path ?? name);
+
+  @override
+  Future<int> length() async => _size;
+
+  @override
+  Future<Uint8List> readAsBytes() async => bytes ?? Uint8List(0);
+
+  @override
+  Stream<Uint8List> readAsByteStream() => Stream.value(bytes ?? Uint8List(0));
+}
 
 class MockNavigationService extends Mock implements NavigationService {}
 

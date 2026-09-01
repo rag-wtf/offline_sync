@@ -23,7 +23,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() {
-    registerFallbackValue(PlatformFile(name: 'fallback.txt', size: 0));
+    registerFallbackValue(FakePlatformFile(name: 'fallback.txt'));
   });
 
   late MockDocumentManagementService documentService;
@@ -195,7 +195,7 @@ void main() {
     'pickAndIngestFile returns without refreshing when picker is cancelled',
     () async {
       DocumentLibraryViewModel.pickFiles =
-          ({required type, required allowedExtensions}) async => null;
+          ({required type, required allowedExtensions}) async => [];
 
       final viewModel = DocumentLibraryViewModel();
 
@@ -211,12 +211,12 @@ void main() {
   test(
     'pickAndIngestFile ingests files, shows errors, and refreshes',
     () async {
-      final goodFile = PlatformFile(
+      final goodFile = FakePlatformFile(
         name: 'good.txt',
         size: 4,
         bytes: Uint8List.fromList([1, 2]),
       );
-      final badFile = PlatformFile(
+      final badFile = FakePlatformFile(
         name: 'bad.txt',
         size: 4,
         bytes: Uint8List.fromList([3, 4]),
@@ -225,7 +225,7 @@ void main() {
           ({required type, required allowedExtensions}) async {
             expect(type, FileType.custom);
             expect(allowedExtensions, containsAll(['pdf', 'docx', 'txt']));
-            return FilePickerResult([goodFile, badFile]);
+            return [goodFile, badFile];
           };
       when(
         () => documentService.addDocumentFromPlatformFile(any<PlatformFile>()),

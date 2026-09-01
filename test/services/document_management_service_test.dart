@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -135,7 +134,7 @@ void main() {
       ).thenReturn(null);
 
       final result = await service.addDocumentFromPlatformFile(
-        PlatformFile(
+        FakePlatformFile(
           name: 'memory.txt',
           size: 12,
           bytes: Uint8List.fromList('memory bytes'.codeUnits),
@@ -150,7 +149,7 @@ void main() {
     test('addDocumentFromPlatformFile rejects missing bytes', () async {
       await expectLater(
         service.addDocumentFromPlatformFile(
-          PlatformFile(name: 'empty.txt', size: 0),
+          FakePlatformFile(name: 'empty.txt'),
         ),
         throwsA(
           isA<Exception>().having(
@@ -369,7 +368,7 @@ void main() {
 
       when(() => mockSettingsService.maxDocumentSizeMB).thenReturn(0);
 
-      final platformFile = PlatformFile(
+      final platformFile = FakePlatformFile(
         path: file.path,
         name: 'oversized_platform_file.txt',
         size: await file.length(),

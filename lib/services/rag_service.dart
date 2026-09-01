@@ -316,7 +316,8 @@ class RagService {
     }).toList();
   }
 
-  /// Cleans trailing disclaimer artifacts from the model response when an answer was already provided
+  /// Cleans trailing disclaimer artifacts from the model response when an
+  /// answer was already provided
   static String cleanResponse(String response) {
     var cleaned = response.trim();
     final trailingDisclaimerRegex = RegExp(
@@ -364,7 +365,8 @@ class RagService {
     );
     final context = _buildContextWithBudget(searchResults, contextBudget);
 
-    final prompt = '''
+    final prompt =
+        '''
 ${historySection}Context:
 $context
 
@@ -386,9 +388,9 @@ Instructions:
     await chat.addQuery(Message(text: prompt, isUser: true));
 
     // Get the streaming response with inactivity timeout
-    final stream = chat
-        .generateChatResponseAsync()
-        .timeout(const Duration(seconds: 30));
+    final stream = chat.generateChatResponseAsync().timeout(
+      const Duration(seconds: 30),
+    );
     await for (final modelResponse in stream) {
       if (modelResponse is TextResponse) {
         response.write(modelResponse.token);
@@ -433,7 +435,8 @@ Instructions:
     );
     final context = _buildContextWithBudget(searchResults, contextBudget);
 
-    final prompt = '''
+    final prompt =
+        '''
 ${historySection}Context:
 $context
 
@@ -459,9 +462,9 @@ Instructions:
     await chat.addQuery(Message(text: prompt, isUser: true));
 
     // Stream tokens as they arrive with inactivity timeout
-    final stream = chat
-        .generateChatResponseAsync()
-        .timeout(const Duration(seconds: 30));
+    final stream = chat.generateChatResponseAsync().timeout(
+      const Duration(seconds: 30),
+    );
     await for (final modelResponse in stream) {
       if (modelResponse is TextResponse) {
         yield modelResponse.token;

@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -44,7 +43,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() {
-    registerFallbackValue(PlatformFile(name: 'fallback.txt', size: 0));
+    registerFallbackValue(FakePlatformFile(name: 'fallback.txt'));
   });
 
   late MockDocumentManagementService documentService;

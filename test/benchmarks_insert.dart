@@ -1,5 +1,6 @@
 /// Benchmark test script.
 library;
+
 // ignore_for_file: avoid_print, document_ignores
 
 import 'dart:convert';

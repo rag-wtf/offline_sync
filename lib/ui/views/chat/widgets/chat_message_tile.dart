@@ -107,18 +107,19 @@ class ChatMessageTile extends StatelessWidget {
                     children: () {
                       final uniqueSourcesMap = <String, SearchResult>{};
                       for (final source in message.sources!) {
-                        final title = source.documentTitle ??
+                        final title =
+                            source.documentTitle ??
                             (source.metadata['documentTitle'] as String?) ??
                             (source.metadata['title'] as String?) ??
                             'Source';
                         final key =
-                            (source.metadata['documentId'] as String?) ??
-                            title;
+                            (source.metadata['documentId'] as String?) ?? title;
                         uniqueSourcesMap.putIfAbsent(key, () => source);
                       }
 
                       return uniqueSourcesMap.values.map((source) {
-                        final title = source.documentTitle ??
+                        final title =
+                            source.documentTitle ??
                             (source.metadata['documentTitle'] as String?) ??
                             (source.metadata['title'] as String?) ??
                             'Source';

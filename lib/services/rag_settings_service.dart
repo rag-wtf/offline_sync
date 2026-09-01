@@ -45,22 +45,30 @@ class RagSettingsService {
 
     _queryExpansionEnabled = prefs.getBool(_keyQueryExpansion) ?? false;
     _rerankingEnabled = prefs.getBool(_keyReranking) ?? false;
-    _chunkOverlapPercent =
-        (prefs.getDouble(_keyChunkOverlap) ?? 0.15).clamp(0.0, 0.3);
-    _semanticWeight =
-        (prefs.getDouble(_keySemanticWeight) ?? 0.7).clamp(0.0, 1.0);
+    _chunkOverlapPercent = (prefs.getDouble(_keyChunkOverlap) ?? 0.15).clamp(
+      0.0,
+      0.3,
+    );
+    _semanticWeight = (prefs.getDouble(_keySemanticWeight) ?? 0.7).clamp(
+      0.0,
+      1.0,
+    );
     _rerankTopK = (prefs.getInt(_keyRerankTopK) ?? 10).clamp(5, 20);
     _searchTopK = (prefs.getInt(_keySearchTopK) ?? 2).clamp(1, 5);
-    _maxHistoryMessages =
-        (prefs.getInt(_keyMaxHistoryMessages) ?? 2).clamp(0, 5);
+    _maxHistoryMessages = (prefs.getInt(_keyMaxHistoryMessages) ?? 2).clamp(
+      0,
+      5,
+    );
     final rawMaxTokens = prefs.getInt(_keyMaxTokens);
     _maxTokens = rawMaxTokens?.clamp(512, 8192);
     _activeInferenceModelId = prefs.getString(_keyActiveInferenceModel);
     _activeEmbeddingModelId = prefs.getString(_keyActiveEmbeddingModel);
 
     // Document Management Settings (Issue #17 fix)
-    _maxDocumentSizeMB =
-        (prefs.getInt(_keyMaxDocumentSizeMB) ?? 10).clamp(1, 50);
+    _maxDocumentSizeMB = (prefs.getInt(_keyMaxDocumentSizeMB) ?? 10).clamp(
+      1,
+      50,
+    );
     _contextualRetrievalEnabled =
         prefs.getBool(_keyContextualRetrieval) ?? false;
   }

@@ -33,7 +33,7 @@ class DocumentLibraryViewModel extends BaseViewModel {
   }
 
   @visibleForTesting
-  static Future<FilePickerResult?> Function({
+  static Future<List<PlatformFile>> Function({
     required FileType type,
     required List<String> allowedExtensions,
   })
@@ -86,13 +86,13 @@ class DocumentLibraryViewModel extends BaseViewModel {
   }
 
   Future<void> pickAndIngestFile() async {
-    final result = await pickFiles(
+    final files = await pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'docx', 'txt', 'md', 'epub', 'json'],
     );
 
-    if (result != null && result.files.isNotEmpty) {
-      for (final file in result.files) {
+    if (files.isNotEmpty) {
+      for (final file in files) {
         try {
           await _documentService.addDocumentFromPlatformFile(file);
         } on Exception catch (e) {

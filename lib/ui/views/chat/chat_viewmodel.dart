@@ -93,7 +93,7 @@ class ChatViewModel extends BaseViewModel {
   bool get shouldScroll => _shouldScroll;
 
   @visibleForTesting
-  static Future<FilePickerResult?> Function({
+  static Future<List<PlatformFile>> Function({
     required FileType type,
     required List<String> allowedExtensions,
   })
@@ -283,7 +283,8 @@ class ChatViewModel extends BaseViewModel {
 
   /// Shows a detailed view of a source document used for context
   Future<void> showSourceDetail(SearchResult source) async {
-    final title = source.documentTitle ??
+    final title =
+        source.documentTitle ??
         (source.metadata['documentTitle'] as String?) ??
         (source.metadata['title'] as String?) ??
         'Source Detail';
@@ -295,7 +296,8 @@ class ChatViewModel extends BaseViewModel {
     for (final msg in messages) {
       if (msg.sources != null) {
         for (final s in msg.sources!) {
-          final sTitle = s.documentTitle ??
+          final sTitle =
+              s.documentTitle ??
               (s.metadata['documentTitle'] as String?) ??
               (s.metadata['title'] as String?);
           final sDocId = s.metadata['documentId'] as String?;
@@ -321,27 +323,27 @@ class ChatViewModel extends BaseViewModel {
 
   /// Opens file picker and starts ingestion for one or more files
   Future<void> pickAndIngestFiles() async {
-    final result = await pickFiles(
+    final files = await pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'docx', 'txt', 'md', 'epub', 'json'],
     );
 
-    if (result == null || result.files.isEmpty) return;
+    if (files.isEmpty) return;
 
     try {
       // coverage:ignore-start
       if (kIsWeb) {
-        for (final file in result.files) {
+        for (final file in files) {
           await _documentService.addDocumentFromPlatformFile(file);
         }
         await _refreshDocuments();
         _snackbarService.showSnackbar(
-          message: 'Ingested ${result.files.length} document(s)',
+          message: 'Ingested ${files.length} document(s)',
           duration: const Duration(seconds: 3),
         );
       } else {
         // coverage:ignore-end
-        final paths = result.files
+        final paths = files
             .where((f) => f.path != null)
             .map((f) => f.path!)
             .toList();

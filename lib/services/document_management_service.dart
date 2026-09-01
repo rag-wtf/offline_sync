@@ -139,7 +139,8 @@ class DocumentManagementService {
       return addDocument(file.path!);
     }
 
-    final fileSizeMB = file.size / (1024 * 1024);
+    final length = await file.length();
+    final fileSizeMB = length / (1024 * 1024);
     if (fileSizeMB > _settingsService.maxDocumentSizeMB) {
       // coverage:ignore-start
       throw Exception(
@@ -149,8 +150,8 @@ class DocumentManagementService {
       // coverage:ignore-end
     }
 
-    final bytes = file.bytes;
-    if (bytes == null || bytes.isEmpty) {
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) {
       throw Exception('File content is not available (no path, no bytes)');
     }
 

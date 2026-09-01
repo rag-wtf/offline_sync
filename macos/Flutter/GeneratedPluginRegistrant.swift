@@ -7,7 +7,7 @@ import Foundation
 
 import device_info_plus
 import disk_usage
-import file_picker
+import file_picker_darwin
 import flutter_gemma
 import flutter_secure_storage_darwin
 import large_file_handler

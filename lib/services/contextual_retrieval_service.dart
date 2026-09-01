@@ -84,7 +84,8 @@ class ContextualRetrievalService {
     required String documentContent,
     required String chunk,
   }) async {
-    final prompt = '''
+    final prompt =
+        '''
 Target chunk:
 "$chunk"
 

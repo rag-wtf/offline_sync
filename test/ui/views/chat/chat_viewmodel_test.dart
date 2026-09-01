@@ -451,7 +451,7 @@ void main() {
 
   test('pickAndIngestFiles returns when picker is cancelled', () async {
     ChatViewModel.pickFiles =
-        ({required type, required allowedExtensions}) async => null;
+        ({required type, required allowedExtensions}) async => [];
 
     final viewModel = ChatViewModel();
     await viewModel.pickAndIngestFiles();
@@ -462,14 +462,13 @@ void main() {
 
   test('pickAndIngestFiles returns when picked files have no paths', () async {
     ChatViewModel.pickFiles =
-        ({required type, required allowedExtensions}) async =>
-            FilePickerResult([
-              PlatformFile(
-                name: 'bytes-only.txt',
-                size: 2,
-                bytes: Uint8List.fromList([1, 2]),
-              ),
-            ]);
+        ({required type, required allowedExtensions}) async => [
+          FakePlatformFile(
+            name: 'bytes-only.txt',
+            size: 2,
+            bytes: Uint8List.fromList([1, 2]),
+          ),
+        ];
 
     final viewModel = ChatViewModel();
     await viewModel.pickAndIngestFiles();
@@ -480,15 +479,14 @@ void main() {
 
   test('pickAndIngestFiles reports complete failure counts', () async {
     ChatViewModel.pickFiles =
-        ({required type, required allowedExtensions}) async =>
-            FilePickerResult([
-              PlatformFile(name: 'first.txt', size: 1, path: '/tmp/first.txt'),
-              PlatformFile(
-                name: 'second.txt',
-                size: 1,
-                path: '/tmp/second.txt',
-              ),
-            ]);
+        ({required type, required allowedExtensions}) async => [
+          FakePlatformFile(name: 'first.txt', size: 1, path: '/tmp/first.txt'),
+          FakePlatformFile(
+            name: 'second.txt',
+            size: 1,
+            path: '/tmp/second.txt',
+          ),
+        ];
     when(() => documentService.addMultipleDocuments(any())).thenAnswer(
       (_) async => const IngestionResult(
         succeeded: [],
@@ -513,15 +511,14 @@ void main() {
   test('pickAndIngestFiles reports partial'
       ' failures and full success', () async {
     ChatViewModel.pickFiles =
-        ({required type, required allowedExtensions}) async =>
-            FilePickerResult([
-              PlatformFile(name: 'first.txt', size: 1, path: '/tmp/first.txt'),
-              PlatformFile(
-                name: 'second.txt',
-                size: 1,
-                path: '/tmp/second.txt',
-              ),
-            ]);
+        ({required type, required allowedExtensions}) async => [
+          FakePlatformFile(name: 'first.txt', size: 1, path: '/tmp/first.txt'),
+          FakePlatformFile(
+            name: 'second.txt',
+            size: 1,
+            path: '/tmp/second.txt',
+          ),
+        ];
     final succeededDoc = Document(
       id: 'doc-1',
       title: 'First',
@@ -568,9 +565,9 @@ void main() {
 
   test('pickAndIngestFiles reports ingestion exceptions', () async {
     ChatViewModel.pickFiles =
-        ({required type, required allowedExtensions}) async => FilePickerResult(
-          [PlatformFile(name: 'first.txt', size: 1, path: '/tmp/first.txt')],
-        );
+        ({required type, required allowedExtensions}) async => [
+          FakePlatformFile(name: 'first.txt', size: 1, path: '/tmp/first.txt'),
+        ];
     when(
       () => documentService.addMultipleDocuments(any()),
     ).thenThrow(Exception('disk full'));

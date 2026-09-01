@@ -85,14 +85,14 @@ Future<void> bootstrap(
 
   await (flutterGemmaInitialize ??
       () => FlutterGemma.initialize(
-            inferenceEngines: const [
-              LiteRtLmEngine(),
-              MediaPipeEngine(),
-            ],
-            embeddingBackends: const [
-              LiteRtEmbeddingBackend(),
-            ],
-          ))();
+        inferenceEngines: const [
+          LiteRtLmEngine(),
+          MediaPipeEngine(),
+        ],
+        embeddingBackends: const [
+          LiteRtEmbeddingBackend(),
+        ],
+      ))();
 
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
@@ -109,8 +109,7 @@ Future<void> bootstrap(
   await (initializeSqliteOverride ?? platform.initializeSqlite)();
 
   await (setupLocatorOverride ?? setupLocator)();
-  (environmentServiceOverride ?? locator<EnvironmentService>()).flavor =
-      flavor;
+  (environmentServiceOverride ?? locator<EnvironmentService>()).flavor = flavor;
 
   PlatformDispatcher.instance.onError = (error, stackTrace) {
     unawaited(
