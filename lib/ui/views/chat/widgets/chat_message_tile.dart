@@ -104,23 +104,39 @@ class ChatMessageTile extends StatelessWidget {
                   Wrap(
                     spacing: 6,
                     runSpacing: 4,
-                    children: message.sources!.map((source) {
-                      final title =
-                          source.metadata['documentTitle'] as String? ??
-                          'Source';
-                      return ActionChip(
-                        label: Text(title, style: theme.textTheme.labelSmall),
-                        avatar: Icon(
-                          Icons.description_outlined,
-                          size: 14,
-                          color: colorScheme.primary,
-                        ),
-                        onPressed: () => onSourceClick?.call(source),
-                        padding: EdgeInsets.zero,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        side: BorderSide(color: colorScheme.outlineVariant),
-                      );
-                    }).toList(),
+                    children: () {
+                      final uniqueSourcesMap = <String, SearchResult>{};
+                      for (final source in message.sources!) {
+                        final title = source.documentTitle ??
+                            (source.metadata['documentTitle'] as String?) ??
+                            (source.metadata['title'] as String?) ??
+                            'Source';
+                        final key =
+                            (source.metadata['documentId'] as String?) ??
+                            title;
+                        uniqueSourcesMap.putIfAbsent(key, () => source);
+                      }
+
+                      return uniqueSourcesMap.values.map((source) {
+                        final title = source.documentTitle ??
+                            (source.metadata['documentTitle'] as String?) ??
+                            (source.metadata['title'] as String?) ??
+                            'Source';
+                        return ActionChip(
+                          label: Text(title, style: theme.textTheme.labelSmall),
+                          avatar: Icon(
+                            Icons.description_outlined,
+                            size: 14,
+                            color: colorScheme.primary,
+                          ),
+                          onPressed: () => onSourceClick?.call(source),
+                          padding: EdgeInsets.zero,
+                          materialTapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                          side: BorderSide(color: colorScheme.outlineVariant),
+                        );
+                      }).toList();
+                    }(),
                   ),
                 ],
               ),

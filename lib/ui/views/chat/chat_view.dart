@@ -158,6 +158,9 @@ class ChatView extends StackedView<ChatViewModel> {
       ),
       body: Column(
         children: [
+          if (viewModel.isIngesting ||
+              viewModel.currentIngestionProgress != null)
+            _buildIngestionProgress(context, viewModel),
           Expanded(
             child: viewModel.isBusy
                 ? Center(
@@ -210,6 +213,84 @@ class ChatView extends StackedView<ChatViewModel> {
             onFilter: () => _showFilterDialog(context, viewModel),
             isProcessing: viewModel.isProcessing,
             hasActiveFilters: viewModel.selectedDocumentIds.isNotEmpty,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIngestionProgress(
+    BuildContext context,
+    ChatViewModel viewModel,
+  ) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final progress = viewModel.currentIngestionProgress;
+    final title = progress?.documentTitle.isNotEmpty == true
+        ? progress!.documentTitle
+        : 'Document';
+    final stage = progress?.stage ?? 'Processing';
+    final percent = (progress != null && progress.totalChunks > 0)
+        ? (progress.currentChunk / progress.totalChunks)
+        : null;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer.withValues(alpha: 0.25),
+        border: Border(
+          bottom: BorderSide(
+            color: colorScheme.outlineVariant.withValues(alpha: 0.5),
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  value: (percent != null && percent > 0) ? percent : null,
+                  color: colorScheme.primary,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Ingesting $title ($stage)...',
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (percent != null && percent > 0)
+                Text(
+                  '${(percent * 100).toInt()}%',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: (percent != null && percent > 0) ? percent : null,
+              minHeight: 4,
+              backgroundColor: colorScheme.surfaceContainerHighest,
+              valueColor: AlwaysStoppedAnimation<Color>(colorScheme.primary),
+            ),
           ),
         ],
       ),

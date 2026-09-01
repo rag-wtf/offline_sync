@@ -171,6 +171,9 @@ class RagService {
       searchResults = searchResults.take(settings.searchTopK).toList();
     }
 
+    // Deduplicate search results
+    searchResults = deduplicateResults(searchResults);
+
     // 5. Generate Response with conversation history and token budget mgmt
     final response = await _generate(
       query,
@@ -271,6 +274,9 @@ class RagService {
       searchResults = searchResults.take(settings.searchTopK).toList();
     }
 
+    // Deduplicate search results
+    searchResults = deduplicateResults(searchResults);
+
     // 5. Emit metadata event with sources
     yield RAGMetadataEvent(
       sources: searchResults,
@@ -298,6 +304,30 @@ class RagService {
 
     // 8. Emit completion event
     yield RAGCompleteEvent();
+  }
+
+  /// Deduplicates search results by document/chunk ID and normalized content
+  static List<SearchResult> deduplicateResults(List<SearchResult> results) {
+    final seen = <String>{};
+    return results.where((r) {
+      final docId = r.metadata['documentId'] ?? r.id;
+      final key = '${docId}_${r.content.trim()}';
+      return seen.add(key);
+    }).toList();
+  }
+
+  /// Cleans trailing disclaimer artifacts from the model response when an answer was already provided
+  static String cleanResponse(String response) {
+    var cleaned = response.trim();
+    final trailingDisclaimerRegex = RegExp(
+      r"""(\n|\s)*(If the answer is not in the (provided\s*)?context,?\s*(say\s*)?)?"?I don'?t have enough information\.?"?(\n|\s)*$""",
+      caseSensitive: false,
+    );
+    final match = trailingDisclaimerRegex.firstMatch(cleaned);
+    if (match != null && match.start >= 15) {
+      cleaned = cleaned.substring(0, match.start).trim();
+    }
+    return cleaned;
   }
 
   Future<String> _generate(
@@ -340,7 +370,10 @@ $context
 
 Question: $query
 
-Answer based only on the provided context. If the answer is not in the context, say "I don't have enough information."''';
+Instructions:
+- Answer the question accurately and concisely based on the context above.
+- If the context does not contain relevant information to answer the question, say "I don't have enough information."
+- Do not append disclaimer phrases or repeat instructions after answering.''';
 
     final response = StringBuffer();
     final inferenceModel = await _inferenceModelProvider.getModel();
@@ -362,7 +395,7 @@ Answer based only on the provided context. If the answer is not in the context, 
       }
     }
 
-    return response.toString();
+    return cleanResponse(response.toString());
   }
 
   /// Stream tokens from the model as they're generated
@@ -406,7 +439,10 @@ $context
 
 Question: $query
 
-Answer based only on the provided context. If the answer is not in the context, say "I don't have enough information."''';
+Instructions:
+- Answer the question accurately and concisely based on the context above.
+- If the context does not contain relevant information to answer the question, say "I don't have enough information."
+- Do not append disclaimer phrases or repeat instructions after answering.''';
 
     LoggingService.debug(
       'Generated prompt (${prompt.length} chars). '

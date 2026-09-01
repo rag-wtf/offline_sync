@@ -45,10 +45,10 @@ packages:
     dependency: "direct main"
     description:
       name: background_downloader
-      sha256: aceacec2b2a72ec3a8862ab5895fcbbc71ab33765f3619d57963f3110dd268e3
+      sha256: bdd41f116998233182cc4ec04cb6afac534067d640ddebb791ce44593f574b87
       url: "https://pub.dev"
     source: hosted
-    version: "9.5.5"
+    version: "9.5.8"
   boolean_selector:
     dependency: transitive
     description:
@@ -177,6 +177,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.0.7"
+  dart_sentencepiece_tokenizer:
+    dependency: transitive
+    description:
+      name: dart_sentencepiece_tokenizer
+      sha256: "85825632845cf6427ea0cd13dfba96b4341cf63525165155e5b9b97011239289"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.3.2"
   dart_style:
     dependency: transitive
     description:
@@ -193,6 +201,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.14"
+  decimal:
+    dependency: transitive
+    description:
+      name: decimal
+      sha256: "2c3c8b74f2948066d3f42585477aec9cfc48fefd7a723a4d4274a6c71a5c0df7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.2.6"
   device_info_plus:
     dependency: "direct main"
     description:
@@ -217,6 +233,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.0"
+  email_validator:
+    dependency: transitive
+    description:
+      name: email_validator
+      sha256: b19aa5d92fdd76fbc65112060c94d45ba855105a28bb6e462de7ff03b12fa1fb
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.0"
   epub_plus:
     dependency: "direct main"
     description:
@@ -290,10 +314,34 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_gemma
-      sha256: "45685fd7a2344ab85c1c4642170d1a6fb55fcefcd96f1f263963cd122c15e1e7"
+      sha256: cc56be546ffcbe4ea708a21d0cc21658b87ac55be99ca81c252daf1394b78f8c
       url: "https://pub.dev"
     source: hosted
-    version: "1.2.1"
+    version: "1.7.0"
+  flutter_gemma_embeddings:
+    dependency: "direct main"
+    description:
+      name: flutter_gemma_embeddings
+      sha256: e2662743cc296a6fe1483677937ab3c77b141b028db5392d71e6c82292e37804
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.0"
+  flutter_gemma_litertlm:
+    dependency: "direct main"
+    description:
+      name: flutter_gemma_litertlm
+      sha256: "3b88f697099c478ecaca296b14c02a74fd92e2dc48cd04c9c9c42828f8434eac"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.6.1"
+  flutter_gemma_mediapipe:
+    dependency: "direct main"
+    description:
+      name: flutter_gemma_mediapipe
+      sha256: "6e0296f83e9521e8786d2a92ce24afa2ee6b1d6c6c7ca9f50e91de7fcf0888c2"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.5"
   flutter_localizations:
     dependency: "direct main"
     description: flutter
@@ -373,6 +421,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.1.0"
+  genai_primitives:
+    dependency: transitive
+    description:
+      name: genai_primitives
+      sha256: "5a1e8c7ae9caf01aa609f59c54de47b73f51bf1ae95e0f679b7c7ab6948c4d9d"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.4"
   get:
     dependency: transitive
     description:
@@ -501,6 +557,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.12.0"
+  json_schema_builder:
+    dependency: transitive
+    description:
+      name: json_schema_builder
+      sha256: e46b1a2957590d2c811f47b22079710a273ebf9c8240a9e1440b759efb8ded5f
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.6"
   large_file_handler:
     dependency: transitive
     description:
@@ -749,6 +813,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.5.0"
+  rational:
+    dependency: transitive
+    description:
+      name: rational
+      sha256: cb808fb6f1a839e6fc5f7d8cb3b0a10e1db48b3be102de73938c627f0b636336
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.2.3"
   recase:
     dependency: transitive
     description:

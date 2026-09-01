@@ -84,7 +84,10 @@ void main() {
       ),
     ).thenAnswer((_) async => DialogResponse());
     when(
-      () => snackbarService.showSnackbar(message: any(named: 'message')),
+      () => snackbarService.showSnackbar(
+        message: any(named: 'message'),
+        duration: any(named: 'duration'),
+      ),
     ).thenReturn(null);
     when(
       () => navigationService.navigateWithTransition<bool?>(
@@ -301,6 +304,7 @@ void main() {
     verify(
       () => snackbarService.showSnackbar(
         message: 'Initialization error: Exception: bootstrap failed',
+        duration: any(named: 'duration'),
       ),
     ).called(1);
   });
@@ -400,11 +404,10 @@ void main() {
     );
 
     final viewModel = ChatViewModel();
-
-    await viewModel.sendMessage('secure question');
+    await viewModel.sendMessage('needs auth');
 
     expect(viewModel.messages, hasLength(1));
-    expect(viewModel.messages.single.content, 'secure question');
+    expect(viewModel.messages.single.content, 'needs auth');
     verify(
       () => navigationService.navigateWithTransition<bool?>(
         any(),
@@ -414,6 +417,7 @@ void main() {
     verify(
       () => snackbarService.showSnackbar(
         message: 'Please provide authentication and try again',
+        duration: any(named: 'duration'),
       ),
     ).called(1);
   });
@@ -440,6 +444,7 @@ void main() {
     verify(
       () => snackbarService.showSnackbar(
         message: 'Error: Exception: network down',
+        duration: any(named: 'duration'),
       ),
     ).called(1);
   });
@@ -498,7 +503,10 @@ void main() {
     await viewModel.pickAndIngestFiles();
 
     verify(
-      () => snackbarService.showSnackbar(message: 'Failed to ingest 2 file(s)'),
+      () => snackbarService.showSnackbar(
+        message: 'Failed to ingest 2 file(s)',
+        duration: any(named: 'duration'),
+      ),
     ).called(1);
   });
 
@@ -537,6 +545,7 @@ void main() {
     verify(
       () => snackbarService.showSnackbar(
         message: 'Ingested 1 file(s). Failed to ingest 1 file(s).',
+        duration: any(named: 'duration'),
       ),
     ).called(1);
 
@@ -552,6 +561,7 @@ void main() {
     verify(
       () => snackbarService.showSnackbar(
         message: 'Successfully ingested 2 file(s)',
+        duration: any(named: 'duration'),
       ),
     ).called(1);
   });
@@ -571,6 +581,7 @@ void main() {
     verify(
       () => snackbarService.showSnackbar(
         message: 'Ingestion error: Exception: disk full',
+        duration: any(named: 'duration'),
       ),
     ).called(1);
     expect(viewModel.isBusy, isFalse);
@@ -622,6 +633,7 @@ void main() {
     verify(
       () => snackbarService.showSnackbar(
         message: 'Please provide authentication and try again',
+        duration: any(named: 'duration'),
       ),
     ).called(1);
   });
@@ -648,6 +660,7 @@ void main() {
     verify(
       () => snackbarService.showSnackbar(
         message: 'Error: Exception: model offline',
+        duration: any(named: 'duration'),
       ),
     ).called(1);
   });

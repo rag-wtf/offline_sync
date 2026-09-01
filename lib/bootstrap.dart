@@ -5,6 +5,8 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
+import 'package:flutter_gemma_litertlm/flutter_gemma_litertlm.dart';
+import 'package:flutter_gemma_mediapipe/flutter_gemma_mediapipe.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/bootstrap_mobile.dart'
     if (dart.library.html) 'package:offline_sync/bootstrap_web.dart'
@@ -35,8 +37,6 @@ Future<void> bootstrap(
   final isWeb = isWebOverride ?? kIsWeb;
   final targetPlatform = targetPlatformOverride ?? defaultTargetPlatform;
   final runAppFn = runAppOverride ?? runApp;
-  final environmentService =
-      environmentServiceOverride ?? locator<EnvironmentService>();
 
   // Configure FileDownloader for foreground mode on Android to prevent
   // WorkManager from cancelling downloads on network state changes. This must
@@ -83,7 +83,16 @@ Future<void> bootstrap(
     );
   }
 
-  await (flutterGemmaInitialize ?? FlutterGemma.initialize)();
+  await (flutterGemmaInitialize ??
+      () => FlutterGemma.initialize(
+            inferenceEngines: const [
+              LiteRtLmEngine(),
+              MediaPipeEngine(),
+            ],
+            embeddingBackends: const [
+              LiteRtEmbeddingBackend(),
+            ],
+          ))();
 
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
@@ -100,7 +109,8 @@ Future<void> bootstrap(
   await (initializeSqliteOverride ?? platform.initializeSqlite)();
 
   await (setupLocatorOverride ?? setupLocator)();
-  environmentService.flavor = flavor;
+  (environmentServiceOverride ?? locator<EnvironmentService>()).flavor =
+      flavor;
 
   PlatformDispatcher.instance.onError = (error, stackTrace) {
     unawaited(

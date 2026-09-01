@@ -61,6 +61,17 @@ class ChatViewModel extends BaseViewModel {
 
   StreamSubscription<IngestionProgress>? _progressSubscription;
 
+  IngestionProgress? _currentIngestionProgress;
+
+  /// Current file ingestion progress event
+  IngestionProgress? get currentIngestionProgress => _currentIngestionProgress;
+
+  /// Whether a file is currently being ingested
+  bool get isIngesting =>
+      _currentIngestionProgress != null &&
+      _currentIngestionProgress!.stage != 'complete' &&
+      _currentIngestionProgress!.stage != 'error';
+
   List<Document> _availableDocuments = [];
 
   /// Documents available for filtering the search
@@ -116,16 +127,36 @@ class ChatViewModel extends BaseViewModel {
 
       await _refreshDocuments();
 
-      // Listen to ingestion events to update available documents
+      // Listen to ingestion events to update UI and available documents
       _progressSubscription = _documentService.ingestionProgressStream.listen((
         event,
       ) async {
+        if (disposed) return;
+        _currentIngestionProgress = event;
+        notifyListeners();
+
         if (event.stage == 'complete') {
           await _refreshDocuments();
+          await Future<void>.delayed(const Duration(milliseconds: 1500));
+          if (disposed) return;
+          if (_currentIngestionProgress?.documentId == event.documentId) {
+            _currentIngestionProgress = null;
+            notifyListeners();
+          }
+        } else if (event.stage == 'error') {
+          await Future<void>.delayed(const Duration(seconds: 2));
+          if (disposed) return;
+          if (_currentIngestionProgress?.documentId == event.documentId) {
+            _currentIngestionProgress = null;
+            notifyListeners();
+          }
         }
       });
-    } on Exception catch (e) {
-      _snackbarService.showSnackbar(message: 'Initialization error: $e');
+    } on Object catch (e) {
+      _snackbarService.showSnackbar(
+        message: 'Initialization error: $e',
+        duration: const Duration(seconds: 3),
+      );
     } finally {
       setBusy(false);
     }
@@ -209,6 +240,19 @@ class ChatViewModel extends BaseViewModel {
           _shouldScroll = true;
           notifyListeners(); // Trigger UI update for each token
         } else if (event is RAGCompleteEvent) {
+          // Clean trailing disclaimer if meaningful response exists
+          final rawContent = messages[aiMsgIndex].content;
+          final cleanedContent = RagService.cleanResponse(rawContent);
+          if (cleanedContent != rawContent) {
+            messages[aiMsgIndex] = ChatMessage(
+              content: cleanedContent,
+              isUser: false,
+              timestamp: messages[aiMsgIndex].timestamp,
+              sources: sources,
+              metrics: metrics,
+            );
+            notifyListeners();
+          }
           // Stream completed, persist the final message
           await _chatRepository.saveMessage(messages[aiMsgIndex]);
         }
@@ -220,11 +264,17 @@ class ChatViewModel extends BaseViewModel {
       await _showTokenDialog();
       _snackbarService.showSnackbar(
         message: 'Please provide authentication and try again',
+        duration: const Duration(seconds: 3),
       );
-    } on Exception catch (e) {
+    } on Object catch (e) {
       // Remove the placeholder message on error
-      messages.removeAt(aiMsgIndex);
-      _snackbarService.showSnackbar(message: 'Error: $e');
+      if (messages.length > aiMsgIndex) {
+        messages.removeAt(aiMsgIndex);
+      }
+      _snackbarService.showSnackbar(
+        message: 'Error: $e',
+        duration: const Duration(seconds: 3),
+      );
     } finally {
       _isProcessing = false;
       notifyListeners();
@@ -233,14 +283,39 @@ class ChatViewModel extends BaseViewModel {
 
   /// Shows a detailed view of a source document used for context
   Future<void> showSourceDetail(SearchResult source) async {
-    // For now, show a dialog with the content as we can't easily fetch
-    // the Document object without adding a method to
-    // DocumentManagementService.
-    // Phase 4 requirement: Source detail bottom sheet
-    // (impl as dialog/bottom sheet)
+    final title = source.documentTitle ??
+        (source.metadata['documentTitle'] as String?) ??
+        (source.metadata['title'] as String?) ??
+        'Source Detail';
+
+    final targetDocId = source.metadata['documentId'] as String?;
+
+    // Find all chunks related to this document across messages
+    final relatedChunks = <String>[];
+    for (final msg in messages) {
+      if (msg.sources != null) {
+        for (final s in msg.sources!) {
+          final sTitle = s.documentTitle ??
+              (s.metadata['documentTitle'] as String?) ??
+              (s.metadata['title'] as String?);
+          final sDocId = s.metadata['documentId'] as String?;
+          if ((targetDocId != null && sDocId == targetDocId) ||
+              (sTitle != null && sTitle == title)) {
+            if (!relatedChunks.contains(s.content)) {
+              relatedChunks.add(s.content);
+            }
+          }
+        }
+      }
+    }
+
+    final content = relatedChunks.isNotEmpty
+        ? relatedChunks.join('\n\n---\n\n')
+        : source.content;
+
     await _dialogService.showDialog(
-      title: source.documentTitle ?? 'Source Detail',
-      description: source.content,
+      title: title,
+      description: content,
     );
   }
 
@@ -253,8 +328,6 @@ class ChatViewModel extends BaseViewModel {
 
     if (result == null || result.files.isEmpty) return;
 
-    setBusy(true);
-
     try {
       // coverage:ignore-start
       if (kIsWeb) {
@@ -264,6 +337,7 @@ class ChatViewModel extends BaseViewModel {
         await _refreshDocuments();
         _snackbarService.showSnackbar(
           message: 'Ingested ${result.files.length} document(s)',
+          duration: const Duration(seconds: 3),
         );
       } else {
         // coverage:ignore-end
@@ -285,12 +359,14 @@ class ChatViewModel extends BaseViewModel {
           if (successCount == 0) {
             _snackbarService.showSnackbar(
               message: 'Failed to ingest $failedCount file(s)',
+              duration: const Duration(seconds: 3),
             );
           } else {
             _snackbarService.showSnackbar(
               message:
                   'Ingested $successCount file(s). '
                   'Failed to ingest $failedCount file(s).',
+              duration: const Duration(seconds: 3),
             );
           }
         } else {
@@ -298,13 +374,15 @@ class ChatViewModel extends BaseViewModel {
             message:
                 'Successfully ingested '
                 '${ingestionResult.succeeded.length} file(s)',
+            duration: const Duration(seconds: 3),
           );
         }
       }
-    } on Exception catch (e) {
-      _snackbarService.showSnackbar(message: 'Ingestion error: $e');
-    } finally {
-      setBusy(false);
+    } on Object catch (e) {
+      _snackbarService.showSnackbar(
+        message: 'Ingestion error: $e',
+        duration: const Duration(seconds: 3),
+      );
     }
   }
 
