@@ -119,3 +119,6 @@ vectors.db
 
 # Edge AI
 edge_ai
+
+# Git worktrees
+.worktrees/
