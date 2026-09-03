@@ -78,17 +78,7 @@ class StartupViewModel extends BaseViewModel {
           final error = models.where((m) => m.status == ModelStatus.error);
           if (error.isNotEmpty) {
             // Check if any of the errors indicate a 401 or auth requirement
-            final failedAuthModel = error
-                .where(
-                  (m) =>
-                      isGatedAccessError(m.errorMessage ?? '') ||
-                      (m.errorMessage?.contains('401') ?? false) ||
-                      (m.errorMessage?.contains(
-                            'AuthenticationRequiredException',
-                          ) ??
-                          false),
-                )
-                .firstOrNull;
+            final failedAuthModel = error.where(_isAuthError).firstOrNull;
 
             if (failedAuthModel != null) {
               _needsToken = true;
@@ -108,9 +98,11 @@ class StartupViewModel extends BaseViewModel {
         }
       },
       onError: (Object e) {
-        if (e is AuthenticationRequiredException ||
-            e.toString().contains('401') ||
-            isGatedAccessError(e)) {
+        if (e is AuthenticationRequiredException) {
+          _needsToken = true;
+          _statusMessage = 'Authentication Required';
+          setError(e.message);
+        } else if (e.toString().contains('401') || isGatedAccessError(e)) {
           _needsToken = true;
           _statusMessage = 'Authentication Required';
           setError('Authentication Failed (401)');
@@ -212,17 +204,7 @@ class StartupViewModel extends BaseViewModel {
         (m) => m.status == ModelStatus.error,
       );
       if (errors.isNotEmpty) {
-        final failedAuthModel = errors
-            .where(
-              (m) =>
-                  isGatedAccessError(m.errorMessage ?? '') ||
-                  (m.errorMessage?.contains('401') ?? false) ||
-                  (m.errorMessage?.contains(
-                        'AuthenticationRequiredException',
-                      ) ??
-                      false),
-            )
-            .firstOrNull;
+        final failedAuthModel = errors.where(_isAuthError).firstOrNull;
         if (failedAuthModel != null) {
           // coverage:ignore-start
           _needsToken = true;
@@ -302,16 +284,7 @@ class StartupViewModel extends BaseViewModel {
 
   Future<void> enterToken() async {
     final erroredModel = _modelService.models
-        .where(
-          (m) =>
-              m.status == ModelStatus.error &&
-              (isGatedAccessError(m.errorMessage ?? '') ||
-                  (m.errorMessage?.contains('401') ?? false) ||
-                  (m.errorMessage?.contains(
-                        'AuthenticationRequiredException',
-                      ) ??
-                      false)),
-        )
+        .where((m) => m.status == ModelStatus.error && _isAuthError(m))
         .firstOrNull;
 
     await _navigationService.navigateWithTransition<bool?>(
@@ -323,6 +296,11 @@ class StartupViewModel extends BaseViewModel {
     );
     await retry();
   }
+
+  bool _isAuthError(ModelInfo m) =>
+      isGatedAccessError(m.errorMessage ?? '') ||
+      (m.errorMessage?.contains('401') ?? false) ||
+      (m.errorMessage?.contains('AuthenticationRequiredException') ?? false);
 
   @override
   void dispose() {

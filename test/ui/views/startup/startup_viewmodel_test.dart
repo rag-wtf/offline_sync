@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
@@ -651,6 +652,37 @@ void main() {
         controller.addError(StateError('plain failure'));
         await Future<void>.delayed(const Duration(milliseconds: 50));
         expect(viewModel.modelError, contains('plain failure'));
+
+        await controller.close();
+      });
+
+      test('preserves descriptive error message on '
+          'AuthenticationRequiredException in stream onError', () async {
+        final controller = StreamController<List<ModelInfo>>.broadcast();
+        when(
+          () => mockModelService.modelStatusStream,
+        ).thenAnswer((_) => controller.stream);
+
+        final viewModel = StartupViewModel(
+          navigationService: mockNavigationService,
+          modelService: mockModelService,
+          deviceService: deviceService,
+          recommendationService: recommendationService,
+          ragSettingsService: ragSettings,
+        );
+
+        unawaited(viewModel.runStartupLogic());
+        const actionableMessage =
+            'Hugging Face refused the download. Check all three:\n'
+            '1. You accepted the licence on https://huggingface.co/repo\n'
+            '2. The token belongs to the same account\n'
+            '3. Read access to gated repos';
+        controller.addError(AuthenticationRequiredException(actionableMessage));
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(viewModel.needsToken, isTrue);
+        expect(viewModel.statusMessage, 'Authentication Required');
+        expect(viewModel.modelError, actionableMessage);
 
         await controller.close();
       });

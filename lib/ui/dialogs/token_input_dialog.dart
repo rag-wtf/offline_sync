@@ -102,22 +102,22 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
                         color: Colors.blue,
                         decoration: TextDecoration.underline,
                       ),
-                    recognizer: TapGestureRecognizer()
-                      // coverage:ignore-start
-                      ..onTap = () {
-                        unawaited(
-                          (widget.onLaunchUrl ?? launchUrl)(
-                            Uri.parse(repoPage),
-                          ),
-                        );
-                      },
-                    // coverage:ignore-end
-                  ),
-                  const TextSpan(text: ' before downloading.'),
-                ],
+                      recognizer: TapGestureRecognizer()
+                        // coverage:ignore-start
+                        ..onTap = () {
+                          unawaited(
+                            (widget.onLaunchUrl ?? launchUrl)(
+                              Uri.parse(repoPage),
+                            ),
+                          );
+                        },
+                      // coverage:ignore-end
+                    ),
+                    const TextSpan(text: ' before downloading.'),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
             const SizedBox(height: 16),
             TextField(
               controller: _tokenController,
