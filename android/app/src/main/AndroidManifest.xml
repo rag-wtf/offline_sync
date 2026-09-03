@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- Required for model downloads from HuggingFace (release builds) -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Android 13+: required to show download-progress foreground notification -->
@@ -52,7 +53,8 @@
         <!-- Foreground service for long-running downloads -->
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
-            android:foregroundServiceType="dataSync" />
+            android:foregroundServiceType="dataSync"
+            tools:node="merge" />
         <!-- OpenCL GPU support for flutter_gemma -->
         <uses-native-library android:name="libOpenCL.so" android:required="false"/>
         <uses-native-library android:name="libOpenCL-car.so" android:required="false"/>
