@@ -40,6 +40,16 @@ class ModelInfo {
   String? errorMessage;
 
   String get effectiveFileName => fileName ?? url.split('/').last;
+
+  /// The Hugging Face repo page for [url].
+  String get repoPage {
+    final uri = Uri.parse(url);
+    final segments = uri.pathSegments;
+    if (segments.length >= 2) {
+      return 'https://huggingface.co/${segments[0]}/${segments[1]}';
+    }
+    return url;
+  }
 }
 
 class ModelManagementService {

@@ -208,6 +208,16 @@ class ModelDefinition {
   /// Get the expected filename from the URL
   String get fileName => modelUrl.split('/').last;
 
+  /// The Hugging Face repo page for [modelUrl].
+  String get repoPage {
+    final uri = Uri.parse(modelUrl);
+    final segments = uri.pathSegments;
+    if (segments.length >= 2) {
+      return 'https://huggingface.co/${segments[0]}/${segments[1]}';
+    }
+    return modelUrl;
+  }
+
   /// Get human-readable size
   String get sizeFormatted {
     if (sizeBytes < 1024 * 1024) {
