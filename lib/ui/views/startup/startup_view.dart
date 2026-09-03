@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/ui/utils/repo_link_copy.dart';
 import 'package:offline_sync/ui/views/startup/startup_viewmodel.dart';
 import 'package:stacked/stacked.dart';
 
@@ -235,19 +236,10 @@ class StartupView extends StackedView<StartupViewModel> {
                       const SizedBox(width: 12),
                       OutlinedButton.icon(
                         key: const Key('copyRepoLinkButton'),
-                        onPressed: () async {
-                          await viewModel.copyRepoLink();
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context)
-                              ..hideCurrentSnackBar()
-                              ..showSnackBar(
-                                const SnackBar(
-                                  content:
-                                      Text('Repo link copied to clipboard'),
-                                ),
-                              );
-                          }
-                        },
+                        onPressed: () => copyRepoLinkToClipboard(
+                          context,
+                          viewModel.erroredModelRepoPage!,
+                        ),
                         icon: const Icon(Icons.copy, size: 16),
                         label: const Text('Copy repo link'),
                       ),

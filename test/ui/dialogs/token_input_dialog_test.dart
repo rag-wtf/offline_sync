@@ -131,7 +131,9 @@ void main() {
     );
   });
 
-  testWidgets('displays acceptance and account guidance', (tester) async {
+  testWidgets('displays account guidance without promising approval', (
+    tester,
+  ) async {
     await openDialog(
       tester,
       const MaterialApp(
@@ -143,24 +145,24 @@ void main() {
         ),
       ),
     );
-    expect(find.textContaining('approval is immediate'), findsOneWidget);
+    expect(find.textContaining('approval is immediate'), findsNothing);
     expect(
       find.textContaining('using the same account that accepted the terms'),
       findsOneWidget,
     );
   });
 
-  testWidgets(
-    'copies repo link to clipboard and shows snackbar',
-    (tester) async {
+  testWidgets('copies repo link to clipboard and shows snackbar', (
+    tester,
+  ) async {
     String? copiedText;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (methodCall) async {
-      if (methodCall.method == 'Clipboard.setData') {
-        copiedText = (methodCall.arguments as Map)['text'] as String?;
-      }
-      return null;
-    });
+          if (methodCall.method == 'Clipboard.setData') {
+            copiedText = (methodCall.arguments as Map)['text'] as String?;
+          }
+          return null;
+        });
 
     await openDialog(
       tester,

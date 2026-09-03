@@ -139,22 +139,23 @@ void main() {
     String? copiedText;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(SystemChannels.platform, (methodCall) async {
-      if (methodCall.method == 'Clipboard.setData') {
-        copiedText = (methodCall.arguments as Map)['text'] as String?;
-      }
-      return null;
-    });
+          if (methodCall.method == 'Clipboard.setData') {
+            copiedText = (methodCall.arguments as Map)['text'] as String?;
+          }
+          return null;
+        });
 
     final modelService = getAndRegisterMockModelManagementService();
-    final gatedModel = ModelInfo(
-      id: InferenceModels.gemma3_270M.id,
-      name: InferenceModels.gemma3_270M.name,
-      url:
-          'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/model.task',
-      type: AppModelType.inference,
-    )
-      ..status = ModelStatus.error
-      ..isAuthError = true;
+    final gatedModel =
+        ModelInfo(
+            id: InferenceModels.gemma3_270M.id,
+            name: InferenceModels.gemma3_270M.name,
+            url:
+                'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/model.task',
+            type: AppModelType.inference,
+          )
+          ..status = ModelStatus.error
+          ..failureKind = ModelDownloadFailureKind.gatedAccess;
 
     final embeddingModel = ModelInfo(
       id: EmbeddingModels.gecko64.id,
@@ -192,5 +193,48 @@ void main() {
       copiedText,
       'https://huggingface.co/litert-community/Gemma3-1B-IT',
     );
+  });
+
+  testWidgets('does not offer a repo link for a non-gated auth error', (
+    tester,
+  ) async {
+    final modelService = getAndRegisterMockModelManagementService();
+    final authModel =
+        ModelInfo(
+            id: InferenceModels.gemma3_270M.id,
+            name: InferenceModels.gemma3_270M.name,
+            url:
+                'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/model.task',
+            type: AppModelType.inference,
+          )
+          ..status = ModelStatus.error
+          ..failureKind = ModelDownloadFailureKind.authentication;
+    final embeddingModel = ModelInfo(
+      id: EmbeddingModels.gecko64.id,
+      name: EmbeddingModels.gecko64.name,
+      url: 'https://example.com/embedding',
+      type: AppModelType.embedding,
+    )..status = ModelStatus.downloaded;
+    when(() => modelService.models).thenReturn([authModel, embeddingModel]);
+
+    final viewModel = StartupViewModel(
+      navigationService: MockNavigationService(),
+      modelService: modelService,
+      deviceService: FakeDeviceCapabilityService(
+        const DeviceCapabilities(
+          totalRamMB: 2048,
+          availableStorageMB: 2048,
+          hasGpu: false,
+          platform: 'android',
+        ),
+      ),
+      recommendationService: FakeModelRecommendationService(),
+    );
+
+    await viewModel.runStartupLogic();
+    await tester.pumpWidget(buildSubject(viewModel));
+
+    expect(find.text('Enter Token'), findsOneWidget);
+    expect(find.byKey(const Key('copyRepoLinkButton')), findsNothing);
   });
 }

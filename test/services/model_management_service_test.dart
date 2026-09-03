@@ -181,6 +181,35 @@ void main() {
         },
       );
 
+      test(
+        'reactivates a cached inference model without foreground download',
+        () async {
+          bool? requestedForeground;
+          final service = ModelManagementService(
+            inferenceModelInstaller:
+                (
+                  _, {
+                  required foreground,
+                }) async {
+                  requestedForeground = foreground;
+                },
+          );
+          addTearDown(service.dispose);
+          when(
+            () =>
+                locator<RagSettingsService>().setActiveInferenceModelId(any()),
+          ).thenAnswer((_) async {});
+
+          final model = service.models.firstWhere(
+            (m) => m.type == AppModelType.inference,
+          )..status = ModelStatus.downloaded;
+
+          await service.switchInferenceModel(model.id);
+
+          expect(requestedForeground, isFalse);
+        },
+      );
+
       test('switchInferenceModel should validate model type', () async {
         // Find a model that's not an inference model
         final embeddingModel = service.models.firstWhere(
@@ -605,12 +634,16 @@ void main() {
       );
 
       test(
-        'downloadModel surfaces unauthorized errors for inference downloads',
+        'downloadModel surfaces typed unauthorized errors for '
+        'inference downloads',
         () async {
+          const downloadError = DownloadException(
+            DownloadError.unauthorized(),
+          );
           final service = ModelManagementService(
             authTokenLoader: () async => 'hf_token',
             inferenceModelDownloader: (model, token, onProgress) async {
-              throw Exception('401 unauthorized');
+              throw downloadError;
             },
           );
           addTearDown(service.dispose);
@@ -632,6 +665,44 @@ void main() {
           expect(inference.status, ModelStatus.error);
           expect(
             errors.any((e) => e is AuthenticationRequiredException),
+            isTrue,
+          );
+        },
+      );
+
+      test(
+        'treats an unrelated proxy 401 as a generic download failure',
+        () async {
+          final downloadError = Exception('HTTP 401 from an upstream proxy');
+          final service = ModelManagementService(
+            authTokenLoader: () async => 'hf_token',
+            inferenceModelDownloader: (model, token, onProgress) async {
+              throw downloadError;
+            },
+          );
+          addTearDown(service.dispose);
+
+          final errors = <Object>[];
+          final subscription = service.modelStatusStream.listen(
+            (_) {},
+            onError: errors.add,
+          );
+          addTearDown(subscription.cancel);
+
+          final inference = service.models.firstWhere(
+            (m) => m.type == AppModelType.inference,
+          );
+
+          await service.downloadModel(inference.id);
+          await Future<void>.delayed(Duration.zero);
+
+          expect(inference.status, ModelStatus.error);
+          expect(inference.isAuthError, isFalse);
+          expect(inference.errorMessage, downloadError.toString());
+          expect(
+            errors.any(
+              (error) => error is String && error.contains('Download error:'),
+            ),
             isTrue,
           );
         },

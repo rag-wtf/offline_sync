@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.router.dart';
@@ -118,39 +117,42 @@ void main() {
         expect(viewModel.hasError, isTrue);
       });
 
-      test('Should set needsToken flag on 401 error', () async {
-        final viewModel = StartupViewModel();
+      test(
+        'does not set needsToken for an unclassified 401 model error',
+        () async {
+          final viewModel = StartupViewModel();
 
-        // Create a mock model with 401 error
-        final errorModel =
-            ModelInfo(
-                id: 'test-model',
-                name: 'Test Model',
-                url: 'https://test.com/model',
-                type: AppModelType.inference,
-              )
-              ..status = ModelStatus.error
-              ..errorMessage = '401 Unauthorized';
+          // Create a mock model with an unrelated 401 error.
+          final errorModel =
+              ModelInfo(
+                  id: 'test-model',
+                  name: 'Test Model',
+                  url: 'https://test.com/model',
+                  type: AppModelType.inference,
+                )
+                ..status = ModelStatus.error
+                ..errorMessage = '401 Unauthorized';
 
-        when(() => mockModelService.models).thenReturn([errorModel]);
+          when(() => mockModelService.models).thenReturn([errorModel]);
 
-        // Simulate 401 error in stream
-        final controller = StreamController<List<ModelInfo>>.broadcast();
-        when(
-          () => mockModelService.modelStatusStream,
-        ).thenAnswer((_) => controller.stream);
+          // Simulate the model status update.
+          final controller = StreamController<List<ModelInfo>>.broadcast();
+          when(
+            () => mockModelService.modelStatusStream,
+          ).thenAnswer((_) => controller.stream);
 
-        // Start the startup logic (it will subscribe to stream)
-        unawaited(viewModel.runStartupLogic());
+          // Start the startup logic (it will subscribe to stream)
+          unawaited(viewModel.runStartupLogic());
 
-        // Emit error event
-        controller.add([errorModel]);
-        await Future<void>.delayed(const Duration(milliseconds: 100));
+          // Emit error event
+          controller.add([errorModel]);
+          await Future<void>.delayed(const Duration(milliseconds: 100));
 
-        expect(viewModel.needsToken, isTrue);
+          expect(viewModel.needsToken, isFalse);
 
-        await controller.close();
-      });
+          await controller.close();
+        },
+      );
 
       test('Should handle generic errors without setting needsToken', () async {
         final viewModel = StartupViewModel();
@@ -193,6 +195,7 @@ void main() {
                 type: AppModelType.inference,
               )
               ..status = ModelStatus.error
+              ..failureKind = ModelDownloadFailureKind.gatedAccess
               ..errorMessage = '403 Forbidden: gated repo access denied';
 
         when(() => mockModelService.models).thenReturn([errorModel]);
@@ -398,6 +401,7 @@ void main() {
                   type: AppModelType.inference,
                 )
                 ..status = ModelStatus.error
+                ..failureKind = ModelDownloadFailureKind.gatedAccess
                 ..errorMessage = '403 Forbidden: gated repo access denied';
 
           when(() => mockModelService.models).thenReturn([errorModel]);
@@ -409,59 +413,21 @@ void main() {
 
           await viewModel.enterToken();
 
-          verify(
-            () => mockDialogService.showCustomDialog<dynamic, dynamic>(
-              variant: DialogType.tokenInput,
-              data: <String, dynamic>{
-                'repoPage':
-                    'https://huggingface.co/litert-community/Gemma3-1B-IT',
-                'modelName': 'Gemma 3 1B IT',
-              },
-            ),
-          ).called(1);
+          final captured =
+              verify(
+                    () => mockDialogService.showCustomDialog<dynamic, dynamic>(
+                      variant: DialogType.tokenInput,
+                      data: captureAny<dynamic>(named: 'data'),
+                    ),
+                  ).captured.single
+                  as TokenInputDialogData;
+          expect(
+            captured.repoPage,
+            'https://huggingface.co/litert-community/Gemma3-1B-IT',
+          );
+          expect(captured.modelName, 'Gemma 3 1B IT');
         },
       );
-
-      test(
-        'copyRepoLink copies errored model repoPage to clipboard',
-        () async {
-          TestWidgetsFlutterBinding.ensureInitialized();
-          String? copiedText;
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-              .setMockMethodCallHandler(
-            SystemChannels.platform,
-            (methodCall) async {
-              if (methodCall.method == 'Clipboard.setData') {
-                copiedText = (methodCall.arguments as Map)['text'] as String?;
-              }
-              return null;
-            },
-          );
-
-        final errorModel =
-            ModelInfo(
-                id: 'test-model',
-                name: 'Gemma 3 1B IT',
-                url:
-                    'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/model.task',
-                type: AppModelType.inference,
-              )
-              ..status = ModelStatus.error
-              ..errorMessage = '403 Forbidden: gated repo access denied';
-
-        when(() => mockModelService.models).thenReturn([errorModel]);
-        when(
-          () => mockModelService.modelStatusStream,
-        ).thenAnswer((_) => const Stream.empty());
-
-        final viewModel = StartupViewModel();
-        await viewModel.copyRepoLink();
-
-        expect(
-          copiedText,
-          'https://huggingface.co/litert-community/Gemma3-1B-IT',
-        );
-      });
     });
 
     group('Disposal -', () {
@@ -658,8 +624,7 @@ void main() {
         await controller.close();
       });
 
-      test('handles stream onError branches for 401'
-          ' and generic failures', () async {
+      test('treats unrelated 401 stream errors as generic failures', () async {
         final controller = StreamController<List<ModelInfo>>.broadcast();
         when(
           () => mockModelService.modelStatusStream,
@@ -674,9 +639,13 @@ void main() {
         );
 
         unawaited(viewModel.runStartupLogic());
-        controller.addError(StateError('401 unauthorized'));
+        controller.addError(StateError('HTTP 401 from an upstream proxy'));
         await Future<void>.delayed(const Duration(milliseconds: 50));
-        expect(viewModel.needsToken, isTrue);
+        expect(viewModel.needsToken, isFalse);
+        expect(
+          viewModel.modelError,
+          contains('HTTP 401 from an upstream proxy'),
+        );
 
         controller.addError(StateError('plain failure'));
         await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -725,15 +694,16 @@ void main() {
             () => mockModelService.modelStatusStream,
           ).thenAnswer((_) => controller.stream);
 
-          final testInference = ModelInfo(
-            id: InferenceModels.gemma3_270M.id,
-            name: InferenceModels.gemma3_270M.name,
-            url:
-                'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/model.task',
-            type: AppModelType.inference,
-          )
-            ..status = ModelStatus.error
-            ..isAuthError = true;
+          final testInference =
+              ModelInfo(
+                  id: InferenceModels.gemma3_270M.id,
+                  name: InferenceModels.gemma3_270M.name,
+                  url:
+                      'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/model.task',
+                  type: AppModelType.inference,
+                )
+                ..status = ModelStatus.error
+                ..failureKind = ModelDownloadFailureKind.authentication;
 
           when(
             () => mockModelService.models,
@@ -800,6 +770,7 @@ void main() {
         () async {
           inferenceModel
             ..status = ModelStatus.error
+            ..failureKind = ModelDownloadFailureKind.gatedAccess
             ..errorMessage = '403 Forbidden: gated repository requires access';
 
           final dynamicModels = <ModelInfo>[inferenceModel, embeddingModel];
@@ -820,6 +791,34 @@ void main() {
           expect(
             viewModel.modelError,
             '403 Forbidden: gated repository requires access',
+          );
+        },
+      );
+
+      test(
+        'does not treat an unrelated 403 model error as authentication failure',
+        () async {
+          inferenceModel
+            ..status = ModelStatus.error
+            ..errorMessage = 'HTTP 403 from an upstream proxy';
+
+          final dynamicModels = <ModelInfo>[inferenceModel, embeddingModel];
+          when(() => mockModelService.models).thenReturn(dynamicModels);
+
+          final viewModel = StartupViewModel(
+            navigationService: mockNavigationService,
+            modelService: mockModelService,
+            deviceService: deviceService,
+            recommendationService: recommendationService,
+            ragSettingsService: ragSettings,
+          );
+
+          await viewModel.runStartupLogic();
+
+          expect(viewModel.needsToken, isFalse);
+          expect(
+            viewModel.modelError,
+            'Failed to download models. Please retry.',
           );
         },
       );

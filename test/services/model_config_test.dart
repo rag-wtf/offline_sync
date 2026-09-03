@@ -39,6 +39,21 @@ void main() {
         same(InferenceModels.gemma3_270M),
       );
     });
+
+    test('Gemma 3 1B uses the verified LiteRT-LM bundle', () {
+      const model = InferenceModels.gemma3_1B;
+
+      expect(
+        model.modelUrl,
+        'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/'
+        'Gemma3-1B-IT_multi-prefill-seq_q4_ekv4096.litertlm',
+      );
+      expect(model.sizeBytes, 584417280);
+      expect(
+        model.sha256,
+        '1325ae366d31950f137c9c357b9fa89448b176d76998180c08ceaca78bba98be',
+      );
+    });
   });
 
   group('ModelDefinition', () {

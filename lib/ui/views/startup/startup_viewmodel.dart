@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:developer';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
@@ -101,8 +100,11 @@ class StartupViewModel extends BaseViewModel {
           _needsToken = true;
           _statusMessage = 'Authentication Required';
           setError(e.message);
-        } else if (isGatedAccessError(e) || e.toString().contains('401')) {
-          final repo = erroredModelRepoPage ?? 'https://huggingface.co';
+        } else if (isGatedAccessError(e)) {
+          final failedAuthModel = _modelService.models
+              .where(_isAuthError)
+              .firstOrNull;
+          final repo = failedAuthModel?.repoPage ?? 'https://huggingface.co';
           final description = describeDownloadFailure(e, repoPage: repo);
           _needsToken = true;
           _statusMessage = 'Authentication Required';
@@ -287,16 +289,9 @@ class StartupViewModel extends BaseViewModel {
   }
 
   String? get erroredModelRepoPage => _modelService.models
-      .where((m) => m.status == ModelStatus.error && _isAuthError(m))
+      .where((m) => m.status == ModelStatus.error && _hasGatedAccessError(m))
       .firstOrNull
       ?.repoPage;
-
-  Future<void> copyRepoLink() async {
-    final repo = erroredModelRepoPage;
-    if (repo != null) {
-      await Clipboard.setData(ClipboardData(text: repo));
-    }
-  }
 
   Future<void> enterToken() async {
     final erroredModel = _modelService.models
@@ -305,20 +300,19 @@ class StartupViewModel extends BaseViewModel {
 
     await _dialogService.showCustomDialog<dynamic, dynamic>(
       variant: DialogType.tokenInput,
-      data: <String, dynamic>{
-        'repoPage': erroredModel?.repoPage,
-        'modelName': erroredModel?.name,
-      },
+      data: TokenInputDialogData(
+        repoPage: erroredModel?.hasGatedAccessError ?? false
+            ? erroredModel?.repoPage
+            : null,
+        modelName: erroredModel?.name,
+      ),
     );
     await retry();
   }
 
-  bool _isAuthError(ModelInfo m) =>
-      m.isAuthError ||
-      isGatedAccessError(m.errorMessage ?? '') ||
-      (m.errorMessage?.contains('401') ?? false) ||
-      (m.errorMessage?.contains('403') ?? false) ||
-      (m.errorMessage?.contains('AuthenticationRequiredException') ?? false);
+  bool _isAuthError(ModelInfo m) => m.isAuthError;
+
+  bool _hasGatedAccessError(ModelInfo m) => m.hasGatedAccessError;
 
   @override
   void dispose() {

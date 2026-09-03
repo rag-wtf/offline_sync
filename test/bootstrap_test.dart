@@ -156,6 +156,7 @@ void main() {
     var flutterGemmaInitialized = 0;
     var sqliteInitialized = 0;
     var setupLocatorCalls = 0;
+    var setupDialogUiCalls = 0;
     var builderCalls = 0;
     Widget? renderedApp;
 
@@ -179,6 +180,9 @@ void main() {
       setupLocatorOverride: () async {
         setupLocatorCalls += 1;
       },
+      setupDialogUiOverride: () {
+        setupDialogUiCalls += 1;
+      },
       environmentServiceOverride: environmentService,
       runAppOverride: (app) {
         renderedApp = app;
@@ -191,6 +195,7 @@ void main() {
     expect(flutterGemmaInitialized, 1);
     expect(sqliteInitialized, 1);
     expect(setupLocatorCalls, 1);
+    expect(setupDialogUiCalls, 1);
     expect(builderCalls, 1);
     expect(environmentService.flavor, 'test');
     expect(renderedApp, isA<Directionality>());

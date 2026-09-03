@@ -18,7 +18,7 @@ dependencies:
   flex_color_scheme: ^8.4.0
   flutter:
     sdk: flutter
-  flutter_gemma: ^1.2.1
+  flutter_gemma: ^1.7.0
   flutter_gemma_embeddings: ^2.0.0
   flutter_gemma_litertlm: ^1.6.1
   flutter_gemma_mediapipe: ^1.0.5

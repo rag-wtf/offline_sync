@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
+import 'package:offline_sync/ui/utils/repo_link_copy.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class TokenInputDialog extends StatefulWidget {
@@ -117,7 +117,6 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
                         },
                       // coverage:ignore-end
                     ),
-                    const TextSpan(text: ' — approval is immediate.'),
                   ],
                 ),
               ),
@@ -125,18 +124,7 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
               Row(
                 children: [
                   TextButton.icon(
-                    onPressed: () async {
-                      await Clipboard.setData(ClipboardData(text: repoPage));
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context)
-                          ..hideCurrentSnackBar()
-                          ..showSnackBar(
-                            const SnackBar(
-                              content: Text('Repo link copied to clipboard'),
-                            ),
-                          );
-                      }
-                    },
+                    onPressed: () => copyRepoLinkToClipboard(context, repoPage),
                     icon: const Icon(Icons.copy, size: 14),
                     label: const Text(
                       'Copy repo link',

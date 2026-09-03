@@ -1,4 +1,4 @@
-import 'package:offline_sync/utils/download_failure.dart';
+import 'package:offline_sync/utils/hugging_face.dart';
 
 /// App-specific model type to avoid conflict with flutter_gemma's ModelType
 enum AppModelType { embedding, inference }
@@ -52,9 +52,9 @@ class InferenceModels {
     id: 'gemma3-1b',
     name: 'Gemma 3 1B IT',
     modelUrl:
-        'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/gemma3-1b-it-int4.task',
+        'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/Gemma3-1B-IT_multi-prefill-seq_q4_ekv4096.litertlm',
     type: AppModelType.inference,
-    sizeBytes: 500 * 1024 * 1024, // 500MB
+    sizeBytes: 584417280,
     minRamMB: 1024,
     requiresGpu: false,
     tier: DeviceTier.mid,

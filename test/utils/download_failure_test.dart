@@ -1,6 +1,7 @@
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/utils/download_failure.dart';
+import 'package:offline_sync/utils/hugging_face.dart';
 
 void main() {
   const repo = 'https://huggingface.co/litert-community/Gemma3-1B-IT';
@@ -73,15 +74,8 @@ void main() {
       },
     );
 
-    test(
-      'classifies formatted describeDownloadFailure messages as gated error',
-      () {
-      final formattedMessage = describeDownloadFailure(
-        const DownloadException(DownloadError.forbidden()),
-        repoPage: repo,
-      );
-      expect(isGatedAccessError(formattedMessage), isTrue);
-      expect(isGatedAccessError(Exception(formattedMessage)), isTrue);
+    test('does not classify advice text without auth status as gated', () {
+      expect(isGatedAccessError('Hugging Face refused the download.'), isFalse);
     });
 
     group('deriveHuggingFaceRepoPage', () {
@@ -96,6 +90,12 @@ void main() {
           deriveHuggingFaceRepoPage('https://huggingface.co/single-segment'),
           'https://huggingface.co/single-segment',
         );
+      });
+
+      test('returns original string for a non-Hugging Face URL', () {
+        const url = 'https://example.com/owner/model/file.task';
+
+        expect(deriveHuggingFaceRepoPage(url), url);
       });
     });
   });
