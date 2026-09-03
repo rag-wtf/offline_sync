@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/ui/utils/repo_link_copy.dart';
 import 'package:offline_sync/ui/views/startup/startup_viewmodel.dart';
 import 'package:stacked/stacked.dart';
 
@@ -231,6 +232,18 @@ class StartupView extends StackedView<StartupViewModel> {
                       onPressed: viewModel.enterToken,
                       child: const Text('Enter Token'),
                     ),
+                    if (viewModel.erroredModelRepoPage != null) ...[
+                      const SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        key: const Key('copyRepoLinkButton'),
+                        onPressed: () => copyRepoLinkToClipboard(
+                          context,
+                          viewModel.erroredModelRepoPage!,
+                        ),
+                        icon: const Icon(Icons.copy, size: 16),
+                        label: const Text('Copy repo link'),
+                      ),
+                    ],
                     // coverage:ignore-end
                   ],
                 ],

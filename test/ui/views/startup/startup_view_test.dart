@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/model_config.dart';
+import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/ui/views/startup/startup_view.dart';
 import 'package:offline_sync/ui/views/startup/startup_viewmodel.dart';
@@ -31,6 +33,7 @@ class FakeModelRecommendationService extends ModelRecommendationService {
 
 void main() {
   setUp(() {
+    registerTestHelpers();
     final binding = TestWidgetsFlutterBinding.ensureInitialized();
     binding.platformDispatcher.views.single.physicalSize = const Size(
       1200,
@@ -39,7 +42,8 @@ void main() {
     binding.platformDispatcher.views.single.devicePixelRatio = 1;
   });
 
-  tearDown(() {
+  tearDown(() async {
+    await unregisterTestHelpers();
     final binding = TestWidgetsFlutterBinding.ensureInitialized();
     binding.platformDispatcher.views.single.resetPhysicalSize();
     binding.platformDispatcher.views.single.resetDevicePixelRatio();
@@ -127,5 +131,110 @@ void main() {
     expect(find.text('Initialization failed'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Retry'), findsOneWidget);
     expect(find.text('Enter Token'), findsNothing);
+  });
+
+  testWidgets('renders token entry and copy repo link buttons on auth error', (
+    tester,
+  ) async {
+    String? copiedText;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (methodCall) async {
+          if (methodCall.method == 'Clipboard.setData') {
+            copiedText = (methodCall.arguments as Map)['text'] as String?;
+          }
+          return null;
+        });
+
+    final modelService = getAndRegisterMockModelManagementService();
+    final gatedModel =
+        ModelInfo(
+            id: InferenceModels.gemma3_270M.id,
+            name: InferenceModels.gemma3_270M.name,
+            url:
+                'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/model.task',
+            type: AppModelType.inference,
+          )
+          ..status = ModelStatus.error
+          ..failureKind = ModelDownloadFailureKind.gatedAccess;
+
+    final embeddingModel = ModelInfo(
+      id: EmbeddingModels.gecko64.id,
+      name: EmbeddingModels.gecko64.name,
+      url: 'https://example.com/embedding',
+      type: AppModelType.embedding,
+    )..status = ModelStatus.downloaded;
+
+    when(() => modelService.models).thenReturn([gatedModel, embeddingModel]);
+
+    final viewModel = StartupViewModel(
+      navigationService: MockNavigationService(),
+      modelService: modelService,
+      deviceService: FakeDeviceCapabilityService(
+        const DeviceCapabilities(
+          totalRamMB: 2048,
+          availableStorageMB: 2048,
+          hasGpu: false,
+          platform: 'android',
+        ),
+      ),
+      recommendationService: FakeModelRecommendationService(),
+    );
+
+    await viewModel.runStartupLogic();
+    await tester.pumpWidget(buildSubject(viewModel));
+
+    expect(find.byKey(const Key('copyRepoLinkButton')), findsOneWidget);
+    expect(find.text('Enter Token'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('copyRepoLinkButton')));
+    await tester.pump();
+
+    expect(
+      copiedText,
+      'https://huggingface.co/litert-community/Gemma3-1B-IT',
+    );
+  });
+
+  testWidgets('does not offer a repo link for a non-gated auth error', (
+    tester,
+  ) async {
+    final modelService = getAndRegisterMockModelManagementService();
+    final authModel =
+        ModelInfo(
+            id: InferenceModels.gemma3_270M.id,
+            name: InferenceModels.gemma3_270M.name,
+            url:
+                'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/model.task',
+            type: AppModelType.inference,
+          )
+          ..status = ModelStatus.error
+          ..failureKind = ModelDownloadFailureKind.authentication;
+    final embeddingModel = ModelInfo(
+      id: EmbeddingModels.gecko64.id,
+      name: EmbeddingModels.gecko64.name,
+      url: 'https://example.com/embedding',
+      type: AppModelType.embedding,
+    )..status = ModelStatus.downloaded;
+    when(() => modelService.models).thenReturn([authModel, embeddingModel]);
+
+    final viewModel = StartupViewModel(
+      navigationService: MockNavigationService(),
+      modelService: modelService,
+      deviceService: FakeDeviceCapabilityService(
+        const DeviceCapabilities(
+          totalRamMB: 2048,
+          availableStorageMB: 2048,
+          hasGpu: false,
+          platform: 'android',
+        ),
+      ),
+      recommendationService: FakeModelRecommendationService(),
+    );
+
+    await viewModel.runStartupLogic();
+    await tester.pumpWidget(buildSubject(viewModel));
+
+    expect(find.text('Enter Token'), findsOneWidget);
+    expect(find.byKey(const Key('copyRepoLinkButton')), findsNothing);
   });
 }

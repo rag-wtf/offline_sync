@@ -10,24 +10,28 @@ import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
-import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
+import 'package:offline_sync/ui/setup_dialog_ui.dart';
+import 'package:offline_sync/utils/download_failure.dart';
 import 'package:stacked/stacked.dart';
 import 'package:stacked_services/stacked_services.dart';
 
 class StartupViewModel extends BaseViewModel {
   StartupViewModel({
     NavigationService? navigationService,
+    DialogService? dialogService,
     ModelManagementService? modelService,
     DeviceCapabilityService? deviceService,
     ModelRecommendationService? recommendationService,
     this._ragSettingsService,
   }) : _navigationService = navigationService ?? locator<NavigationService>(),
+       _dialogService = dialogService ?? locator<DialogService>(),
        _modelService = modelService ?? locator<ModelManagementService>(),
        _deviceService = deviceService ?? DeviceCapabilityService(),
        _recommendationService =
            recommendationService ?? ModelRecommendationService();
 
   final NavigationService _navigationService;
+  final DialogService _dialogService;
   final ModelManagementService _modelService;
   final DeviceCapabilityService _deviceService;
   final ModelRecommendationService _recommendationService;
@@ -77,19 +81,10 @@ class StartupViewModel extends BaseViewModel {
           final error = models.where((m) => m.status == ModelStatus.error);
           if (error.isNotEmpty) {
             // Check if any of the errors indicate a 401 or auth requirement
-            final has401Error = error.any(
-              (m) =>
-                  (m.errorMessage?.contains('401') ?? false) ||
-                  (m.errorMessage?.contains(
-                        'AuthenticationRequiredException',
-                      ) ??
-                      false),
-            );
+            final failedAuthModel = error.where(_isAuthError).firstOrNull;
 
-            if (has401Error) {
-              _needsToken = true;
-              _statusMessage = 'Authentication Required';
-              setError('Missing or invalid Hugging Face Token.');
+            if (failedAuthModel != null) {
+              _setAuthError(failedAuthModel);
             } else {
               _statusMessage = 'Error downloading models.';
               setError('Check internet connection or storage.');
@@ -101,10 +96,19 @@ class StartupViewModel extends BaseViewModel {
         }
       },
       onError: (Object e) {
-        if (e is AuthenticationRequiredException ||
-            e.toString().contains('401')) {
+        if (e is AuthenticationRequiredException) {
           _needsToken = true;
-          setError('Authentication Failed (401)');
+          _statusMessage = 'Authentication Required';
+          setError(e.message);
+        } else if (isGatedAccessError(e)) {
+          final failedAuthModel = _modelService.models
+              .where(_isAuthError)
+              .firstOrNull;
+          final repo = failedAuthModel?.repoPage ?? 'https://huggingface.co';
+          final description = describeDownloadFailure(e, repoPage: repo);
+          _needsToken = true;
+          _statusMessage = 'Authentication Required';
+          setError(description);
         } else {
           setError(e.toString());
         }
@@ -203,10 +207,10 @@ class StartupViewModel extends BaseViewModel {
         (m) => m.status == ModelStatus.error,
       );
       if (errors.isNotEmpty) {
-        if (errors.any((m) => m.errorMessage?.contains('401') ?? false)) {
+        final failedAuthModel = errors.where(_isAuthError).firstOrNull;
+        if (failedAuthModel != null) {
           // coverage:ignore-start
-          _needsToken = true;
-          setError('Missing or invalid Hugging Face Token.');
+          _setAuthError(failedAuthModel);
           // coverage:ignore-end
         } else if (!hasError) {
           setError('Failed to download models. Please retry.');
@@ -276,13 +280,39 @@ class StartupViewModel extends BaseViewModel {
     await runStartupLogic();
   }
 
+  void _setAuthError(ModelInfo model) {
+    _needsToken = true;
+    _statusMessage = 'Authentication Required';
+    setError(
+      model.errorMessage ?? 'Missing or invalid Hugging Face Token.',
+    );
+  }
+
+  String? get erroredModelRepoPage => _modelService.models
+      .where((m) => m.status == ModelStatus.error && _hasGatedAccessError(m))
+      .firstOrNull
+      ?.repoPage;
+
   Future<void> enterToken() async {
-    await _navigationService.navigateWithTransition<bool?>(
-      const TokenInputDialog(),
-      transitionStyle: Transition.fade,
+    final erroredModel = _modelService.models
+        .where((m) => m.status == ModelStatus.error && _isAuthError(m))
+        .firstOrNull;
+
+    await _dialogService.showCustomDialog<dynamic, dynamic>(
+      variant: DialogType.tokenInput,
+      data: TokenInputDialogData(
+        repoPage: erroredModel?.hasGatedAccessError ?? false
+            ? erroredModel?.repoPage
+            : null,
+        modelName: erroredModel?.name,
+      ),
     );
     await retry();
   }
+
+  bool _isAuthError(ModelInfo m) => m.isAuthError;
+
+  bool _hasGatedAccessError(ModelInfo m) => m.hasGatedAccessError;
 
   @override
   void dispose() {

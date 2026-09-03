@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/services/model_config.dart';
+import 'package:offline_sync/services/model_management_service.dart';
 
 void main() {
   group('ModelConfig', () {
@@ -36,6 +37,21 @@ void main() {
       expect(
         ModelConfig.activeInferenceModelOrDefault('missing-model'),
         same(InferenceModels.gemma3_270M),
+      );
+    });
+
+    test('Gemma 3 1B uses the verified LiteRT-LM bundle', () {
+      const model = InferenceModels.gemma3_1B;
+
+      expect(
+        model.modelUrl,
+        'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/'
+        'Gemma3-1B-IT_multi-prefill-seq_q4_ekv4096.litertlm',
+      );
+      expect(model.sizeBytes, 584417280);
+      expect(
+        model.sha256,
+        '1325ae366d31950f137c9c357b9fa89448b176d76998180c08ceaca78bba98be',
       );
     });
   });
@@ -83,6 +99,60 @@ void main() {
       expect(kbModel.sizeFormatted, '700KB');
       expect(mbModel.sizeFormatted, '179MB');
       expect(gbModel.sizeFormatted, '3.0GB');
+    });
+
+    test('repoPage derives the Hugging Face repo page from modelUrl', () {
+      for (final model in ModelConfig.allModels) {
+        expect(model.repoPage, startsWith('https://huggingface.co/'));
+        expect(model.modelUrl, startsWith(model.repoPage));
+        final uri = Uri.parse(model.repoPage);
+        expect(
+          uri.pathSegments.length,
+          2,
+          reason: '${model.id} repoPage should have org/repo path',
+        );
+      }
+    });
+
+    test('repoPage falls back to modelUrl when fewer than 2 segments', () {
+      const shortModel = ModelDefinition(
+        id: 'short',
+        name: 'Short',
+        modelUrl: 'https://example.com/single-segment',
+        type: AppModelType.inference,
+        sizeBytes: 100,
+        minRamMB: 100,
+        requiresGpu: false,
+        tier: DeviceTier.low,
+        maxTokens: 100,
+      );
+      expect(shortModel.repoPage, 'https://example.com/single-segment');
+    });
+  });
+
+  group('ModelInfo', () {
+    test('repoPage derives the Hugging Face repo page from url', () {
+      final info = ModelInfo(
+        id: 'test',
+        name: 'Test',
+        url:
+            'https://huggingface.co/litert-community/gemma-3-270m-it/resolve/main/gemma3-270m-it-q8.task',
+        type: AppModelType.inference,
+      );
+      expect(
+        info.repoPage,
+        'https://huggingface.co/litert-community/gemma-3-270m-it',
+      );
+    });
+
+    test('repoPage falls back to url when fewer than 2 segments', () {
+      final info = ModelInfo(
+        id: 'test',
+        name: 'Test',
+        url: 'https://example.com/single-segment',
+        type: AppModelType.inference,
+      );
+      expect(info.repoPage, 'https://example.com/single-segment');
     });
   });
 }

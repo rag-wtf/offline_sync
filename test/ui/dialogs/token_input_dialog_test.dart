@@ -1,10 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
 
 void main() {
   Widget buildSubject({
+    String? repoPage,
+    String? modelName,
     Future<void> Function(String token)? onSaveToken,
     Future<bool> Function(Uri uri)? onLaunchUrl,
   }) {
@@ -18,6 +21,8 @@ void main() {
                   showDialog<bool>(
                     context: context,
                     builder: (_) => TokenInputDialog(
+                      repoPage: repoPage,
+                      modelName: modelName,
                       onSaveToken: onSaveToken,
                       onLaunchUrl: onLaunchUrl,
                     ),
@@ -34,7 +39,10 @@ void main() {
 
   Future<void> openDialog(WidgetTester tester, Widget widget) async {
     await tester.pumpWidget(widget);
-    await tester.tap(find.text('open'));
+    final openButton = find.text('open');
+    if (openButton.evaluate().isNotEmpty) {
+      await tester.tap(openButton);
+    }
     await tester.pumpAndSettle();
   }
 
@@ -92,5 +100,87 @@ void main() {
       find.text('Failed to save token: Exception: Storage error'),
       findsOneWidget,
     );
+  });
+
+  testWidgets(
+    'displays note about fine-grained gated repository token permission',
+    (tester) async {
+      await openDialog(tester, buildSubject());
+      expect(
+        find.textContaining('public gated repos'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('displays repo link when repoPage is provided', (tester) async {
+    await openDialog(
+      tester,
+      const MaterialApp(
+        home: Scaffold(
+          body: TokenInputDialog(
+            repoPage: 'https://huggingface.co/litert-community/Gemma3-1B-IT',
+            modelName: 'Gemma 3 1B IT',
+          ),
+        ),
+      ),
+    );
+    expect(
+      find.textContaining('litert-community/Gemma3-1B-IT'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('displays account guidance without promising approval', (
+    tester,
+  ) async {
+    await openDialog(
+      tester,
+      const MaterialApp(
+        home: Scaffold(
+          body: TokenInputDialog(
+            repoPage: 'https://huggingface.co/litert-community/Gemma3-1B-IT',
+            modelName: 'Gemma 3 1B IT',
+          ),
+        ),
+      ),
+    );
+    expect(find.textContaining('approval is immediate'), findsNothing);
+    expect(
+      find.textContaining('using the same account that accepted the terms'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('copies repo link to clipboard and shows snackbar', (
+    tester,
+  ) async {
+    String? copiedText;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (methodCall) async {
+          if (methodCall.method == 'Clipboard.setData') {
+            copiedText = (methodCall.arguments as Map)['text'] as String?;
+          }
+          return null;
+        });
+
+    await openDialog(
+      tester,
+      const MaterialApp(
+        home: Scaffold(
+          body: TokenInputDialog(
+            repoPage: 'https://huggingface.co/litert-community/Gemma3-1B-IT',
+            modelName: 'Gemma 3 1B IT',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Copy repo link'), findsOneWidget);
+    await tester.tap(find.text('Copy repo link'));
+    await tester.pump();
+
+    expect(copiedText, 'https://huggingface.co/litert-community/Gemma3-1B-IT');
+    expect(find.text('Repo link copied to clipboard'), findsOneWidget);
   });
 }

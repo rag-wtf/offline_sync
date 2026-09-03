@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:cross_file/cross_file.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -13,6 +14,7 @@ import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/rag_token_manager.dart';
 import 'package:offline_sync/services/reranking_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
+import 'package:offline_sync/ui/setup_dialog_ui.dart';
 import 'package:stacked_services/stacked_services.dart';
 
 base class FakePlatformFile extends PlatformFile {
@@ -45,11 +47,16 @@ base class FakePlatformFile extends PlatformFile {
   Future<int> length() async => _size;
 
   @override
+  int lengthSync() => _size;
+
+  @override
   Future<Uint8List> readAsBytes() async => bytes ?? Uint8List(0);
 
   @override
   Stream<Uint8List> readAsByteStream() => Stream.value(bytes ?? Uint8List(0));
 }
+
+class MockDialogService extends Mock implements DialogService {}
 
 class MockNavigationService extends Mock implements NavigationService {}
 
@@ -76,17 +83,20 @@ class MockEmbeddingService extends Mock implements EmbeddingService {}
 void registerTestHelpers() {
   _removeRegistrationIfExists<RerankingService>();
   _removeRegistrationIfExists<EmbeddingService>();
+  _removeRegistrationIfExists<DialogService>();
 
   locator
     ..registerSingleton<NavigationService>(MockNavigationService())
-    ..registerSingleton<ModelManagementService>(MockModelManagementService())
-    ..registerSingleton<RagSettingsService>(MockRagSettingsService())
     ..registerSingleton<VectorStore>(MockVectorStore())
     ..registerSingleton<InferenceModelProvider>(MockInferenceModelProvider())
     ..registerSingleton<QueryExpansionService>(MockQueryExpansionService())
     ..registerSingleton<RerankingService>(MockRerankingService())
     ..registerSingleton<EmbeddingService>(MockEmbeddingService())
     ..registerSingleton<RagTokenManager>(MockRagTokenManager());
+
+  getAndRegisterMockDialogService();
+  getAndRegisterMockModelManagementService();
+  getAndRegisterMockRagSettingsService();
 }
 
 void _removeRegistrationIfExists<T extends Object>() {
@@ -102,6 +112,46 @@ MockNavigationService getAndRegisterMockNavigationService() {
   return service;
 }
 
+MockDialogService getAndRegisterMockDialogService() {
+  _removeRegistrationIfExists<DialogService>();
+  final service = MockDialogService();
+  locator.registerSingleton<DialogService>(service);
+
+  try {
+    registerFallbackValue(const Color(0x00000000));
+  } on Object catch (_) {}
+  try {
+    registerFallbackValue(DialogType.tokenInput);
+  } on Object catch (_) {}
+
+  when(
+    () => service.showCustomDialog<dynamic, dynamic>(
+      variant: any<dynamic>(named: 'variant'),
+      title: any(named: 'title'),
+      description: any(named: 'description'),
+      hasImage: any(named: 'hasImage'),
+      imageUrl: any(named: 'imageUrl'),
+      showIconInMainButton: any(named: 'showIconInMainButton'),
+      mainButtonTitle: any(named: 'mainButtonTitle'),
+      showIconInSecondaryButton: any(named: 'showIconInSecondaryButton'),
+      secondaryButtonTitle: any(named: 'secondaryButtonTitle'),
+      showIconInAdditionalButton: any(named: 'showIconInAdditionalButton'),
+      additionalButtonTitle: any(named: 'additionalButtonTitle'),
+      takesInput: any(named: 'takesInput'),
+      barrierColor: any(named: 'barrierColor'),
+      barrierDismissible: any(named: 'barrierDismissible'),
+      barrierLabel: any(named: 'barrierLabel'),
+      // Required to match stacked_services showCustomDialog parameter.
+      // ignore: deprecated_member_use
+      customData: any<dynamic>(named: 'customData'),
+      data: any<dynamic>(named: 'data'),
+      navigatorKey: any(named: 'navigatorKey'),
+    ),
+  ).thenAnswer((_) async => DialogResponse(confirmed: true));
+
+  return service;
+}
+
 MockModelManagementService getAndRegisterMockModelManagementService() {
   _removeRegistrationIfExists<ModelManagementService>();
   final service = MockModelManagementService();
@@ -111,7 +161,9 @@ MockModelManagementService getAndRegisterMockModelManagementService() {
   when(() => service.models).thenReturn([]);
   when(() => service.modelStatusStream).thenAnswer((_) => const Stream.empty());
   when(service.initialize).thenAnswer((_) async {});
-  when(() => service.downloadModel(any())).thenAnswer((_) => Future.value());
+  when(() => service.downloadModel(any())).thenAnswer((_) async {});
+  when(() => service.switchInferenceModel(any())).thenAnswer((_) async {});
+  when(() => service.switchEmbeddingModel(any())).thenAnswer((_) async {});
   when(service.resetErroredModels).thenReturn(null);
 
   return service;

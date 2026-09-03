@@ -15,8 +15,18 @@ import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
+import 'package:offline_sync/utils/download_failure.dart';
+import 'package:offline_sync/utils/hugging_face.dart';
 
 enum ModelStatus { notDownloaded, downloading, downloaded, error }
+
+enum ModelDownloadFailureKind { none, authentication, gatedAccess }
+
+typedef InferenceModelInstaller =
+    Future<void> Function(
+      String url, {
+      required bool foreground,
+    });
 
 class ModelInfo {
   ModelInfo({
@@ -38,8 +48,17 @@ class ModelInfo {
   ModelStatus status;
   double progress;
   String? errorMessage;
+  ModelDownloadFailureKind failureKind = ModelDownloadFailureKind.none;
+
+  bool get isAuthError => failureKind != ModelDownloadFailureKind.none;
+
+  bool get hasGatedAccessError =>
+      failureKind == ModelDownloadFailureKind.gatedAccess;
 
   String get effectiveFileName => fileName ?? url.split('/').last;
+
+  /// The Hugging Face repo page for [url].
+  String get repoPage => deriveHuggingFaceRepoPage(url);
 }
 
 class ModelManagementService {
@@ -48,6 +67,7 @@ class ModelManagementService {
     installedModelPathResolver,
     Future<bool> Function(String filename)? modelInstalledChecker,
     Future<void> Function(ModelInfo model)? inferenceModelActivator,
+    InferenceModelInstaller? inferenceModelInstaller,
     Future<void> Function(ModelInfo model)? embeddingModelActivator,
     Future<String?> Function()? authTokenLoader,
     Future<void> Function(
@@ -67,6 +87,7 @@ class ModelManagementService {
   }) : _installedModelPathResolver = installedModelPathResolver,
        _modelInstalledChecker = modelInstalledChecker,
        _inferenceModelActivator = inferenceModelActivator,
+       _inferenceModelInstaller = inferenceModelInstaller,
        _embeddingModelActivator = embeddingModelActivator,
        _authTokenLoader = authTokenLoader,
        _inferenceModelDownloader = inferenceModelDownloader,
@@ -83,6 +104,7 @@ class ModelManagementService {
   _installedModelPathResolver;
   final Future<bool> Function(String filename)? _modelInstalledChecker;
   final Future<void> Function(ModelInfo model)? _inferenceModelActivator;
+  final InferenceModelInstaller? _inferenceModelInstaller;
   final Future<void> Function(ModelInfo model)? _embeddingModelActivator;
   final Future<String?> Function()? _authTokenLoader;
   final Future<void> Function(
@@ -281,9 +303,14 @@ class ModelManagementService {
       }
       // Re-install/activate the inference model from the cached download
       // coverage:ignore-start
-      await FlutterGemma.installModel(
-        modelType: ModelType.gemmaIt,
-      ).fromNetwork(model.url).install();
+      final installer = _inferenceModelInstaller;
+      if (installer != null) {
+        await installer(model.url, foreground: false);
+      } else {
+        await FlutterGemma.installModel(
+          modelType: ModelType.gemmaIt,
+        ).fromNetwork(model.url, foreground: false).install();
+      }
       log('Inference model activated');
       return true;
       // coverage:ignore-end
@@ -373,12 +400,19 @@ class ModelManagementService {
         } else {
           // coverage:ignore-start
           await FlutterGemma.installModel(
-            modelType: ModelType.gemmaIt,
-          ).fromNetwork(downloadUrl, token: token).withProgress((progress) {
-            log('Download progress for ${model.id}: $progress%');
-            model.progress = progress / 100.0;
-            _notify();
-          }).install();
+                modelType: ModelType.gemmaIt,
+              )
+              .fromNetwork(
+                downloadUrl,
+                token: token,
+                foreground: true,
+              )
+              .withProgress((progress) {
+                log('Download progress for ${model.id}: $progress%');
+                model.progress = progress / 100.0;
+                _notify();
+              })
+              .install();
           // coverage:ignore-end
         }
       } else {
@@ -463,18 +497,29 @@ class ModelManagementService {
     } on Exception catch (e) {
       log('Download failed for ${model.id}: $e');
       LoggingService.debug('Download failed for ${model.id}: $e');
-      final errorMsg = e.toString();
-      model.errorMessage = errorMsg;
-      if (e is AuthenticationRequiredException || errorMsg.contains('401')) {
-        model.status = ModelStatus.error;
+      model.status = ModelStatus.error;
+
+      final isGatedError = isGatedAccessError(e);
+      final isAuthenticationError =
+          isGatedError || e is AuthenticationRequiredException;
+
+      if (isAuthenticationError) {
+        final description = isGatedError
+            ? describeDownloadFailure(e, repoPage: model.repoPage)
+            : e.toString();
+        model
+          ..failureKind = isGatedError
+              ? ModelDownloadFailureKind.gatedAccess
+              : ModelDownloadFailureKind.authentication
+          ..errorMessage = description;
         _statusController.addError(
-          AuthenticationRequiredException(
-            'Unauthorized (401). Please check your HF Token.',
-          ),
+          AuthenticationRequiredException(description),
         );
       } else {
         // coverage:ignore-start
-        model.status = ModelStatus.error;
+        model
+          ..failureKind = ModelDownloadFailureKind.none
+          ..errorMessage = e.toString();
         _statusController.addError('Download error: $e');
         // coverage:ignore-end
       }
@@ -565,6 +610,7 @@ class ModelManagementService {
         model
           ..status = ModelStatus.notDownloaded
           ..progress = 0.0
+          ..failureKind = ModelDownloadFailureKind.none
           ..errorMessage = null;
       }
     }

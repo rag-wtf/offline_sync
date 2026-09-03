@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -7,6 +8,7 @@ import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
+import 'package:offline_sync/utils/download_failure.dart';
 
 import '../helpers/test_helpers.dart';
 
@@ -176,6 +178,35 @@ void main() {
           await service.switchInferenceModel(model.id);
 
           expect(service.activeInferenceModel, isNull);
+        },
+      );
+
+      test(
+        'reactivates a cached inference model without foreground download',
+        () async {
+          bool? requestedForeground;
+          final service = ModelManagementService(
+            inferenceModelInstaller:
+                (
+                  _, {
+                  required foreground,
+                }) async {
+                  requestedForeground = foreground;
+                },
+          );
+          addTearDown(service.dispose);
+          when(
+            () =>
+                locator<RagSettingsService>().setActiveInferenceModelId(any()),
+          ).thenAnswer((_) async {});
+
+          final model = service.models.firstWhere(
+            (m) => m.type == AppModelType.inference,
+          )..status = ModelStatus.downloaded;
+
+          await service.switchInferenceModel(model.id);
+
+          expect(requestedForeground, isFalse);
         },
       );
 
@@ -603,12 +634,16 @@ void main() {
       );
 
       test(
-        'downloadModel surfaces unauthorized errors for inference downloads',
+        'downloadModel surfaces typed unauthorized errors for '
+        'inference downloads',
         () async {
+          const downloadError = DownloadException(
+            DownloadError.unauthorized(),
+          );
           final service = ModelManagementService(
             authTokenLoader: () async => 'hf_token',
             inferenceModelDownloader: (model, token, onProgress) async {
-              throw Exception('401 unauthorized');
+              throw downloadError;
             },
           );
           addTearDown(service.dispose);
@@ -630,6 +665,184 @@ void main() {
           expect(inference.status, ModelStatus.error);
           expect(
             errors.any((e) => e is AuthenticationRequiredException),
+            isTrue,
+          );
+        },
+      );
+
+      test(
+        'treats an unrelated proxy 401 as a generic download failure',
+        () async {
+          final downloadError = Exception('HTTP 401 from an upstream proxy');
+          final service = ModelManagementService(
+            authTokenLoader: () async => 'hf_token',
+            inferenceModelDownloader: (model, token, onProgress) async {
+              throw downloadError;
+            },
+          );
+          addTearDown(service.dispose);
+
+          final errors = <Object>[];
+          final subscription = service.modelStatusStream.listen(
+            (_) {},
+            onError: errors.add,
+          );
+          addTearDown(subscription.cancel);
+
+          final inference = service.models.firstWhere(
+            (m) => m.type == AppModelType.inference,
+          );
+
+          await service.downloadModel(inference.id);
+          await Future<void>.delayed(Duration.zero);
+
+          expect(inference.status, ModelStatus.error);
+          expect(inference.isAuthError, isFalse);
+          expect(inference.errorMessage, downloadError.toString());
+          expect(
+            errors.any(
+              (error) => error is String && error.contains('Download error:'),
+            ),
+            isTrue,
+          );
+        },
+      );
+
+      test(
+        'downloadModel surfaces actionable gated error when inference download '
+        'fails with typed gated access error',
+        () async {
+          const downloadError = DownloadException(DownloadError.unauthorized());
+          final service = ModelManagementService(
+            authTokenLoader: () async => 'hf_token',
+            inferenceModelDownloader: (model, token, onProgress) async {
+              throw downloadError;
+            },
+          );
+          addTearDown(service.dispose);
+
+          final errors = <Object>[];
+          final subscription = service.modelStatusStream.listen(
+            (_) {},
+            onError: errors.add,
+          );
+          addTearDown(subscription.cancel);
+
+          final inference = service.models.firstWhere(
+            (m) => m.type == AppModelType.inference,
+          );
+
+          await service.downloadModel(inference.id);
+          await Future<void>.delayed(Duration.zero);
+
+          expect(inference.status, ModelStatus.error);
+          final expectedAdvice = describeDownloadFailure(
+            downloadError,
+            repoPage: inference.repoPage,
+          );
+          expect(inference.errorMessage, expectedAdvice);
+          expect(inference.errorMessage, contains(inference.repoPage));
+          expect(
+            errors.any(
+              (e) =>
+                  e is AuthenticationRequiredException &&
+                  e.message == expectedAdvice &&
+                  e.message.contains(inference.repoPage),
+            ),
+            isTrue,
+          );
+        },
+      );
+
+      test(
+        'downloadModel surfaces actionable gated error for string 401 '
+        'gated repo errors',
+        () async {
+          final downloadError = Exception(
+            'HTTP 401 Unauthorized: Access to model is restricted and gated',
+          );
+          final service = ModelManagementService(
+            authTokenLoader: () async => 'hf_token',
+            inferenceModelDownloader: (model, token, onProgress) async {
+              throw downloadError;
+            },
+          );
+          addTearDown(service.dispose);
+
+          final errors = <Object>[];
+          final subscription = service.modelStatusStream.listen(
+            (_) {},
+            onError: errors.add,
+          );
+          addTearDown(subscription.cancel);
+
+          final inference = service.models.firstWhere(
+            (m) => m.type == AppModelType.inference,
+          );
+
+          await service.downloadModel(inference.id);
+          await Future<void>.delayed(Duration.zero);
+
+          expect(inference.status, ModelStatus.error);
+          final expectedAdvice = describeDownloadFailure(
+            downloadError,
+            repoPage: inference.repoPage,
+          );
+          expect(inference.errorMessage, expectedAdvice);
+          expect(inference.errorMessage, contains(inference.repoPage));
+          expect(
+            errors.any(
+              (e) =>
+                  e is AuthenticationRequiredException &&
+                  e.message == expectedAdvice &&
+                  e.message.contains(inference.repoPage),
+            ),
+            isTrue,
+          );
+        },
+      );
+
+      test(
+        'downloadModel surfaces actionable gated error when embedding '
+        'download fails with gated access error',
+        () async {
+          const downloadError = DownloadException(DownloadError.forbidden());
+          final service = ModelManagementService(
+            authTokenLoader: () async => 'hf_token',
+            embeddingModelDownloader: (model, token, onProgress) async {
+              throw downloadError;
+            },
+          );
+          addTearDown(service.dispose);
+
+          final errors = <Object>[];
+          final subscription = service.modelStatusStream.listen(
+            (_) {},
+            onError: errors.add,
+          );
+          addTearDown(subscription.cancel);
+
+          final embedding = service.models.firstWhere(
+            (m) => m.type == AppModelType.embedding,
+          );
+
+          await service.downloadModel(embedding.id);
+          await Future<void>.delayed(Duration.zero);
+
+          expect(embedding.status, ModelStatus.error);
+          final expectedAdvice = describeDownloadFailure(
+            downloadError,
+            repoPage: embedding.repoPage,
+          );
+          expect(embedding.errorMessage, expectedAdvice);
+          expect(embedding.errorMessage, contains(embedding.repoPage));
+          expect(
+            errors.any(
+              (e) =>
+                  e is AuthenticationRequiredException &&
+                  e.message == expectedAdvice &&
+                  e.message.contains(embedding.repoPage),
+            ),
             isTrue,
           );
         },
