@@ -15,6 +15,7 @@ import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
+import 'package:offline_sync/utils/download_failure.dart';
 
 enum ModelStatus { notDownloaded, downloading, downloaded, error }
 
@@ -384,7 +385,11 @@ class ModelManagementService {
           // coverage:ignore-start
           await FlutterGemma.installModel(
             modelType: ModelType.gemmaIt,
-          ).fromNetwork(downloadUrl, token: token).withProgress((progress) {
+          ).fromNetwork(
+            downloadUrl,
+            token: token,
+            foreground: true,
+          ).withProgress((progress) {
             log('Download progress for ${model.id}: $progress%');
             model.progress = progress / 100.0;
             _notify();
@@ -473,18 +478,22 @@ class ModelManagementService {
     } on Exception catch (e) {
       log('Download failed for ${model.id}: $e');
       LoggingService.debug('Download failed for ${model.id}: $e');
-      final errorMsg = e.toString();
-      model.errorMessage = errorMsg;
-      if (e is AuthenticationRequiredException || errorMsg.contains('401')) {
-        model.status = ModelStatus.error;
+      model.status = ModelStatus.error;
+
+      if (isGatedAccessError(e) ||
+          e is AuthenticationRequiredException ||
+          e.toString().contains('401')) {
+        final description = describeDownloadFailure(
+          e,
+          repoPage: model.repoPage,
+        );
+        model.errorMessage = description;
         _statusController.addError(
-          AuthenticationRequiredException(
-            'Unauthorized (401). Please check your HF Token.',
-          ),
+          AuthenticationRequiredException(description),
         );
       } else {
         // coverage:ignore-start
-        model.status = ModelStatus.error;
+        model.errorMessage = e.toString();
         _statusController.addError('Download error: $e');
         // coverage:ignore-end
       }
