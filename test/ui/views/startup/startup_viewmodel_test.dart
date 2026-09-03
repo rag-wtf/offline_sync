@@ -8,6 +8,7 @@ import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
+import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
 import 'package:offline_sync/ui/views/startup/startup_viewmodel.dart';
 
 import '../../../helpers/test_helpers.dart';
@@ -173,6 +174,36 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 100));
 
         expect(viewModel.needsToken, isFalse);
+
+        await controller.close();
+      });
+
+      test('Should set needsToken flag on gated repo error', () async {
+        final viewModel = StartupViewModel();
+
+        final errorModel =
+            ModelInfo(
+                id: 'test-model',
+                name: 'Test Model',
+                url: 'https://test.com/model',
+                type: AppModelType.inference,
+              )
+              ..status = ModelStatus.error
+              ..errorMessage = '403 Forbidden: gated repo access denied';
+
+        when(() => mockModelService.models).thenReturn([errorModel]);
+
+        final controller = StreamController<List<ModelInfo>>.broadcast();
+        when(
+          () => mockModelService.modelStatusStream,
+        ).thenAnswer((_) => controller.stream);
+
+        unawaited(viewModel.runStartupLogic());
+
+        controller.add([errorModel]);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+
+        expect(viewModel.needsToken, isTrue);
 
         await controller.close();
       });
@@ -357,6 +388,50 @@ void main() {
           ),
         ).called(1);
       });
+
+      test(
+        'Should pass repoPage and modelName to TokenInputDialog on enterToken',
+        () async {
+          Widget? capturedDialog;
+          when(
+            () => mockNavigationService.navigateWithTransition<bool?>(
+              any(),
+              transitionStyle: any(named: 'transitionStyle'),
+            ),
+          ).thenAnswer((invocation) async {
+            capturedDialog = invocation.positionalArguments[0] as Widget;
+            return true;
+          });
+
+          final errorModel =
+              ModelInfo(
+                  id: 'test-model',
+                  name: 'Gemma 3 1B IT',
+                  url:
+                      'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/model.task',
+                  type: AppModelType.inference,
+                )
+                ..status = ModelStatus.error
+                ..errorMessage = '403 Forbidden: gated repo access denied';
+
+          when(() => mockModelService.models).thenReturn([errorModel]);
+          when(
+            () => mockModelService.modelStatusStream,
+          ).thenAnswer((_) => const Stream.empty());
+
+          final viewModel = StartupViewModel();
+
+          await viewModel.enterToken();
+
+          expect(capturedDialog, isA<TokenInputDialog>());
+          final dialog = capturedDialog! as TokenInputDialog;
+          expect(
+            dialog.repoPage,
+            'https://huggingface.co/litert-community/Gemma3-1B-IT',
+          );
+          expect(dialog.modelName, 'Gemma 3 1B IT');
+        },
+      );
     });
 
     group('Disposal -', () {
@@ -608,6 +683,36 @@ void main() {
           'Failed to download models. Please retry.',
         );
       });
+
+      test(
+        'displays gated repo error message when model download fails with '
+        '403 gated',
+        () async {
+          inferenceModel
+            ..status = ModelStatus.error
+            ..errorMessage = '403 Forbidden: gated repository requires access';
+
+          final dynamicModels = <ModelInfo>[inferenceModel, embeddingModel];
+          when(() => mockModelService.models).thenReturn(dynamicModels);
+
+          final viewModel = StartupViewModel(
+            navigationService: mockNavigationService,
+            modelService: mockModelService,
+            deviceService: deviceService,
+            recommendationService: recommendationService,
+            ragSettingsService: ragSettings,
+          );
+
+          await viewModel.runStartupLogic();
+
+          expect(viewModel.needsToken, isTrue);
+          expect(viewModel.statusMessage, 'Authentication Required');
+          expect(
+            viewModel.modelError,
+            '403 Forbidden: gated repository requires access',
+          );
+        },
+      );
     });
   });
 }
