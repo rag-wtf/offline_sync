@@ -39,18 +39,12 @@ class ModelInfo {
   ModelStatus status;
   double progress;
   String? errorMessage;
+  bool isAuthError = false;
 
   String get effectiveFileName => fileName ?? url.split('/').last;
 
   /// The Hugging Face repo page for [url].
-  String get repoPage {
-    final uri = Uri.parse(url);
-    final segments = uri.pathSegments;
-    if (segments.length >= 2) {
-      return 'https://huggingface.co/${segments[0]}/${segments[1]}';
-    }
-    return url;
-  }
+  String get repoPage => deriveHuggingFaceRepoPage(url);
 }
 
 class ModelManagementService {
@@ -487,13 +481,17 @@ class ModelManagementService {
           e,
           repoPage: model.repoPage,
         );
-        model.errorMessage = description;
+        model
+          ..isAuthError = true
+          ..errorMessage = description;
         _statusController.addError(
           AuthenticationRequiredException(description),
         );
       } else {
         // coverage:ignore-start
-        model.errorMessage = e.toString();
+        model
+          ..isAuthError = false
+          ..errorMessage = e.toString();
         _statusController.addError('Download error: $e');
         // coverage:ignore-end
       }

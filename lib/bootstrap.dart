@@ -13,6 +13,7 @@ import 'package:offline_sync/bootstrap_mobile.dart'
     as platform;
 import 'package:offline_sync/services/environment_service.dart';
 import 'package:offline_sync/services/logging_service.dart';
+import 'package:offline_sync/ui/setup_dialog_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const notificationPermissionRequestAttemptedKey =
@@ -26,6 +27,7 @@ Future<void> bootstrap(
   Future<void> Function()? flutterGemmaInitialize,
   Future<void> Function()? initializeSqliteOverride,
   Future<void> Function()? setupLocatorOverride,
+  void Function()? setupDialogUiOverride,
   EnvironmentService? environmentServiceOverride,
   void Function(Widget app)? runAppOverride,
   Future<void> Function()? requestNotificationPermissionOverride,
@@ -109,6 +111,7 @@ Future<void> bootstrap(
   await (initializeSqliteOverride ?? platform.initializeSqlite)();
 
   await (setupLocatorOverride ?? setupLocator)();
+  (setupDialogUiOverride ?? setupDialogUi)();
   (environmentServiceOverride ?? locator<EnvironmentService>()).flavor = flavor;
 
   PlatformDispatcher.instance.onError = (error, stackTrace) {

@@ -1,3 +1,5 @@
+import 'package:offline_sync/utils/download_failure.dart';
+
 /// App-specific model type to avoid conflict with flutter_gemma's ModelType
 enum AppModelType { embedding, inference }
 
@@ -209,14 +211,7 @@ class ModelDefinition {
   String get fileName => modelUrl.split('/').last;
 
   /// The Hugging Face repo page for [modelUrl].
-  String get repoPage {
-    final uri = Uri.parse(modelUrl);
-    final segments = uri.pathSegments;
-    if (segments.length >= 2) {
-      return 'https://huggingface.co/${segments[0]}/${segments[1]}';
-    }
-    return modelUrl;
-  }
+  String get repoPage => deriveHuggingFaceRepoPage(modelUrl);
 
   /// Get human-readable size
   String get sizeFormatted {

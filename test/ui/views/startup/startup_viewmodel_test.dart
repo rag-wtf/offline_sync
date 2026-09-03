@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.router.dart';
@@ -9,7 +10,7 @@ import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
-import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
+import 'package:offline_sync/ui/setup_dialog_ui.dart';
 import 'package:offline_sync/ui/views/startup/startup_viewmodel.dart';
 
 import '../../../helpers/test_helpers.dart';
@@ -58,6 +59,7 @@ class FakeModelRecommendationService extends ModelRecommendationService {
 void main() {
   group('StartupViewModel Tests -', () {
     late MockNavigationService mockNavigationService;
+    late MockDialogService mockDialogService;
     late MockModelManagementService mockModelService;
 
     setUpAll(() {
@@ -74,6 +76,7 @@ void main() {
 
     setUp(() {
       mockNavigationService = getAndRegisterMockNavigationService();
+      mockDialogService = getAndRegisterMockDialogService();
       mockModelService = getAndRegisterMockModelManagementService();
       getAndRegisterMockRagSettingsService();
     });
@@ -365,14 +368,7 @@ void main() {
     });
 
     group('Token entry flow -', () {
-      test('Should navigate to token dialog and retry', () async {
-        when(
-          () => mockNavigationService.navigateWithTransition<bool?>(
-            any(),
-            transitionStyle: any(named: 'transitionStyle'),
-          ),
-        ).thenAnswer((_) async => true);
-
+      test('Should show custom dialog and retry on enterToken', () async {
         when(() => mockModelService.models).thenReturn([]);
         when(
           () => mockModelService.modelStatusStream,
@@ -383,27 +379,16 @@ void main() {
         await viewModel.enterToken();
 
         verify(
-          () => mockNavigationService.navigateWithTransition<bool?>(
-            any(),
-            transitionStyle: any(named: 'transitionStyle'),
+          () => mockDialogService.showCustomDialog<dynamic, dynamic>(
+            variant: DialogType.tokenInput,
+            data: any<dynamic>(named: 'data'),
           ),
         ).called(1);
       });
 
       test(
-        'Should pass repoPage and modelName to TokenInputDialog on enterToken',
+        'Should pass repoPage and modelName to showCustomDialog on enterToken',
         () async {
-          Widget? capturedDialog;
-          when(
-            () => mockNavigationService.navigateWithTransition<bool?>(
-              any(),
-              transitionStyle: any(named: 'transitionStyle'),
-            ),
-          ).thenAnswer((invocation) async {
-            capturedDialog = invocation.positionalArguments[0] as Widget;
-            return true;
-          });
-
           final errorModel =
               ModelInfo(
                   id: 'test-model',
@@ -424,15 +409,59 @@ void main() {
 
           await viewModel.enterToken();
 
-          expect(capturedDialog, isA<TokenInputDialog>());
-          final dialog = capturedDialog! as TokenInputDialog;
-          expect(
-            dialog.repoPage,
-            'https://huggingface.co/litert-community/Gemma3-1B-IT',
-          );
-          expect(dialog.modelName, 'Gemma 3 1B IT');
+          verify(
+            () => mockDialogService.showCustomDialog<dynamic, dynamic>(
+              variant: DialogType.tokenInput,
+              data: <String, dynamic>{
+                'repoPage':
+                    'https://huggingface.co/litert-community/Gemma3-1B-IT',
+                'modelName': 'Gemma 3 1B IT',
+              },
+            ),
+          ).called(1);
         },
       );
+
+      test(
+        'copyRepoLink copies errored model repoPage to clipboard',
+        () async {
+          TestWidgetsFlutterBinding.ensureInitialized();
+          String? copiedText;
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+              .setMockMethodCallHandler(
+            SystemChannels.platform,
+            (methodCall) async {
+              if (methodCall.method == 'Clipboard.setData') {
+                copiedText = (methodCall.arguments as Map)['text'] as String?;
+              }
+              return null;
+            },
+          );
+
+        final errorModel =
+            ModelInfo(
+                id: 'test-model',
+                name: 'Gemma 3 1B IT',
+                url:
+                    'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/model.task',
+                type: AppModelType.inference,
+              )
+              ..status = ModelStatus.error
+              ..errorMessage = '403 Forbidden: gated repo access denied';
+
+        when(() => mockModelService.models).thenReturn([errorModel]);
+        when(
+          () => mockModelService.modelStatusStream,
+        ).thenAnswer((_) => const Stream.empty());
+
+        final viewModel = StartupViewModel();
+        await viewModel.copyRepoLink();
+
+        expect(
+          copiedText,
+          'https://huggingface.co/litert-community/Gemma3-1B-IT',
+        );
+      });
     });
 
     group('Disposal -', () {
@@ -686,6 +715,55 @@ void main() {
 
         await controller.close();
       });
+
+      test(
+        'formats raw gated access error into descriptive error message in '
+        'stream onError',
+        () async {
+          final controller = StreamController<List<ModelInfo>>.broadcast();
+          when(
+            () => mockModelService.modelStatusStream,
+          ).thenAnswer((_) => controller.stream);
+
+          final testInference = ModelInfo(
+            id: InferenceModels.gemma3_270M.id,
+            name: InferenceModels.gemma3_270M.name,
+            url:
+                'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/model.task',
+            type: AppModelType.inference,
+          )
+            ..status = ModelStatus.error
+            ..isAuthError = true;
+
+          when(
+            () => mockModelService.models,
+          ).thenReturn([testInference, embeddingModel]);
+          when(
+            mockModelService.initialize,
+          ).thenAnswer((_) => Completer<void>().future);
+
+          final viewModel = StartupViewModel(
+            navigationService: mockNavigationService,
+            modelService: mockModelService,
+            deviceService: deviceService,
+            recommendationService: recommendationService,
+            ragSettingsService: ragSettings,
+          );
+
+          unawaited(viewModel.runStartupLogic());
+          controller.addError(
+            Exception('403 Forbidden: gated repo access denied'),
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+
+          expect(viewModel.needsToken, isTrue);
+          expect(viewModel.statusMessage, 'Authentication Required');
+          expect(viewModel.modelError, contains('Check all three:'));
+          expect(viewModel.modelError, contains(testInference.repoPage));
+
+          await controller.close();
+        },
+      );
 
       test('downloads inference models that are missing and'
           ' stops on post-download errors', () async {

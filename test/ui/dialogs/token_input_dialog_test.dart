@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
 
@@ -128,5 +129,56 @@ void main() {
       find.textContaining('litert-community/Gemma3-1B-IT'),
       findsOneWidget,
     );
+  });
+
+  testWidgets('displays acceptance and account guidance', (tester) async {
+    await openDialog(
+      tester,
+      const MaterialApp(
+        home: Scaffold(
+          body: TokenInputDialog(
+            repoPage: 'https://huggingface.co/litert-community/Gemma3-1B-IT',
+            modelName: 'Gemma 3 1B IT',
+          ),
+        ),
+      ),
+    );
+    expect(find.textContaining('approval is immediate'), findsOneWidget);
+    expect(
+      find.textContaining('using the same account that accepted the terms'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets(
+    'copies repo link to clipboard and shows snackbar',
+    (tester) async {
+    String? copiedText;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, (methodCall) async {
+      if (methodCall.method == 'Clipboard.setData') {
+        copiedText = (methodCall.arguments as Map)['text'] as String?;
+      }
+      return null;
+    });
+
+    await openDialog(
+      tester,
+      const MaterialApp(
+        home: Scaffold(
+          body: TokenInputDialog(
+            repoPage: 'https://huggingface.co/litert-community/Gemma3-1B-IT',
+            modelName: 'Gemma 3 1B IT',
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Copy repo link'), findsOneWidget);
+    await tester.tap(find.text('Copy repo link'));
+    await tester.pump();
+
+    expect(copiedText, 'https://huggingface.co/litert-community/Gemma3-1B-IT');
+    expect(find.text('Repo link copied to clipboard'), findsOneWidget);
   });
 }

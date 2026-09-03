@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -10,6 +11,7 @@ class TokenInputDialog extends StatefulWidget {
     this.modelName,
     this.onSaveToken,
     this.onLaunchUrl,
+    this.onCompleted,
     super.key,
   });
 
@@ -17,6 +19,7 @@ class TokenInputDialog extends StatefulWidget {
   final String? modelName;
   final Future<void> Function(String token)? onSaveToken;
   final Future<bool> Function(Uri uri)? onLaunchUrl;
+  final void Function({required bool success})? onCompleted;
 
   @override
   State<TokenInputDialog> createState() => _TokenInputDialogState();
@@ -63,6 +66,7 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
       await (widget.onSaveToken ?? AuthTokenService.saveToken)(token);
 
       if (mounted) {
+        widget.onCompleted?.call(success: true);
         Navigator.of(context).pop(true); // Return true to indicate success
       }
     } on Object catch (e) {
@@ -94,7 +98,7 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
               Text.rich(
                 TextSpan(
                   style: Theme.of(context).textTheme.bodySmall,
-                  text: 'Accept terms on Hugging Face at ',
+                  text: 'Sign in and accept the model terms at ',
                   children: [
                     TextSpan(
                       text: repoPage,
@@ -113,9 +117,33 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
                         },
                       // coverage:ignore-end
                     ),
-                    const TextSpan(text: ' before downloading.'),
+                    const TextSpan(text: ' — approval is immediate.'),
                   ],
                 ),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: () async {
+                      await Clipboard.setData(ClipboardData(text: repoPage));
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context)
+                          ..hideCurrentSnackBar()
+                          ..showSnackBar(
+                            const SnackBar(
+                              content: Text('Repo link copied to clipboard'),
+                            ),
+                          );
+                      }
+                    },
+                    icon: const Icon(Icons.copy, size: 14),
+                    label: const Text(
+                      'Copy repo link',
+                      style: TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
               ),
             ],
             const SizedBox(height: 16),
@@ -134,7 +162,7 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
             Text.rich(
               TextSpan(
                 style: Theme.of(context).textTheme.bodySmall,
-                text: 'Manage your tokens at ',
+                text: 'Create a read token at ',
                 children: [
                   TextSpan(
                     text: 'huggingface.co/settings/tokens',
@@ -153,7 +181,9 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
                       },
                     // coverage:ignore-end
                   ),
-                  const TextSpan(text: '. Ensure the token has read access.'),
+                  const TextSpan(
+                    text: ', using the same account that accepted the terms.',
+                  ),
                 ],
               ),
             ),
@@ -169,7 +199,10 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
       actions: [
         // coverage:ignore-start
         TextButton(
-          onPressed: () => Navigator.of(context).pop(false),
+          onPressed: () {
+            widget.onCompleted?.call(success: false);
+            Navigator.of(context).pop(false);
+          },
           child: const Text('Cancel'),
         ),
         // coverage:ignore-end

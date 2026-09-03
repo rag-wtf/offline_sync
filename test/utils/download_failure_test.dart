@@ -72,5 +72,31 @@ void main() {
         expect(message, 'The download failed: Exception: disk full');
       },
     );
+
+    test(
+      'classifies formatted describeDownloadFailure messages as gated error',
+      () {
+      final formattedMessage = describeDownloadFailure(
+        const DownloadException(DownloadError.forbidden()),
+        repoPage: repo,
+      );
+      expect(isGatedAccessError(formattedMessage), isTrue);
+      expect(isGatedAccessError(Exception(formattedMessage)), isTrue);
+    });
+
+    group('deriveHuggingFaceRepoPage', () {
+      test('derives repo URL from valid Hugging Face model URL', () {
+        const modelUrl =
+            'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/model.task';
+        expect(deriveHuggingFaceRepoPage(modelUrl), repo);
+      });
+
+      test('returns original string when path has fewer than 2 segments', () {
+        expect(
+          deriveHuggingFaceRepoPage('https://huggingface.co/single-segment'),
+          'https://huggingface.co/single-segment',
+        );
+      });
+    });
   });
 }

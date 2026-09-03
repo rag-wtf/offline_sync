@@ -231,6 +231,27 @@ class StartupView extends StackedView<StartupViewModel> {
                       onPressed: viewModel.enterToken,
                       child: const Text('Enter Token'),
                     ),
+                    if (viewModel.erroredModelRepoPage != null) ...[
+                      const SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        key: const Key('copyRepoLinkButton'),
+                        onPressed: () async {
+                          await viewModel.copyRepoLink();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context)
+                              ..hideCurrentSnackBar()
+                              ..showSnackBar(
+                                const SnackBar(
+                                  content:
+                                      Text('Repo link copied to clipboard'),
+                                ),
+                              );
+                          }
+                        },
+                        icon: const Icon(Icons.copy, size: 16),
+                        label: const Text('Copy repo link'),
+                      ),
+                    ],
                     // coverage:ignore-end
                   ],
                 ],
