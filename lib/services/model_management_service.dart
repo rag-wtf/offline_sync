@@ -24,6 +24,29 @@ enum ModelStatus { notDownloaded, downloading, downloaded, error }
 
 enum ModelDownloadFailureKind { none, authentication, gatedAccess }
 
+enum _InstalledModelPathResolutionKind { resolved, unavailable, readError }
+
+class _InstalledModelPathResolution {
+  const _InstalledModelPathResolution.resolved(String path)
+    : kind = _InstalledModelPathResolutionKind.resolved,
+      path = path,
+      error = null;
+
+  const _InstalledModelPathResolution.unavailable()
+    : kind = _InstalledModelPathResolutionKind.unavailable,
+      path = null,
+      error = null;
+
+  const _InstalledModelPathResolution.readError(Object error)
+    : kind = _InstalledModelPathResolutionKind.readError,
+      path = null,
+      error = error;
+
+  final _InstalledModelPathResolutionKind kind;
+  final String? path;
+  final Object? error;
+}
+
 typedef InferenceModelInstaller =
     Future<void> Function(
       String url, {
@@ -90,6 +113,7 @@ class ModelManagementService {
     Future<bool> Function(ChecksumFile file, String expectedSha256)?
     fileChecksumVerifier,
     Future<SharedPreferences> Function()? sharedPreferencesLoader,
+    bool? isWebOverride,
     DeviceCapabilityService? deviceService,
     Future<DeviceCapabilities> Function()? capabilitiesProvider,
   }) : _installedModelPathResolver = installedModelPathResolver,
@@ -102,6 +126,7 @@ class ModelManagementService {
        _embeddingModelDownloader = embeddingModelDownloader,
        _fileChecksumVerifier = fileChecksumVerifier,
        _sharedPreferencesLoader = sharedPreferencesLoader,
+       _isWeb = isWebOverride ?? kIsWeb,
        _deviceService = deviceService,
        _capabilitiesProvider = capabilitiesProvider;
   // Pre-compiled Regular Expressions for performance optimization
@@ -133,6 +158,7 @@ class ModelManagementService {
   final Future<bool> Function(ChecksumFile file, String expectedSha256)?
   _fileChecksumVerifier;
   final Future<SharedPreferences> Function()? _sharedPreferencesLoader;
+  final bool _isWeb;
   final DeviceCapabilityService? _deviceService;
   final Future<DeviceCapabilities> Function()? _capabilitiesProvider;
 
@@ -283,8 +309,8 @@ class ModelManagementService {
 
   Future<bool> _activateEmbeddingModel(ModelInfo model) async {
     log('Activating embedding model ${model.id}');
-    if (!await _isCompatible(model)) return false;
     try {
+      if (!await _isCompatible(model)) return false;
       final activator = _embeddingModelActivator;
       if (activator != null) {
         await activator(model);
@@ -319,8 +345,8 @@ class ModelManagementService {
 
   Future<bool> _activateInferenceModel(ModelInfo model) async {
     log('Activating inference model ${model.id}');
-    if (!await _isCompatible(model)) return false;
     try {
+      if (!await _isCompatible(model)) return false;
       final activator = _inferenceModelActivator;
       if (activator != null) {
         await activator(model);
@@ -367,27 +393,32 @@ class ModelManagementService {
     }
 
     final model = _models.firstWhere((m) => m.id == modelId);
-    if (!await _isCompatible(model)) return;
-    if (model.status == ModelStatus.downloaded) {
-      // coverage:ignore-start
-      log('Model $modelId already downloaded');
-      LoggingService.debug('Model $modelId already downloaded');
-      return;
-      // coverage:ignore-end
-    }
-
-    log('Starting download for $modelId from ${model.url}');
-    LoggingService.debug('Starting download for $modelId from ${model.url}');
-
-    // Create and store the download future
-    final downloadFuture = _performDownload(model);
-    _activeDownloads[modelId] = downloadFuture;
-    LoggingService.debug('Added $modelId to _activeDownloads, now waiting...');
-
     try {
+      if (!await _isCompatible(model)) return;
+      if (model.status == ModelStatus.downloaded) {
+        // coverage:ignore-start
+        log('Model $modelId already downloaded');
+        LoggingService.debug('Model $modelId already downloaded');
+        return;
+        // coverage:ignore-end
+      }
+
+      log('Starting download for $modelId from ${model.url}');
+      LoggingService.debug('Starting download for $modelId from ${model.url}');
+
+      // Create and store the download future
+      final downloadFuture = _performDownload(model);
+      _activeDownloads[modelId] = downloadFuture;
+      LoggingService.debug(
+        'Added $modelId to _activeDownloads, now waiting...',
+      );
+
       await downloadFuture;
       LoggingService.debug('downloadFuture completed for $modelId');
-    } finally {
+      unawaited(_activeDownloads.remove(modelId));
+      LoggingService.debug('Removed $modelId from _activeDownloads');
+    } on Object catch (error) {
+      _recordDownloadError(model, error);
       unawaited(_activeDownloads.remove(modelId));
       LoggingService.debug('Removed $modelId from _activeDownloads');
     }
@@ -528,36 +559,38 @@ class ModelManagementService {
       _notify();
       LoggingService.debug('_performDownload fully completed for ${model.id}');
     } on Object catch (e) {
-      log('Download failed for ${model.id}: $e');
-      LoggingService.debug('Download failed for ${model.id}: $e');
-      model.status = ModelStatus.error;
-
-      final isGatedError = isGatedAccessError(e);
-      final isAuthenticationError =
-          isGatedError || e is AuthenticationRequiredException;
-
-      if (isAuthenticationError) {
-        final description = isGatedError
-            ? describeDownloadFailure(e, repoPage: model.repoPage)
-            : e.toString();
-        model
-          ..failureKind = isGatedError
-              ? ModelDownloadFailureKind.gatedAccess
-              : ModelDownloadFailureKind.authentication
-          ..errorMessage = description;
-        _statusController.addError(
-          AuthenticationRequiredException(description),
-        );
-      } else {
-        // coverage:ignore-start
-        model
-          ..failureKind = ModelDownloadFailureKind.none
-          ..errorMessage = e.toString();
-        _statusController.addError('Download error: $e');
-        // coverage:ignore-end
-      }
-      _notify();
+      _recordDownloadError(model, e);
     }
+  }
+
+  void _recordDownloadError(ModelInfo model, Object error) {
+    log('Download failed for ${model.id}: $error');
+    LoggingService.debug('Download failed for ${model.id}: $error');
+    model.status = ModelStatus.error;
+
+    final isGatedError = isGatedAccessError(error);
+    final isAuthenticationError =
+        isGatedError || error is AuthenticationRequiredException;
+
+    if (isAuthenticationError) {
+      final description = isGatedError
+          ? describeDownloadFailure(error, repoPage: model.repoPage)
+          : error.toString();
+      model
+        ..failureKind = isGatedError
+            ? ModelDownloadFailureKind.gatedAccess
+            : ModelDownloadFailureKind.authentication
+        ..errorMessage = description;
+      _statusController.addError(AuthenticationRequiredException(description));
+    } else {
+      // coverage:ignore-start
+      model
+        ..failureKind = ModelDownloadFailureKind.none
+        ..errorMessage = error.toString();
+      _statusController.addError('Download error: $error');
+      // coverage:ignore-end
+    }
+    _notify();
   }
 
   /// Get downloaded inference models
@@ -719,21 +752,22 @@ class ModelManagementService {
       return true;
     }
 
-    String? installedModelPath;
-    try {
-      installedModelPath = await _resolveInstalledModelPath(definition);
-    } on Object catch (error) {
-      return _recordVerificationReadError(model, error);
-    }
-
-    if (installedModelPath == null) {
+    final pathResolution = await _resolveInstalledModelPath(definition);
+    if (pathResolution.kind == _InstalledModelPathResolutionKind.unavailable) {
       return _recordVerificationUnavailable(model);
     }
+    if (pathResolution.kind == _InstalledModelPathResolutionKind.readError) {
+      return _recordVerificationReadError(
+        model,
+        pathResolution.error ?? StateError('installed model path unreadable'),
+      );
+    }
+    final installedModelPath = pathResolution.path!;
 
     // flutter_gemma owns model blobs and Cache API entries on web. They are
     // already verified by the plugin; constructing a dart:io File for them
     // would fail on web and would incorrectly reject a valid download.
-    if (kIsWeb) {
+    if (_isWeb) {
       if (_isWebManagedModelPath(installedModelPath)) return true;
       return _recordVerificationUnavailable(model);
     }
@@ -770,6 +804,7 @@ class ModelManagementService {
         } on Object catch (error) {
           log('Unable to delete mismatched model file: $error');
         }
+        await _clearPersistedVerificationMetadata(model);
         model
           ..status = ModelStatus.error
           ..progress = 0.0
@@ -789,10 +824,19 @@ class ModelManagementService {
     return _verifyDeclaredChecksum(model);
   }
 
-  Future<String?> _resolveInstalledModelPath(ModelDefinition definition) async {
+  Future<_InstalledModelPathResolution> _resolveInstalledModelPath(
+    ModelDefinition definition,
+  ) async {
     final resolver = _installedModelPathResolver;
     if (resolver != null) {
-      return resolver(definition);
+      try {
+        final path = await resolver(definition);
+        return path == null
+            ? const _InstalledModelPathResolution.unavailable()
+            : _InstalledModelPathResolution.resolved(path);
+      } on Object catch (error) {
+        return _InstalledModelPathResolution.readError(error);
+      }
     }
 
     try {
@@ -800,24 +844,25 @@ class ModelManagementService {
       final filePaths = await FlutterGemmaPlugin.instance.modelManager
           .getModelFilePaths(_buildModelSpec(definition));
       if (filePaths == null) {
-        return null;
+        return const _InstalledModelPathResolution.unavailable();
       }
 
       for (final installedPath in filePaths.values) {
-        if (kIsWeb && _isWebManagedModelPath(installedPath)) {
-          return installedPath;
+        if (_isWeb && _isWebManagedModelPath(installedPath)) {
+          return _InstalledModelPathResolution.resolved(installedPath);
         }
         if (installedPath.split(_pathSeparatorRegex).last ==
             definition.fileName) {
-          return installedPath;
+          return _InstalledModelPathResolution.resolved(installedPath);
         }
       }
-    } on Object catch (e) {
-      log('Error resolving installed model path for ${definition.id}: $e');
+    } on Object catch (error) {
+      log('Error resolving installed model path for ${definition.id}: $error');
+      return _InstalledModelPathResolution.readError(error);
     }
     // coverage:ignore-end
 
-    return null;
+    return const _InstalledModelPathResolution.unavailable();
   }
 
   ChecksumFile _checksumFile(String path) {
@@ -893,6 +938,15 @@ class ModelManagementService {
       // A cache write must not turn an already verified model into a failed
       // download. The next start will simply hash it again.
       log('Unable to persist checksum metadata: $error');
+    }
+  }
+
+  Future<void> _clearPersistedVerificationMetadata(ModelInfo model) async {
+    try {
+      final prefs = await _sharedPreferences();
+      await prefs.remove(_verificationMetadataKey(model.id));
+    } on Object catch (error) {
+      log('Unable to clear checksum metadata: $error');
     }
   }
 

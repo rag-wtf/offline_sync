@@ -734,41 +734,136 @@ void main() {
 
       test('records Object-level download failures without leaving a model '
           'downloading', () async {
+        final errors = <Object>[];
         final service = ModelManagementService(
           authTokenLoader: () async => 'hf_token',
           inferenceModelDownloader: (model, token, onProgress) async {
-            throw StateError('download state failed');
+            throw ArgumentError('download argument failed');
           },
         );
         addTearDown(service.dispose);
+        final subscription = service.modelStatusStream.listen(
+          (_) {},
+          onError: errors.add,
+        );
+        addTearDown(subscription.cancel);
         final inference = service.models.firstWhere(
           (m) => m.type == AppModelType.inference,
         );
 
         await service.downloadModel(inference.id);
+        await Future<void>.delayed(Duration.zero);
 
         expect(inference.status, ModelStatus.error);
-        expect(inference.errorMessage, contains('download state failed'));
+        expect(inference.errorMessage, contains('download argument failed'));
+        expect(
+          errors,
+          contains(
+            'Download error: Invalid argument(s): download argument failed',
+          ),
+        );
       });
 
       test(
         'records Object-level activation failures without throwing',
         () async {
+          final errors = <Object>[];
           final service = ModelManagementService(
             inferenceModelActivator: (_) async {
-              throw UnsupportedError('activation unsupported');
+              throw ArgumentError('activation argument failed');
             },
           );
           addTearDown(service.dispose);
+          final subscription = service.modelStatusStream.listen(
+            (_) {},
+            onError: errors.add,
+          );
+          addTearDown(subscription.cancel);
           final inference = service.models.firstWhere(
             (m) => m.type == AppModelType.inference,
           )..status = ModelStatus.downloaded;
 
           await service.switchInferenceModel(inference.id);
+          await Future<void>.delayed(Duration.zero);
 
           expect(inference.status, ModelStatus.error);
-          expect(inference.errorMessage, contains('activation unsupported'));
+          expect(
+            inference.errorMessage,
+            contains('activation argument failed'),
+          );
           expect(service.activeInferenceModel, isNull);
+          expect(
+            errors,
+            contains(
+              'Activation error: Invalid argument(s): '
+              'activation argument failed',
+            ),
+          );
+        },
+      );
+
+      test('records capability resolution failures during download', () async {
+        final errors = <Object>[];
+        final service = ModelManagementService(
+          capabilitiesProvider: () async {
+            throw ArgumentError('capability argument failed');
+          },
+          inferenceModelDownloader: (model, token, onProgress) async {},
+        );
+        addTearDown(service.dispose);
+        final subscription = service.modelStatusStream.listen(
+          (_) {},
+          onError: errors.add,
+        );
+        addTearDown(subscription.cancel);
+        final inference = service.models.firstWhere(
+          (m) => m.type == AppModelType.inference,
+        );
+
+        await service.downloadModel(inference.id);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(inference.status, ModelStatus.error);
+        expect(inference.errorMessage, contains('capability argument failed'));
+        expect(
+          errors,
+          contains(
+            'Download error: Invalid argument(s): capability argument failed',
+          ),
+        );
+      });
+
+      test(
+        'records capability resolution failures during activation',
+        () async {
+          final errors = <Object>[];
+          final service = ModelManagementService(
+            capabilitiesProvider: () async {
+              throw UnsupportedError('capability unsupported');
+            },
+            inferenceModelActivator: (_) async {},
+          );
+          addTearDown(service.dispose);
+          final subscription = service.modelStatusStream.listen(
+            (_) {},
+            onError: errors.add,
+          );
+          addTearDown(subscription.cancel);
+          final inference = service.models.firstWhere(
+            (m) => m.type == AppModelType.inference,
+          )..status = ModelStatus.downloaded;
+
+          await service.switchInferenceModel(inference.id);
+          await Future<void>.delayed(Duration.zero);
+
+          expect(inference.status, ModelStatus.error);
+          expect(inference.errorMessage, contains('capability unsupported'));
+          expect(
+            errors,
+            contains(
+              'Activation error: Unsupported operation: capability unsupported',
+            ),
+          );
         },
       );
 
@@ -1028,6 +1123,93 @@ void main() {
         expect(model.errorMessage, contains('Checksum mismatch'));
         expect(errors, contains('Checksum mismatch for ${expected.id}.'));
       });
+
+      test('preserves an existing file when the checksum read fails', () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'model-checksum-injected-read-error-',
+        );
+        addTearDown(() async {
+          if (tempDir.existsSync()) await tempDir.delete(recursive: true);
+        });
+        const expected = EmbeddingModels.gecko64;
+        final file = File('${tempDir.path}/${expected.fileName}');
+        await file.writeAsBytes(const [1, 2, 3]);
+        final errors = <Object>[];
+        final service = ModelManagementService(
+          installedModelPathResolver: (_) async => file.path,
+          fileChecksumVerifier: (_, _) async {
+            throw StateError('injected checksum read failed');
+          },
+        );
+        addTearDown(service.dispose);
+        final subscription = service.modelStatusStream.listen(
+          (_) {},
+          onError: errors.add,
+        );
+        addTearDown(subscription.cancel);
+        final model = service.models.firstWhere(
+          (candidate) => candidate.id == expected.id,
+        );
+
+        expect(await service.verifyDeclaredChecksumForTest(model), isFalse);
+        await Future<void>.delayed(Duration.zero);
+        expect(file.existsSync(), isTrue);
+        expect(model.errorMessage, contains('injected checksum read failed'));
+        expect(
+          errors,
+          contains(
+            'Unable to read model for checksum verification for '
+            '${expected.id}.',
+          ),
+        );
+      });
+
+      test(
+        'clears persisted checksum metadata after a confirmed mismatch',
+        () async {
+          SharedPreferences.setMockInitialValues({});
+          final tempDir = await Directory.systemTemp.createTemp(
+            'model-checksum-clear-metadata-',
+          );
+          addTearDown(() async {
+            if (tempDir.existsSync()) await tempDir.delete(recursive: true);
+          });
+          const expected = EmbeddingModels.gecko64;
+          final file = File('${tempDir.path}/${expected.fileName}');
+          await file.writeAsBytes(const [1, 2, 3]);
+          var shouldVerify = true;
+          final service = ModelManagementService(
+            installedModelPathResolver: (_) async => file.path,
+            fileChecksumVerifier: (_, _) async => shouldVerify,
+            sharedPreferencesLoader: SharedPreferences.getInstance,
+          );
+          addTearDown(service.dispose);
+          final model = service.models.firstWhere(
+            (candidate) => candidate.id == expected.id,
+          );
+
+          expect(await service.verifyDeclaredChecksumForTest(model), isTrue);
+          final prefs = await SharedPreferences.getInstance();
+          expect(
+            prefs.getKeys().any(
+              (key) => key == 'model_verification_metadata_${expected.id}',
+            ),
+            isTrue,
+          );
+
+          await Future<void>.delayed(const Duration(milliseconds: 2));
+          await file.writeAsBytes(const [4, 5, 6]);
+          shouldVerify = false;
+          expect(await service.verifyDeclaredChecksumForTest(model), isFalse);
+          expect(file.existsSync(), isFalse);
+          expect(
+            prefs.getKeys().any(
+              (key) => key == 'model_verification_metadata_${expected.id}',
+            ),
+            isFalse,
+          );
+        },
+      );
 
       test('persists verification metadata and skips hashing on an unchanged '
           'cold start', () async {
