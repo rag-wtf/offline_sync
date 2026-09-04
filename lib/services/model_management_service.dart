@@ -1,11 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer';
-import 'dart:io';
 
 // Constructor parameters keep public names while assigning private test hooks.
 // ignore_for_file: prefer_initializing_formals
 
-import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -14,10 +13,12 @@ import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/logging_service.dart';
+import 'package:offline_sync/services/model_checksum.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/utils/download_failure.dart';
 import 'package:offline_sync/utils/hugging_face.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 enum ModelStatus { notDownloaded, downloading, downloaded, error }
 
@@ -86,8 +87,9 @@ class ModelManagementService {
       void Function(double progress) onProgress,
     )?
     embeddingModelDownloader,
-    Future<bool> Function(File file, String expectedSha256)?
+    Future<bool> Function(ChecksumFile file, String expectedSha256)?
     fileChecksumVerifier,
+    Future<SharedPreferences> Function()? sharedPreferencesLoader,
     DeviceCapabilityService? deviceService,
     Future<DeviceCapabilities> Function()? capabilitiesProvider,
   }) : _installedModelPathResolver = installedModelPathResolver,
@@ -99,6 +101,7 @@ class ModelManagementService {
        _inferenceModelDownloader = inferenceModelDownloader,
        _embeddingModelDownloader = embeddingModelDownloader,
        _fileChecksumVerifier = fileChecksumVerifier,
+       _sharedPreferencesLoader = sharedPreferencesLoader,
        _deviceService = deviceService,
        _capabilitiesProvider = capabilitiesProvider;
   // Pre-compiled Regular Expressions for performance optimization
@@ -127,8 +130,9 @@ class ModelManagementService {
     void Function(double progress) onProgress,
   )?
   _embeddingModelDownloader;
-  final Future<bool> Function(File file, String expectedSha256)?
+  final Future<bool> Function(ChecksumFile file, String expectedSha256)?
   _fileChecksumVerifier;
+  final Future<SharedPreferences> Function()? _sharedPreferencesLoader;
   final DeviceCapabilityService? _deviceService;
   final Future<DeviceCapabilities> Function()? _capabilitiesProvider;
 
@@ -175,12 +179,27 @@ class ModelManagementService {
   Future<void>? _initFuture;
 
   Future<void> initialize() {
-    return _initFuture ??= _performInitialize();
+    return _initFuture ??= _startInitialization();
   }
 
   Future<void> refresh() {
-    _initFuture = _performInitialize();
-    return _initFuture!;
+    return _startInitialization();
+  }
+
+  Future<void> _startInitialization() {
+    final future = _performInitialize();
+    _initFuture = future;
+    unawaited(
+      future.then<void>(
+        (_) {},
+        onError: (Object error, StackTrace stackTrace) {
+          if (identical(_initFuture, future)) {
+            _initFuture = null;
+          }
+        },
+      ),
+    );
+    return future;
   }
 
   Future<void> _performInitialize() async {
@@ -288,7 +307,7 @@ class ModelManagementService {
       log('Embedding model activated');
       return true;
       // coverage:ignore-end
-    } on Exception catch (e) {
+    } on Object catch (e) {
       log('Error activating embedding model: $e');
       model
         ..status = ModelStatus.error
@@ -326,7 +345,7 @@ class ModelManagementService {
       log('Inference model activated');
       return true;
       // coverage:ignore-end
-    } on Exception catch (e) {
+    } on Object catch (e) {
       log('Error activating inference model: $e');
       model
         ..status = ModelStatus.error
@@ -508,7 +527,7 @@ class ModelManagementService {
 
       _notify();
       LoggingService.debug('_performDownload fully completed for ${model.id}');
-    } on Exception catch (e) {
+    } on Object catch (e) {
       log('Download failed for ${model.id}: $e');
       LoggingService.debug('Download failed for ${model.id}: $e');
       model.status = ModelStatus.error;
@@ -683,8 +702,6 @@ class ModelManagementService {
     unawaited(_statusController.close());
   }
 
-  static final Set<String> _verifiedChecksumCache = <String>{};
-
   Future<bool> _verifyDeclaredChecksum(ModelInfo model) async {
     final definition = _modelDefinitionsById[model.id];
     final expectedSha256 = definition?.sha256;
@@ -702,57 +719,69 @@ class ModelManagementService {
       return true;
     }
 
-    // M-1: Checksum enforcement depends on flutter_gemma resolving the
-    // installed model back to an on-disk path. If path lookup fails, we cannot
-    // prove integrity and therefore fail closed for models with declared
-    // digests rather than treating them as downloaded.
-    final installedModelPath = await _resolveInstalledModelPath(definition);
+    String? installedModelPath;
+    try {
+      installedModelPath = await _resolveInstalledModelPath(definition);
+    } on Object catch (error) {
+      return _recordVerificationReadError(model, error);
+    }
+
     if (installedModelPath == null) {
-      model
-        ..status = ModelStatus.error
-        ..progress = 0.0
-        ..errorMessage =
-            'Checksum verification unavailable: '
-            'installed file path not exposed';
-      _statusController.addError(
-        'Checksum verification unavailable for ${model.id}.',
+      return _recordVerificationUnavailable(model);
+    }
+
+    // flutter_gemma owns model blobs and Cache API entries on web. They are
+    // already verified by the plugin; constructing a dart:io File for them
+    // would fail on web and would incorrectly reject a valid download.
+    if (kIsWeb) {
+      if (_isWebManagedModelPath(installedModelPath)) return true;
+      return _recordVerificationUnavailable(model);
+    }
+
+    final modelFile = _checksumFile(installedModelPath);
+    final metadata = await readChecksumFileMetadata(modelFile);
+    if (metadata == null) {
+      return _recordVerificationReadError(
+        model,
+        StateError('file is not readable: $installedModelPath'),
       );
-      return false;
     }
 
-    final modelFile = File(installedModelPath);
-    if (modelFile.existsSync()) {
-      final stat = modelFile.statSync();
-      final cacheKey =
-          '$installedModelPath:${stat.modified.millisecondsSinceEpoch}:'
-          '${stat.size}:$expectedSha256';
-      if (_verifiedChecksumCache.contains(cacheKey)) {
-        return true;
-      }
-
-      final verifier = _fileChecksumVerifier ?? verifyFileSha256;
-      final isVerified = await verifier(modelFile, expectedSha256);
-      if (isVerified) {
-        _verifiedChecksumCache.add(cacheKey);
-        return true;
-      }
-    } else {
-      final verifier = _fileChecksumVerifier ?? verifyFileSha256;
-      final isVerified = await verifier(modelFile, expectedSha256);
-      if (isVerified) {
-        return true;
-      }
+    if (await _hasPersistedVerificationMetadata(
+      model,
+      expectedSha256,
+      metadata,
+    )) {
+      return true;
     }
 
-    if (modelFile.existsSync()) {
-      modelFile.deleteSync();
+    final result = await _verifyChecksumFile(modelFile, expectedSha256);
+    switch (result.status) {
+      case ChecksumVerificationStatus.verified:
+        await _persistVerificationMetadata(
+          model,
+          expectedSha256,
+          metadata,
+        );
+        return true;
+      case ChecksumVerificationStatus.mismatch:
+        try {
+          await deleteChecksumFile(modelFile);
+        } on Object catch (error) {
+          log('Unable to delete mismatched model file: $error');
+        }
+        model
+          ..status = ModelStatus.error
+          ..progress = 0.0
+          ..errorMessage = 'Checksum mismatch for ${model.id}';
+        _statusController.addError('Checksum mismatch for ${model.id}.');
+        return false;
+      case ChecksumVerificationStatus.readError:
+        return _recordVerificationReadError(
+          model,
+          result.error ?? StateError('file is not readable'),
+        );
     }
-    model
-      ..status = ModelStatus.error
-      ..progress = 0.0
-      ..errorMessage = 'Checksum mismatch for ${model.id}';
-    _statusController.addError('Checksum mismatch for ${model.id}.');
-    return false;
   }
 
   @visibleForTesting
@@ -775,6 +804,9 @@ class ModelManagementService {
       }
 
       for (final installedPath in filePaths.values) {
+        if (kIsWeb && _isWebManagedModelPath(installedPath)) {
+          return installedPath;
+        }
         if (installedPath.split(_pathSeparatorRegex).last ==
             definition.fileName) {
           return installedPath;
@@ -786,6 +818,112 @@ class ModelManagementService {
     // coverage:ignore-end
 
     return null;
+  }
+
+  ChecksumFile _checksumFile(String path) {
+    // This helper is only reached after the kIsWeb guard above. The
+    // conditional checksum import keeps dart:io out of the web build.
+    return createChecksumFile(path);
+  }
+
+  Future<ChecksumVerificationResult> _verifyChecksumFile(
+    ChecksumFile file,
+    String expectedSha256,
+  ) async {
+    final verifier = _fileChecksumVerifier;
+    if (verifier == null) {
+      return verifyChecksumFile(file, expectedSha256);
+    }
+    try {
+      return await verifier(file, expectedSha256)
+          ? const ChecksumVerificationResult.verified()
+          : const ChecksumVerificationResult.mismatch();
+    } on Object catch (error) {
+      return ChecksumVerificationResult.readError(error);
+    }
+  }
+
+  bool _isWebManagedModelPath(String path) {
+    final normalized = path.toLowerCase();
+    return normalized.startsWith('blob:') ||
+        normalized.startsWith('cache:') ||
+        normalized.startsWith('opfs:');
+  }
+
+  Future<bool> _hasPersistedVerificationMetadata(
+    ModelInfo model,
+    String expectedSha256,
+    ChecksumFileMetadata metadata,
+  ) async {
+    try {
+      final prefs = await _sharedPreferences();
+      final raw = prefs.getString(_verificationMetadataKey(model.id));
+      if (raw == null) return false;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return false;
+      return decoded['modelId'] == model.id &&
+          decoded['path'] == metadata.path &&
+          decoded['size'] == metadata.size &&
+          decoded['modified'] == metadata.modifiedMillisecondsSinceEpoch &&
+          decoded['sha256'] == expectedSha256;
+    } on Object catch (error) {
+      log('Unable to read persisted checksum metadata: $error');
+      return false;
+    }
+  }
+
+  Future<void> _persistVerificationMetadata(
+    ModelInfo model,
+    String expectedSha256,
+    ChecksumFileMetadata metadata,
+  ) async {
+    try {
+      final prefs = await _sharedPreferences();
+      await prefs.setString(
+        _verificationMetadataKey(model.id),
+        jsonEncode({
+          'modelId': model.id,
+          'path': metadata.path,
+          'size': metadata.size,
+          'modified': metadata.modifiedMillisecondsSinceEpoch,
+          'sha256': expectedSha256,
+        }),
+      );
+    } on Object catch (error) {
+      // A cache write must not turn an already verified model into a failed
+      // download. The next start will simply hash it again.
+      log('Unable to persist checksum metadata: $error');
+    }
+  }
+
+  Future<SharedPreferences> _sharedPreferences() {
+    return (_sharedPreferencesLoader ?? SharedPreferences.getInstance)();
+  }
+
+  static String _verificationMetadataKey(String modelId) =>
+      'model_verification_metadata_$modelId';
+
+  bool _recordVerificationUnavailable(ModelInfo model) {
+    model
+      ..status = ModelStatus.error
+      ..progress = 0.0
+      ..errorMessage =
+          'Checksum verification unavailable: installed file path not exposed';
+    _statusController.addError(
+      'Checksum verification unavailable for ${model.id}.',
+    );
+    return false;
+  }
+
+  bool _recordVerificationReadError(ModelInfo model, Object error) {
+    model
+      ..status = ModelStatus.error
+      ..progress = 0.0
+      ..errorMessage = 'Unable to read model for checksum verification: $error';
+    _statusController.addError(
+      'Unable to read model for checksum verification for ${model.id}.',
+    );
+    return false;
   }
 
   // coverage:ignore-start
@@ -812,16 +950,11 @@ class ModelManagementService {
   }
   // coverage:ignore-end
 
-  static Future<bool> verifyFileSha256(File file, String expectedSha256) async {
-    try {
-      if (!file.existsSync()) {
-        return false;
-      }
-
-      final digest = await sha256.bind(file.openRead()).first;
-      return digest.toString() == expectedSha256.toLowerCase();
-    } on Object {
-      return false;
-    }
+  static Future<bool> verifyFileSha256(
+    ChecksumFile file,
+    String expectedSha256,
+  ) async {
+    final result = await verifyChecksumFile(file, expectedSha256);
+    return result.status == ChecksumVerificationStatus.verified;
   }
 }

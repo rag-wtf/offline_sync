@@ -314,6 +314,26 @@ void main() {
     });
 
     group('Retry functionality -', () {
+      test('retries model initialization after its first failure', () async {
+        var initializeCalls = 0;
+        when(mockModelService.initialize).thenAnswer((_) async {
+          initializeCalls++;
+          if (initializeCalls == 1) throw StateError('startup init failed');
+        });
+        when(() => mockModelService.models).thenReturn([]);
+        when(
+          () => mockModelService.modelStatusStream,
+        ).thenAnswer((_) => const Stream.empty());
+
+        final viewModel = StartupViewModel();
+        await viewModel.runStartupLogic();
+        expect(viewModel.hasError, isTrue);
+
+        await viewModel.retry();
+
+        expect(initializeCalls, 2);
+      });
+
       test('Should reset error state and retry startup logic', () async {
         final viewModel = StartupViewModel()
           // Set an error first

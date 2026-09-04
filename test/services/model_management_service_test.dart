@@ -10,6 +10,7 @@ import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/utils/download_failure.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../helpers/test_helpers.dart';
 
@@ -731,6 +732,46 @@ void main() {
         },
       );
 
+      test('records Object-level download failures without leaving a model '
+          'downloading', () async {
+        final service = ModelManagementService(
+          authTokenLoader: () async => 'hf_token',
+          inferenceModelDownloader: (model, token, onProgress) async {
+            throw StateError('download state failed');
+          },
+        );
+        addTearDown(service.dispose);
+        final inference = service.models.firstWhere(
+          (m) => m.type == AppModelType.inference,
+        );
+
+        await service.downloadModel(inference.id);
+
+        expect(inference.status, ModelStatus.error);
+        expect(inference.errorMessage, contains('download state failed'));
+      });
+
+      test(
+        'records Object-level activation failures without throwing',
+        () async {
+          final service = ModelManagementService(
+            inferenceModelActivator: (_) async {
+              throw UnsupportedError('activation unsupported');
+            },
+          );
+          addTearDown(service.dispose);
+          final inference = service.models.firstWhere(
+            (m) => m.type == AppModelType.inference,
+          )..status = ModelStatus.downloaded;
+
+          await service.switchInferenceModel(inference.id);
+
+          expect(inference.status, ModelStatus.error);
+          expect(inference.errorMessage, contains('activation unsupported'));
+          expect(service.activeInferenceModel, isNull);
+        },
+      );
+
       test(
         'treats an unrelated proxy 401 as a generic download failure',
         () async {
@@ -987,6 +1028,141 @@ void main() {
         expect(model.errorMessage, contains('Checksum mismatch'));
         expect(errors, contains('Checksum mismatch for ${expected.id}.'));
       });
+
+      test('persists verification metadata and skips hashing on an unchanged '
+          'cold start', () async {
+        SharedPreferences.setMockInitialValues({});
+        final tempDir = await Directory.systemTemp.createTemp(
+          'model-checksum-cache-',
+        );
+        addTearDown(() async {
+          if (tempDir.existsSync()) await tempDir.delete(recursive: true);
+        });
+        final file = File(
+          '${tempDir.path}/${EmbeddingModels.gecko64.fileName}',
+        );
+        await file.writeAsBytes(const [1, 2, 3]);
+        var verifierCalls = 0;
+
+        ModelManagementService createService() => ModelManagementService(
+          installedModelPathResolver: (_) async => file.path,
+          fileChecksumVerifier: (_, _) async {
+            verifierCalls++;
+            return true;
+          },
+          sharedPreferencesLoader: SharedPreferences.getInstance,
+        );
+
+        final first = createService();
+        final model = first.models.firstWhere(
+          (candidate) => candidate.id == EmbeddingModels.gecko64.id,
+        );
+        expect(await first.verifyDeclaredChecksumForTest(model), isTrue);
+        first.dispose();
+
+        final second = createService();
+        addTearDown(second.dispose);
+        final secondModel = second.models.firstWhere(
+          (candidate) => candidate.id == EmbeddingModels.gecko64.id,
+        );
+        expect(await second.verifyDeclaredChecksumForTest(secondModel), isTrue);
+        expect(verifierCalls, 1);
+      });
+
+      test(
+        'rehashes when persisted verification metadata no longer matches',
+        () async {
+          SharedPreferences.setMockInitialValues({});
+          final tempDir = await Directory.systemTemp.createTemp(
+            'model-checksum-cache-miss-',
+          );
+          addTearDown(() async {
+            if (tempDir.existsSync()) await tempDir.delete(recursive: true);
+          });
+          final file = File(
+            '${tempDir.path}/${EmbeddingModels.gecko64.fileName}',
+          );
+          await file.writeAsBytes(const [1, 2, 3]);
+          var verifierCalls = 0;
+          ModelManagementService createService() => ModelManagementService(
+            installedModelPathResolver: (_) async => file.path,
+            fileChecksumVerifier: (_, _) async {
+              verifierCalls++;
+              return true;
+            },
+            sharedPreferencesLoader: SharedPreferences.getInstance,
+          );
+
+          final first = createService();
+          final model = first.models.firstWhere(
+            (candidate) => candidate.id == EmbeddingModels.gecko64.id,
+          );
+          await first.verifyDeclaredChecksumForTest(model);
+          first.dispose();
+          await Future<void>.delayed(const Duration(milliseconds: 2));
+          await file.writeAsBytes(const [4, 5, 6, 7]);
+
+          final second = createService();
+          addTearDown(second.dispose);
+          final secondModel = second.models.firstWhere(
+            (candidate) => candidate.id == EmbeddingModels.gecko64.id,
+          );
+          expect(
+            await second.verifyDeclaredChecksumForTest(secondModel),
+            isTrue,
+          );
+          expect(verifierCalls, 2);
+        },
+      );
+
+      test(
+        'preserves a model file when checksum verification cannot read it',
+        () async {
+          final tempDir = await Directory.systemTemp.createTemp(
+            'model-checksum-read-error-',
+          );
+          addTearDown(() async {
+            if (tempDir.existsSync()) await tempDir.delete(recursive: true);
+          });
+          final missingFile = File(
+            '${tempDir.path}/${EmbeddingModels.gecko64.fileName}',
+          );
+          final service = ModelManagementService(
+            installedModelPathResolver: (_) async => missingFile.path,
+          );
+          addTearDown(service.dispose);
+          final model = service.models.firstWhere(
+            (candidate) => candidate.id == EmbeddingModels.gecko64.id,
+          );
+
+          expect(await service.verifyDeclaredChecksumForTest(model), isFalse);
+          expect(missingFile.existsSync(), isFalse);
+          expect(model.errorMessage, contains('Unable to read'));
+        },
+      );
+
+      test(
+        'retries initialization after a first initialization failure',
+        () async {
+          final ragSettings = locator<RagSettingsService>();
+          var getterCalls = 0;
+          when(() => ragSettings.activeInferenceModelId).thenAnswer((_) {
+            getterCalls++;
+            if (getterCalls == 1) throw StateError('initialization failed');
+            return null;
+          });
+          when(() => ragSettings.activeEmbeddingModelId).thenReturn(null);
+          final service = ModelManagementService(
+            modelInstalledChecker: (_) async => false,
+          );
+          addTearDown(service.dispose);
+
+          await expectLater(service.initialize(), throwsStateError);
+          await service.initialize();
+
+          expect(getterCalls, 2);
+        },
+      );
 
       test('should have at least one inference model', () {
         final inferenceModels = service.models.where(
