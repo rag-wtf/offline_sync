@@ -3,6 +3,7 @@ import 'package:offline_sync/services/contextual_retrieval_service.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/document_management_service.dart';
 import 'package:offline_sync/services/document_parser_service.dart';
+import 'package:offline_sync/services/download_policy_service.dart';
 import 'package:offline_sync/services/embedding_service.dart';
 import 'package:offline_sync/services/environment_service.dart';
 import 'package:offline_sync/services/inference_model_provider.dart';
@@ -38,6 +39,11 @@ import 'package:stacked_services/stacked_services.dart';
     LazySingleton<EnvironmentService>(classType: EnvironmentService),
     LazySingleton<VectorStore>(classType: VectorStore),
     LazySingleton<ChatRepository>(classType: ChatRepository),
+    LazySingleton<DeviceCapabilityService>(classType: DeviceCapabilityService),
+    LazySingleton<ModelRecommendationService>(
+      classType: ModelRecommendationService,
+    ),
+    LazySingleton<DownloadPolicyService>(classType: DownloadPolicyService),
     LazySingleton<ModelManagementService>(classType: ModelManagementService),
     LazySingleton<EmbeddingService>(classType: EmbeddingService),
     LazySingleton<InferenceModelProvider>(classType: InferenceModelProvider),
@@ -51,12 +57,8 @@ import 'package:stacked_services/stacked_services.dart';
     LazySingleton<DocumentManagementService>(
       classType: DocumentManagementService,
     ),
-    LazySingleton<DeviceCapabilityService>(classType: DeviceCapabilityService),
     LazySingleton<ContextualRetrievalService>(
       classType: ContextualRetrievalService,
-    ),
-    LazySingleton<ModelRecommendationService>(
-      classType: ModelRecommendationService,
     ),
   ],
 

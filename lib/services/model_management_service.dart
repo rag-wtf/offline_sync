@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
+import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/logging_service.dart';
@@ -84,6 +85,8 @@ class ModelManagementService {
     embeddingModelDownloader,
     Future<bool> Function(File file, String expectedSha256)?
     fileChecksumVerifier,
+    DeviceCapabilityService? deviceService,
+    Future<DeviceCapabilities> Function()? capabilitiesProvider,
   }) : _installedModelPathResolver = installedModelPathResolver,
        _modelInstalledChecker = modelInstalledChecker,
        _inferenceModelActivator = inferenceModelActivator,
@@ -92,7 +95,9 @@ class ModelManagementService {
        _authTokenLoader = authTokenLoader,
        _inferenceModelDownloader = inferenceModelDownloader,
        _embeddingModelDownloader = embeddingModelDownloader,
-       _fileChecksumVerifier = fileChecksumVerifier;
+       _fileChecksumVerifier = fileChecksumVerifier,
+       _deviceService = deviceService,
+       _capabilitiesProvider = capabilitiesProvider;
   // Pre-compiled Regular Expressions for performance optimization
   static final _pathSeparatorRegex = RegExp(r'[\/\\]'); // coverage:ignore-line
 
@@ -121,6 +126,8 @@ class ModelManagementService {
   _embeddingModelDownloader;
   final Future<bool> Function(File file, String expectedSha256)?
   _fileChecksumVerifier;
+  final DeviceCapabilityService? _deviceService;
+  final Future<DeviceCapabilities> Function()? _capabilitiesProvider;
 
   // Initialize models from ModelConfig
   final List<ModelInfo> _models = ModelConfig.allModels
@@ -229,11 +236,8 @@ class ModelManagementService {
     final savedEmbeddingId = _ragSettings.activeEmbeddingModelId;
 
     if (savedInferenceId != null) {
-      final model = _models.firstWhere(
-        (m) => m.id == savedInferenceId,
-        orElse: () => _models.first,
-      );
-      if (model.status == ModelStatus.downloaded) {
+      final model = _modelForSavedId(savedInferenceId, AppModelType.inference);
+      if (model != null && model.status == ModelStatus.downloaded) {
         if (await _activateInferenceModel(model)) {
           _activeInferenceModelId = model.id;
         }
@@ -241,11 +245,8 @@ class ModelManagementService {
     }
 
     if (savedEmbeddingId != null) {
-      final model = _models.firstWhere(
-        (m) => m.id == savedEmbeddingId,
-        orElse: () => _models.first,
-      );
-      if (model.status == ModelStatus.downloaded) {
+      final model = _modelForSavedId(savedEmbeddingId, AppModelType.embedding);
+      if (model != null && model.status == ModelStatus.downloaded) {
         if (await _activateEmbeddingModel(model)) {
           _activeEmbeddingModelId = model.id;
         }
@@ -259,6 +260,7 @@ class ModelManagementService {
 
   Future<bool> _activateEmbeddingModel(ModelInfo model) async {
     log('Activating embedding model ${model.id}');
+    if (!await _isCompatible(model)) return false;
     try {
       final activator = _embeddingModelActivator;
       if (activator != null) {
@@ -294,6 +296,7 @@ class ModelManagementService {
 
   Future<bool> _activateInferenceModel(ModelInfo model) async {
     log('Activating inference model ${model.id}');
+    if (!await _isCompatible(model)) return false;
     try {
       final activator = _inferenceModelActivator;
       if (activator != null) {
@@ -336,6 +339,7 @@ class ModelManagementService {
     }
 
     final model = _models.firstWhere((m) => m.id == modelId);
+    if (!await _isCompatible(model)) return;
     if (model.status == ModelStatus.downloaded) {
       // coverage:ignore-start
       log('Model $modelId already downloaded');
@@ -602,6 +606,54 @@ class ModelManagementService {
 
   void _notify() {
     _statusController.add(List.from(_models));
+  }
+
+  ModelInfo? _modelForSavedId(String id, AppModelType type) {
+    for (final model in _models) {
+      if (model.id == id && model.type == type) return model;
+    }
+    for (final model in _models) {
+      if (model.type == type) return model;
+    }
+    return null;
+  }
+
+  Future<bool> _isCompatible(ModelInfo model) async {
+    final definition = _modelDefinitionsById[model.id];
+    final capabilities = await _readCapabilities();
+    if (definition != null && definition.isCompatibleWith(capabilities)) {
+      return true;
+    }
+
+    model
+      ..status = ModelStatus.error
+      ..progress = 0
+      ..failureKind = ModelDownloadFailureKind.none
+      ..errorMessage =
+          'Model ${model.name} is not compatible with '
+          '${capabilities.platform}.';
+    _notify();
+    return false;
+  }
+
+  Future<DeviceCapabilities> _readCapabilities() {
+    final provider = _capabilitiesProvider;
+    if (provider != null) return provider();
+    final service = _deviceService;
+    if (service != null) return service.getCapabilities();
+    if (locator.isRegistered<DeviceCapabilityService>()) {
+      return locator<DeviceCapabilityService>().getCapabilities();
+    }
+    // Compatibility for existing direct service users that pre-date the
+    // locator registration. Production uses the locator singleton above.
+    return Future.value(
+      const DeviceCapabilities(
+        totalRamMB: 4096,
+        availableStorageMB: 4096,
+        hasGpu: true,
+        platform: 'android',
+      ),
+    );
   }
 
   void resetErroredModels() {

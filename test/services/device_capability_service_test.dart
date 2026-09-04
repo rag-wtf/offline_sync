@@ -119,6 +119,28 @@ void main() {
         (await windowsService.getCapabilities()).availableStorageMB,
         10240,
       );
+      expect((await linuxService.getCapabilities()).hasGpu, isFalse);
+      expect((await macService.getCapabilities()).hasGpu, isFalse);
+      expect((await windowsService.getCapabilities()).hasGpu, isFalse);
+    });
+
+    test('caches capability detection for every consumer', () async {
+      var calls = 0;
+      final service = DeviceCapabilityService(
+        isAndroidOverride: true,
+        androidModelProvider: () async => 'Pixel Test',
+        totalRamProvider: () {
+          calls++;
+          return 8 * 1024 * 1024 * 1024;
+        },
+        freeStorageProvider: () async => 6 * 1024 * 1024 * 1024,
+      );
+
+      final first = await service.getCapabilities();
+      final second = await service.getCapabilities();
+
+      expect(identical(first, second), isTrue);
+      expect(calls, 1);
     });
   });
 

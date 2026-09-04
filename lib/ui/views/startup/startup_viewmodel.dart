@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/services/download_policy_service.dart';
 import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_management_service.dart';
@@ -22,19 +23,25 @@ class StartupViewModel extends BaseViewModel {
     ModelManagementService? modelService,
     DeviceCapabilityService? deviceService,
     ModelRecommendationService? recommendationService,
+    DownloadPolicyService? downloadPolicyService,
+    this._downloadConsentPrompter,
     this._ragSettingsService,
   }) : _navigationService = navigationService ?? locator<NavigationService>(),
        _dialogService = dialogService ?? locator<DialogService>(),
        _modelService = modelService ?? locator<ModelManagementService>(),
-       _deviceService = deviceService ?? DeviceCapabilityService(),
+       _deviceService = deviceService ?? locator<DeviceCapabilityService>(),
        _recommendationService =
-           recommendationService ?? ModelRecommendationService();
+           recommendationService ?? locator<ModelRecommendationService>(),
+       _downloadPolicyService =
+           downloadPolicyService ?? locator<DownloadPolicyService>();
 
   final NavigationService _navigationService;
   final DialogService _dialogService;
   final ModelManagementService _modelService;
   final DeviceCapabilityService _deviceService;
   final ModelRecommendationService _recommendationService;
+  final DownloadPolicyService _downloadPolicyService;
+  final DownloadConsentPrompter? _downloadConsentPrompter;
   final RagSettingsService? _ragSettingsService;
 
   StreamSubscription<List<ModelInfo>>? _subscription;
@@ -136,7 +143,7 @@ class StartupViewModel extends BaseViewModel {
       // 3. Get recommended models
       _statusMessage = 'Selecting optimal models...';
       notifyListeners();
-      final recommended = _recommendationService.getRecommendedModels(
+      var recommended = _recommendationService.getRecommendedModels(
         _capabilities!,
       );
       log(
@@ -144,10 +151,6 @@ class StartupViewModel extends BaseViewModel {
         'Embedding=${recommended.embeddingModel.name}, '
         'Tier=${recommended.tier}',
       );
-
-      // Store recommended model IDs for later navigation check
-      _recommendedInferenceModelId = recommended.inferenceModel.id;
-      _recommendedEmbeddingModelId = recommended.embeddingModel.id;
 
       // 4. Initialize model service (checks existing models)
       LoggingService.debug('About to call _modelService.initialize()');
@@ -162,10 +165,10 @@ class StartupViewModel extends BaseViewModel {
       log('RAG settings initialized', name: 'StartupViewModel');
 
       // 5. Download recommended models if not present
-      final inferenceModel = _modelService.models
+      var inferenceModel = _modelService.models
           .where((m) => m.id == recommended.inferenceModel.id)
           .firstOrNull;
-      final embeddingModel = _modelService.models
+      var embeddingModel = _modelService.models
           .where((m) => m.id == recommended.embeddingModel.id)
           .firstOrNull;
 
@@ -177,6 +180,55 @@ class StartupViewModel extends BaseViewModel {
         setError('Recommended models not available.');
         return;
       }
+
+      if (inferenceModel.status != ModelStatus.downloaded ||
+          embeddingModel.status != ModelStatus.downloaded) {
+        final policy = await _downloadPolicyService.evaluate(
+          [recommended.inferenceModel, recommended.embeddingModel],
+          _capabilities!,
+        );
+        if (!policy.allowed) {
+          setError(policy.reason);
+          return;
+        }
+        if (policy.requiresConsent) {
+          final consent = await _requestDownloadConsent(
+            DownloadConsentRequest(
+              selected: recommended,
+              smallerCompatible: _recommendationService
+                  .getSmallerCompatibleModels(_capabilities!, recommended),
+              reason: policy.reason,
+            ),
+          );
+          if (!consent.approved) {
+            setError('Model download was not approved.');
+            return;
+          }
+          if (consent.useSmallerCompatible) {
+            final smaller = _recommendationService.getSmallerCompatibleModels(
+              _capabilities!,
+              recommended,
+            );
+            if (smaller != null) {
+              recommended = smaller;
+              inferenceModel = _modelService.models
+                  .where((m) => m.id == recommended.inferenceModel.id)
+                  .firstOrNull;
+              embeddingModel = _modelService.models
+                  .where((m) => m.id == recommended.embeddingModel.id)
+                  .firstOrNull;
+              if (inferenceModel == null || embeddingModel == null) {
+                setError('Recommended models not available.');
+                return;
+              }
+            }
+          }
+        }
+      }
+
+      // Store the final selected ids for the readiness/navigation check.
+      _recommendedInferenceModelId = recommended.inferenceModel.id;
+      _recommendedEmbeddingModelId = recommended.embeddingModel.id;
 
       if (inferenceModel.status != ModelStatus.downloaded) {
         log('Downloading recommended inference model: ${inferenceModel.name}');
@@ -278,6 +330,21 @@ class StartupViewModel extends BaseViewModel {
     _modelService.resetErroredModels();
 
     await runStartupLogic();
+  }
+
+  Future<DownloadConsentResult> _requestDownloadConsent(
+    DownloadConsentRequest request,
+  ) async {
+    final prompter = _downloadConsentPrompter;
+    if (prompter != null) return prompter(request);
+    final response = await _dialogService.showCustomDialog<dynamic, dynamic>(
+      variant: DialogType.downloadConsent,
+      data: DownloadConsentDialogData(request: request),
+    );
+    return DownloadConsentResult(
+      approved: response?.confirmed ?? false,
+      useSmallerCompatible: response?.data == true,
+    );
   }
 
   void _setAuthError(ModelInfo model) {

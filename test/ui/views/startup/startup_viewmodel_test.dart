@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/services/download_policy_service.dart';
 import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
@@ -28,7 +29,8 @@ class FakeDeviceCapabilityService extends DeviceCapabilityService {
   final DeviceCapabilities capabilities;
 
   @override
-  Future<DeviceCapabilities> getCapabilities() async => capabilities;
+  Future<DeviceCapabilities> getCapabilities({bool refresh = false}) async =>
+      capabilities;
 }
 
 class FakeModelRecommendationService extends ModelRecommendationService {
@@ -578,6 +580,84 @@ void main() {
           ),
         ).called(1);
       });
+
+      test(
+        'leaves missing models untouched when first-run consent is denied',
+        () async {
+          inferenceModel.status = ModelStatus.notDownloaded;
+          embeddingModel.status = ModelStatus.notDownloaded;
+          final viewModel = StartupViewModel(
+            navigationService: mockNavigationService,
+            modelService: mockModelService,
+            deviceService: deviceService,
+            recommendationService: recommendationService,
+            ragSettingsService: ragSettings,
+            downloadPolicyService: DownloadPolicyService(
+              connectivityProvider: () async => DownloadConnectivity.unmetered,
+            ),
+            downloadConsentPrompter: (_) async =>
+                const DownloadConsentResult(approved: false),
+          );
+
+          await viewModel.runStartupLogic();
+
+          expect(inferenceModel.status, ModelStatus.notDownloaded);
+          expect(embeddingModel.status, ModelStatus.notDownloaded);
+          expect(viewModel.modelError, 'Model download was not approved.');
+        },
+      );
+
+      test(
+        'downloads and navigates after first-run consent is accepted',
+        () async {
+          inferenceModel.status = ModelStatus.notDownloaded;
+          embeddingModel.status = ModelStatus.notDownloaded;
+          when(() => mockModelService.downloadModel(any())).thenAnswer((
+            call,
+          ) async {
+            final id = call.positionalArguments.single as String;
+            <ModelInfo>[
+                  inferenceModel,
+                  embeddingModel,
+                ].firstWhere((candidate) => candidate.id == id).status =
+                ModelStatus.downloaded;
+          });
+          when(
+            () => mockModelService.activeInferenceModel,
+          ).thenReturn(inferenceModel);
+          when(
+            () => mockModelService.activeEmbeddingModel,
+          ).thenReturn(embeddingModel);
+          final viewModel = StartupViewModel(
+            navigationService: mockNavigationService,
+            modelService: mockModelService,
+            deviceService: deviceService,
+            recommendationService: recommendationService,
+            ragSettingsService: ragSettings,
+            downloadPolicyService: DownloadPolicyService(
+              connectivityProvider: () async => DownloadConnectivity.metered,
+            ),
+            downloadConsentPrompter: (_) async =>
+                const DownloadConsentResult(approved: true),
+          );
+
+          await viewModel.runStartupLogic();
+
+          expect(inferenceModel.status, ModelStatus.downloaded);
+          expect(embeddingModel.status, ModelStatus.downloaded);
+          expect(viewModel.hasError, isFalse);
+          verify(
+            () => mockNavigationService.replaceWith<dynamic>(
+              Routes.chatView,
+              arguments: any<dynamic>(named: 'arguments'),
+              id: any(named: 'id'),
+              preventDuplicates: any(named: 'preventDuplicates'),
+              parameters: any(named: 'parameters'),
+              transition: any(named: 'transition'),
+            ),
+          ).called(1);
+        },
+      );
 
       test('marks unsupported devices while still'
           ' continuing startup flow', () async {

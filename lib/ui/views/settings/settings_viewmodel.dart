@@ -17,7 +17,7 @@ class SettingsViewModel extends BaseViewModel {
   }) : _modelService = modelService ?? locator<ModelManagementService>(),
        _ragSettings = ragSettings ?? locator<RagSettingsService>(),
        _navigationService = navigationService ?? locator<NavigationService>(),
-       _deviceService = deviceService ?? DeviceCapabilityService();
+       _deviceService = deviceService ?? locator<DeviceCapabilityService>();
 
   final ModelManagementService _modelService;
   final RagSettingsService _ragSettings;

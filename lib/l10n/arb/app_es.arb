@@ -135,5 +135,9 @@
     "hfTokenInputHint": "Ingresa tu token de HF",
     "hfTokenDescription": "Se requiere un token de acceso de Hugging Face para descargar modelos.",
     "authRequiredTitle": "Autenticación requerida",
-    "authRequiredSubtitle": "Proporciona un token de Hugging Face para descargar modelos."
+    "authRequiredSubtitle": "Proporciona un token de Hugging Face para descargar modelos.",
+    "downloadConsentTitle": "Â¿Descargar modelos?",
+    "downloadConsentDescription": "Se descargarÃ¡n los siguientes modelos:",
+    "downloadConsentUseSmaller": "Usar modelos compatibles mÃ¡s pequeÃ±os",
+    "downloadConsentDownload": "Descargar"
 }

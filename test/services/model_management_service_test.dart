@@ -4,6 +4,7 @@ import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
@@ -522,7 +523,8 @@ void main() {
       );
 
       test(
-        'initialize falls back to the first model when saved ids are unknown',
+        'initialize falls back only to a matching model type when saved ids '
+        'are unknown',
         () async {
           final firstModel = ModelConfig.allModels.first;
           when(
@@ -559,6 +561,57 @@ void main() {
           expect(service.activeEmbeddingModel, isNull);
         },
       );
+
+      test(
+        'refuses an incompatible model download before invoking its downloader',
+        () async {
+          var downloaded = false;
+          final service = ModelManagementService(
+            capabilitiesProvider: () async => const DeviceCapabilities(
+              totalRamMB: 8192,
+              availableStorageMB: 8192,
+              hasGpu: false,
+              platform: 'linux',
+            ),
+            inferenceModelDownloader: (_, _, _) async => downloaded = true,
+          );
+          addTearDown(service.dispose);
+
+          final incompatible = service.models.firstWhere(
+            (model) => model.id == InferenceModels.gemma3_270M.id,
+          );
+          await service.downloadModel(incompatible.id);
+
+          expect(downloaded, isFalse);
+          expect(incompatible.status, ModelStatus.error);
+          expect(incompatible.errorMessage, contains(incompatible.name));
+          expect(incompatible.errorMessage, contains('linux'));
+        },
+      );
+
+      test('refuses activation of an incompatible downloaded model', () async {
+        var activated = false;
+        final service = ModelManagementService(
+          capabilitiesProvider: () async => const DeviceCapabilities(
+            totalRamMB: 8192,
+            availableStorageMB: 8192,
+            hasGpu: false,
+            platform: 'linux',
+          ),
+          inferenceModelActivator: (_) async => activated = true,
+        );
+        addTearDown(service.dispose);
+        final incompatible = service.models.firstWhere(
+          (model) => model.id == InferenceModels.gemma3_270M.id,
+        )..status = ModelStatus.downloaded;
+
+        await service.switchInferenceModel(incompatible.id);
+
+        expect(activated, isFalse);
+        expect(service.activeInferenceModel, isNull);
+        expect(incompatible.status, ModelStatus.error);
+        expect(incompatible.errorMessage, contains(incompatible.name));
+      });
 
       test(
         'downloadModel auto-activates the first downloaded inference model',
@@ -616,7 +669,11 @@ void main() {
           addTearDown(service.dispose);
 
           final inferenceModels = service.models
-              .where((m) => m.type == AppModelType.inference)
+              .where(
+                (m) =>
+                    m.type == AppModelType.inference &&
+                    m.id != InferenceModels.gemma3_1B.id,
+              )
               .take(2)
               .toList();
           final first = inferenceModels.first..status = ModelStatus.downloaded;

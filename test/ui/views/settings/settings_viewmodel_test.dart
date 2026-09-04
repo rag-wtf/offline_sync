@@ -16,7 +16,8 @@ class FakeDeviceCapabilityService extends DeviceCapabilityService {
   final DeviceCapabilities capabilities;
 
   @override
-  Future<DeviceCapabilities> getCapabilities() async => capabilities;
+  Future<DeviceCapabilities> getCapabilities({bool refresh = false}) async =>
+      capabilities;
 }
 
 void main() {

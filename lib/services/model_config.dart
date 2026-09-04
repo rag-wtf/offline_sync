@@ -1,3 +1,4 @@
+import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/utils/hugging_face.dart';
 
 /// App-specific model type to avoid conflict with flutter_gemma's ModelType
@@ -5,6 +6,20 @@ enum AppModelType { embedding, inference }
 
 /// Device tier for model selection
 enum DeviceTier { low, mid, high, premium }
+
+/// Platform runtime that has a registered model engine.
+enum ModelPlatform { web, android, ios, linux, macos, windows }
+
+enum ModelFileType { task, litertlm, tflite }
+
+extension ModelPlatformParsing on ModelPlatform {
+  static ModelPlatform? fromDevicePlatform(String platform) {
+    for (final value in ModelPlatform.values) {
+      if (value.name == platform) return value;
+    }
+    return null;
+  }
+}
 
 /// Centralized model configuration - single source of truth
 /// for all model definitions used across the application.
@@ -45,6 +60,12 @@ class InferenceModels {
     tier: DeviceTier.low,
     maxTokens: 1024, // Conservative for low-end devices
     sha256: '0f7147f1c22eaf758b819bbf7841793e4c90096c9352cde7fbe5c631f2265ef5',
+    fileType: ModelFileType.task,
+    supportedPlatforms: {
+      ModelPlatform.web,
+      ModelPlatform.android,
+      ModelPlatform.ios,
+    },
   );
 
   // Mid tier: Gemma 3 1B
@@ -60,6 +81,12 @@ class InferenceModels {
     tier: DeviceTier.mid,
     maxTokens: 2048, // Moderate context for mid-tier devices
     sha256: '1325ae366d31950f137c9c357b9fa89448b176d76998180c08ceaca78bba98be',
+    fileType: ModelFileType.litertlm,
+    supportedPlatforms: {
+      ModelPlatform.linux,
+      ModelPlatform.macos,
+      ModelPlatform.windows,
+    },
   );
 
   // High tier: Gemma 3n E2B (multimodal)
@@ -75,6 +102,12 @@ class InferenceModels {
     tier: DeviceTier.high,
     maxTokens: 4096, // Larger context for high-end devices
     sha256: 'a7f544cfee68f579fabadb22aa9284faa4020a0f5358d0e15b49fdd4cefe4200',
+    fileType: ModelFileType.task,
+    supportedPlatforms: {
+      ModelPlatform.web,
+      ModelPlatform.android,
+      ModelPlatform.ios,
+    },
   );
 
   // Premium tier: Gemma 3n E4B (multimodal, largest)
@@ -90,6 +123,12 @@ class InferenceModels {
     tier: DeviceTier.premium,
     maxTokens: 8192, // Maximum context for premium devices
     sha256: '2b8e9d04bf8c5c50346d248c5e24a7e65102251c94dee6f04d5dce5ce3e6ac4f',
+    fileType: ModelFileType.task,
+    supportedPlatforms: {
+      ModelPlatform.web,
+      ModelPlatform.android,
+      ModelPlatform.ios,
+    },
   );
 
   static List<ModelDefinition> get all => [
@@ -193,7 +232,18 @@ class ModelDefinition {
     required this.maxTokens,
     this.tokenizerUrl,
     this.sha256,
+    this.fileType = ModelFileType.tflite,
+    this.supportedPlatforms = allPlatforms,
   });
+
+  static const Set<ModelPlatform> allPlatforms = {
+    ModelPlatform.web,
+    ModelPlatform.android,
+    ModelPlatform.ios,
+    ModelPlatform.linux,
+    ModelPlatform.macos,
+    ModelPlatform.windows,
+  };
 
   final String id;
   final String name;
@@ -206,6 +256,20 @@ class ModelDefinition {
   final DeviceTier tier;
   final int maxTokens; // Maximum context window (input + output)
   final String? sha256; // For future checksum validation
+  final ModelFileType fileType;
+  final Set<ModelPlatform> supportedPlatforms;
+
+  /// Whether the registered runtime can load this model on [capabilities].
+  bool isCompatibleWith(DeviceCapabilities capabilities) {
+    final platform = ModelPlatformParsing.fromDevicePlatform(
+      capabilities.platform,
+    );
+    return platform != null &&
+        supportedPlatforms.contains(platform) &&
+        (!requiresGpu || capabilities.hasGpu) &&
+        minRamMB <= capabilities.totalRamMB &&
+        sizeBytes <= capabilities.availableStorageMB * 1024 * 1024;
+  }
 
   /// Get the expected filename from the URL
   String get fileName => modelUrl.split('/').last;

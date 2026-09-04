@@ -65,52 +65,27 @@ class ModelRecommendationService {
 
     log('Device tier: $tier for capabilities: $capabilities');
 
-    switch (tier) {
-      case DeviceTier.low:
-        return RecommendedModels(
-          inferenceModel: InferenceModels.gemma3_270M,
-          embeddingModel: EmbeddingModels.gecko64,
-          tier: tier,
-        );
-      case DeviceTier.mid:
-        return RecommendedModels(
-          inferenceModel: InferenceModels.gemma3_1B,
-          embeddingModel: EmbeddingModels.embeddingGemma256,
-          tier: tier,
-        );
-      case DeviceTier.high:
-        return RecommendedModels(
-          inferenceModel: InferenceModels.gemma3n_2B,
-          embeddingModel: EmbeddingModels.embeddingGemma512,
-          tier: tier,
-        );
-      case DeviceTier.premium:
-        return RecommendedModels(
-          inferenceModel: InferenceModels.gemma3n_4B,
-          embeddingModel: EmbeddingModels.embeddingGemma1024,
-          tier: tier,
-        );
-    }
+    return RecommendedModels(
+      inferenceModel: _selectForTier(
+        getCompatibleInferenceModels(capabilities),
+        tier,
+        AppModelType.inference,
+      ),
+      embeddingModel: _selectForTier(
+        getCompatibleEmbeddingModels(capabilities),
+        tier,
+        AppModelType.embedding,
+      ),
+      tier: tier,
+    );
   }
 
   /// Get list of compatible inference models for this device
   List<ModelDefinition> getCompatibleInferenceModels(
     DeviceCapabilities capabilities,
   ) {
-    // Return models that fit within device capabilities
-    final allModels = [
-      InferenceModels.gemma3_270M,
-      InferenceModels.gemma3_1B,
-      InferenceModels.gemma3n_2B,
-      InferenceModels.gemma3n_4B,
-    ];
-
-    return allModels
-        .where(
-          (model) =>
-              model.minRamMB <= capabilities.totalRamMB &&
-              model.sizeBytes <= capabilities.availableStorageMB * 1024 * 1024,
-        )
+    return InferenceModels.all
+        .where((model) => model.isCompatibleWith(capabilities))
         .toList();
   }
 
@@ -118,20 +93,57 @@ class ModelRecommendationService {
   List<ModelDefinition> getCompatibleEmbeddingModels(
     DeviceCapabilities capabilities,
   ) {
-    final allModels = [
-      EmbeddingModels.gecko64,
-      EmbeddingModels.embeddingGemma256,
-      EmbeddingModels.embeddingGemma512,
-      EmbeddingModels.embeddingGemma1024,
-    ];
-
-    return allModels
-        .where(
-          (model) =>
-              model.minRamMB <= capabilities.totalRamMB &&
-              model.sizeBytes <= capabilities.availableStorageMB * 1024 * 1024,
-        )
+    return EmbeddingModels.all
+        .where((model) => model.isCompatibleWith(capabilities))
         .toList();
+  }
+
+  /// A lower compatible pair offered before a first-run download. Returns null
+  /// when the current pair is already the smallest runnable choice.
+  RecommendedModels? getSmallerCompatibleModels(
+    DeviceCapabilities capabilities,
+    RecommendedModels current,
+  ) {
+    final currentRank = DeviceTier.values.indexOf(current.tier);
+    if (currentRank == 0) return null;
+    final lowerTiers = DeviceTier.values.take(currentRank).toList().reversed;
+    for (final tier in lowerTiers) {
+      final inference =
+          getCompatibleInferenceModels(
+            capabilities,
+          ).where((model) => model.tier == tier).firstOrNull ??
+          getCompatibleInferenceModels(capabilities).firstOrNull;
+      final embedding =
+          getCompatibleEmbeddingModels(
+            capabilities,
+          ).where((model) => model.tier == tier).firstOrNull ??
+          getCompatibleEmbeddingModels(capabilities).firstOrNull;
+      if (inference != null && embedding != null) {
+        if (inference.id != current.inferenceModel.id ||
+            embedding.id != current.embeddingModel.id) {
+          return RecommendedModels(
+            inferenceModel: inference,
+            embeddingModel: embedding,
+            tier: tier,
+          );
+        }
+      }
+    }
+    return null;
+  }
+
+  ModelDefinition _selectForTier(
+    List<ModelDefinition> compatible,
+    DeviceTier desiredTier,
+    AppModelType type,
+  ) {
+    if (compatible.isEmpty) {
+      throw StateError('No compatible ${type.name} model is registered.');
+    }
+    return compatible.firstWhere(
+      (model) => model.tier == desiredTier,
+      orElse: () => compatible.first,
+    );
   }
 
   DeviceTier _determineDeviceTier(DeviceCapabilities capabilities) {

@@ -53,6 +53,24 @@ void main() {
         model.sha256,
         '1325ae366d31950f137c9c357b9fa89448b176d76998180c08ceaca78bba98be',
       );
+      expect(model.fileType, ModelFileType.litertlm);
+      expect(model.supportedPlatforms, contains(ModelPlatform.linux));
+      expect(model.supportedPlatforms, isNot(contains(ModelPlatform.android)));
+    });
+
+    test('task inference models are registered only for web and mobile', () {
+      const model = InferenceModels.gemma3_270M;
+
+      expect(model.fileType, ModelFileType.task);
+      expect(
+        model.supportedPlatforms,
+        containsAll(<ModelPlatform>[
+          ModelPlatform.web,
+          ModelPlatform.android,
+          ModelPlatform.ios,
+        ]),
+      );
+      expect(model.supportedPlatforms, isNot(contains(ModelPlatform.windows)));
     });
   });
 

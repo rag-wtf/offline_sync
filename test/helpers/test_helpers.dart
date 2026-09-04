@@ -6,9 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/services/download_policy_service.dart';
 import 'package:offline_sync/services/embedding_service.dart';
 import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/model_management_service.dart';
+import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/services/query_expansion_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/rag_token_manager.dart';
@@ -97,6 +100,30 @@ void registerTestHelpers() {
   getAndRegisterMockDialogService();
   getAndRegisterMockModelManagementService();
   getAndRegisterMockRagSettingsService();
+  _registerCapabilityDependencies();
+}
+
+void _registerCapabilityDependencies() {
+  _removeRegistrationIfExists<DeviceCapabilityService>();
+  _removeRegistrationIfExists<ModelRecommendationService>();
+  _removeRegistrationIfExists<DownloadPolicyService>();
+  locator
+    ..registerSingleton<DeviceCapabilityService>(
+      DeviceCapabilityService(
+        isAndroidOverride: true,
+        androidModelProvider: () async => 'Test Device',
+        totalRamProvider: () => 8 * 1024 * 1024 * 1024,
+        freeStorageProvider: () async => 8 * 1024 * 1024 * 1024,
+      ),
+    )
+    ..registerSingleton<ModelRecommendationService>(
+      ModelRecommendationService(),
+    )
+    ..registerSingleton<DownloadPolicyService>(
+      DownloadPolicyService(
+        connectivityProvider: () async => DownloadConnectivity.unmetered,
+      ),
+    );
 }
 
 void _removeRegistrationIfExists<T extends Object>() {
@@ -184,6 +211,10 @@ MockRagSettingsService getAndRegisterMockRagSettingsService() {
   when(() => service.maxHistoryMessages).thenReturn(10);
   when(() => service.contextualRetrievalEnabled).thenReturn(false);
   when(service.initialize).thenAnswer((_) async {});
+
+  if (!locator.isRegistered<DeviceCapabilityService>()) {
+    _registerCapabilityDependencies();
+  }
 
   return service;
 }

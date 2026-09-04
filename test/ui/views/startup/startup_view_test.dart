@@ -17,7 +17,8 @@ class FakeDeviceCapabilityService extends DeviceCapabilityService {
   final DeviceCapabilities value;
 
   @override
-  Future<DeviceCapabilities> getCapabilities() async => value;
+  Future<DeviceCapabilities> getCapabilities({bool refresh = false}) async =>
+      value;
 }
 
 class FakeModelRecommendationService extends ModelRecommendationService {

@@ -70,6 +70,7 @@ class DeviceCapabilityService {
   final Future<String> Function()? _windowsComputerNameProvider;
   final int Function()? _totalRamProvider;
   final Future<int?> Function()? _freeStorageProvider;
+  Future<DeviceCapabilities>? _capabilitiesFuture;
 
   // Minimum thresholds for fallback validation
   static const int _minReasonableRamMB = 512;
@@ -80,7 +81,12 @@ class DeviceCapabilityService {
   static const int _desktopDefaultStorageMB = 10240;
   static const int _webDefaultStorageMB = 2048;
 
-  Future<DeviceCapabilities> getCapabilities() async {
+  Future<DeviceCapabilities> getCapabilities({bool refresh = false}) {
+    if (refresh) _capabilitiesFuture = null;
+    return _capabilitiesFuture ??= _detectCapabilities();
+  }
+
+  Future<DeviceCapabilities> _detectCapabilities() async {
     try {
       if (_isWebOverride ?? kIsWeb) {
         return await _getWebCapabilities();
@@ -169,7 +175,7 @@ class DeviceCapabilityService {
     return DeviceCapabilities(
       totalRamMB: ramMB,
       availableStorageMB: storageMB,
-      hasGpu: true,
+      hasGpu: false,
       platform: 'linux',
     );
   }
@@ -186,7 +192,7 @@ class DeviceCapabilityService {
     return DeviceCapabilities(
       totalRamMB: ramMB,
       availableStorageMB: storageMB,
-      hasGpu: true,
+      hasGpu: false,
       platform: 'macos',
     );
   }
@@ -203,7 +209,7 @@ class DeviceCapabilityService {
     return DeviceCapabilities(
       totalRamMB: ramMB,
       availableStorageMB: storageMB,
-      hasGpu: true,
+      hasGpu: false,
       platform: 'windows',
     );
   }
