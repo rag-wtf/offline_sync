@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:offline_sync/l10n/gen/app_localizations.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/services/download_policy_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
@@ -32,6 +34,17 @@ class FakeModelRecommendationService extends ModelRecommendationService {
   }
 }
 
+class FakePolicyErrorStartupViewModel extends StartupViewModel {
+  FakePolicyErrorStartupViewModel(this.reason) {
+    setError(reason.name);
+  }
+
+  final DownloadPolicyReason reason;
+
+  @override
+  DownloadPolicyReason? get downloadPolicyReason => reason;
+}
+
 void main() {
   setUp(() {
     registerTestHelpers();
@@ -50,8 +63,11 @@ void main() {
     binding.platformDispatcher.views.single.resetDevicePixelRatio();
   });
 
-  Widget buildSubject(StartupViewModel viewModel) {
+  Widget buildSubject(StartupViewModel viewModel, {Locale? locale}) {
     return MaterialApp(
+      locale: locale,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       home: StartupView(viewModel: viewModel, onViewModelReadyCallback: (_) {}),
     );
   }
@@ -132,6 +148,30 @@ void main() {
     expect(find.text('Initialization failed'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Retry'), findsOneWidget);
     expect(find.text('Enter Token'), findsNothing);
+  });
+
+  testWidgets('localizes policy denial errors at the startup UI boundary', (
+    tester,
+  ) async {
+    final viewModel = FakePolicyErrorStartupViewModel(
+      DownloadPolicyReason.connectivityUnknown,
+    );
+
+    await tester.pumpWidget(
+      buildSubject(viewModel, locale: const Locale('es')),
+    );
+
+    expect(
+      find.text(
+        'Las descargas están en pausa porque no se pudo determinar el tipo de '
+        'conexión.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.text(DownloadPolicyReason.connectivityUnknown.name),
+      findsNothing,
+    );
   });
 
   testWidgets('renders token entry and copy repo link buttons on auth error', (

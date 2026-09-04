@@ -26,6 +26,7 @@ enum ModelDownloadFailureKind { none, authentication, gatedAccess }
 typedef InferenceModelInstaller =
     Future<void> Function(
       String url, {
+      required ModelFileType fileType,
       required bool foreground,
     });
 
@@ -37,6 +38,7 @@ class ModelInfo {
     required this.type,
     this.tokenizerUrl,
     this.fileName,
+    this.fileType = ModelFileType.task,
     this.status = ModelStatus.notDownloaded,
     this.progress = 0.0,
   });
@@ -46,6 +48,7 @@ class ModelInfo {
   final AppModelType type;
   final String? tokenizerUrl;
   final String? fileName;
+  final ModelFileType fileType;
   ModelStatus status;
   double progress;
   String? errorMessage;
@@ -138,6 +141,7 @@ class ModelManagementService {
           url: config.modelUrl,
           tokenizerUrl: config.tokenizerUrl,
           type: config.type,
+          fileType: config.fileType,
         ),
       )
       .toList();
@@ -308,10 +312,15 @@ class ModelManagementService {
       // coverage:ignore-start
       final installer = _inferenceModelInstaller;
       if (installer != null) {
-        await installer(model.url, foreground: false);
+        await installer(
+          model.url,
+          fileType: model.fileType,
+          foreground: false,
+        );
       } else {
         await FlutterGemma.installModel(
           modelType: ModelType.gemmaIt,
+          fileType: model.fileType,
         ).fromNetwork(model.url, foreground: false).install();
       }
       log('Inference model activated');
@@ -405,6 +414,7 @@ class ModelManagementService {
           // coverage:ignore-start
           await FlutterGemma.installModel(
                 modelType: ModelType.gemmaIt,
+                fileType: model.fileType,
               )
               .fromNetwork(
                 downloadUrl,

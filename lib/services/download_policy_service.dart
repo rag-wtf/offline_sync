@@ -1,3 +1,4 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
@@ -5,6 +6,15 @@ import 'package:offline_sync/services/model_recommendation_service.dart';
 /// The known cost of the active connection. Unknown is deliberately unsafe
 /// for automatic model downloads.
 enum DownloadConnectivity { unmetered, metered, unknown }
+
+/// Stable outcomes that presentation layers translate into user-facing copy.
+enum DownloadPolicyReason {
+  insufficientStorage,
+  connectivityUnknown,
+  meteredConsent,
+  unmeteredConsent,
+  consentDenied,
+}
 
 class DownloadPolicyDecision {
   const DownloadPolicyDecision._({
@@ -14,15 +24,15 @@ class DownloadPolicyDecision {
   });
 
   const DownloadPolicyDecision.allowed({
-    required String reason,
+    required DownloadPolicyReason reason,
     required bool requiresConsent,
   }) : this._(allowed: true, reason: reason, requiresConsent: requiresConsent);
 
-  const DownloadPolicyDecision.denied(String reason)
+  const DownloadPolicyDecision.denied(DownloadPolicyReason reason)
     : this._(allowed: false, reason: reason, requiresConsent: false);
 
   final bool allowed;
-  final String reason;
+  final DownloadPolicyReason reason;
   final bool requiresConsent;
 }
 
@@ -35,7 +45,7 @@ class DownloadConsentRequest {
 
   final RecommendedModels selected;
   final RecommendedModels? smallerCompatible;
-  final String reason;
+  final DownloadPolicyReason reason;
 
   List<ModelDefinition> get selectedModels => [
     selected.inferenceModel,
@@ -63,12 +73,45 @@ typedef DownloadConsentPrompter =
 class DownloadPolicyService {
   DownloadPolicyService({
     Future<DownloadConnectivity> Function()? connectivityProvider,
-  }) : _connectivityProvider = connectivityProvider ?? _unknownConnectivity;
+    Future<List<ConnectivityResult>> Function()? connectivityResultsProvider,
+  }) : _connectivityProvider =
+           connectivityProvider ??
+           _pluginConnectivityProvider(connectivityResultsProvider);
 
   final Future<DownloadConnectivity> Function() _connectivityProvider;
 
-  static Future<DownloadConnectivity> _unknownConnectivity() async =>
-      DownloadConnectivity.unknown;
+  static Future<DownloadConnectivity> Function() _pluginConnectivityProvider(
+    Future<List<ConnectivityResult>> Function()? resultsProvider,
+  ) {
+    final provider = resultsProvider ?? Connectivity().checkConnectivity;
+    return () => _connectivityFromPlugin(provider);
+  }
+
+  static Future<DownloadConnectivity> _connectivityFromPlugin(
+    Future<List<ConnectivityResult>> Function() resultsProvider,
+  ) async {
+    try {
+      return _classifyConnectivity(await resultsProvider());
+    } on Object {
+      return DownloadConnectivity.unknown;
+    }
+  }
+
+  static DownloadConnectivity _classifyConnectivity(
+    List<ConnectivityResult> results,
+  ) {
+    if (results.contains(ConnectivityResult.wifi) ||
+        results.contains(ConnectivityResult.ethernet)) {
+      return DownloadConnectivity.unmetered;
+    }
+    if (results.contains(ConnectivityResult.mobile) ||
+        results.contains(ConnectivityResult.other) ||
+        results.contains(ConnectivityResult.bluetooth) ||
+        results.contains(ConnectivityResult.satellite)) {
+      return DownloadConnectivity.metered;
+    }
+    return DownloadConnectivity.unknown;
+  }
 
   Future<DownloadPolicyDecision> evaluate(
     List<ModelDefinition> selectedModels,
@@ -81,21 +124,20 @@ class DownloadPolicyService {
     final freeBytes = capabilities.availableStorageMB * 1024 * 1024;
     if (selectedBytes > freeBytes) {
       return const DownloadPolicyDecision.denied(
-        'Not enough free storage for the selected models.',
+        DownloadPolicyReason.insufficientStorage,
       );
     }
 
     final connectivity = await _connectivityProvider();
     if (connectivity == DownloadConnectivity.unknown) {
       return const DownloadPolicyDecision.denied(
-        'Downloads are paused because the connection type could not be '
-        'determined.',
+        DownloadPolicyReason.connectivityUnknown,
       );
     }
 
     final reason = connectivity == DownloadConnectivity.metered
-        ? 'This connection may be metered. Confirm the model download.'
-        : 'Confirm the model download.';
+        ? DownloadPolicyReason.meteredConsent
+        : DownloadPolicyReason.unmeteredConsent;
     return DownloadPolicyDecision.allowed(
       reason: reason,
       requiresConsent: true,

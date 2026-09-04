@@ -1,5 +1,8 @@
+import 'package:flutter_gemma/flutter_gemma.dart' show ModelFileType;
 import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/utils/hugging_face.dart';
+
+export 'package:flutter_gemma/flutter_gemma.dart' show ModelFileType;
 
 /// App-specific model type to avoid conflict with flutter_gemma's ModelType
 enum AppModelType { embedding, inference }
@@ -9,8 +12,6 @@ enum DeviceTier { low, mid, high, premium }
 
 /// Platform runtime that has a registered model engine.
 enum ModelPlatform { web, android, ios, linux, macos, windows }
-
-enum ModelFileType { task, litertlm, tflite }
 
 extension ModelPlatformParsing on ModelPlatform {
   static ModelPlatform? fromDevicePlatform(String platform) {
@@ -232,7 +233,7 @@ class ModelDefinition {
     required this.maxTokens,
     this.tokenizerUrl,
     this.sha256,
-    this.fileType = ModelFileType.tflite,
+    this.fileType = ModelFileType.binary,
     this.supportedPlatforms = allPlatforms,
   });
 

@@ -160,94 +160,150 @@ void main() {
     });
 
     group('platform-compatible recommendations', () {
+      final tierCases =
+          <
+            ({
+              DeviceTier tier,
+              int ramMB,
+              int storageMB,
+              bool hasGpu,
+              String embeddingId,
+            })
+          >[
+            (
+              tier: DeviceTier.low,
+              ramMB: 3072,
+              storageMB: 1536,
+              hasGpu: false,
+              embeddingId: 'gecko-64',
+            ),
+            (
+              tier: DeviceTier.mid,
+              ramMB: 4096,
+              storageMB: 2048,
+              hasGpu: false,
+              embeddingId: 'embedding-gemma-256',
+            ),
+            (
+              tier: DeviceTier.high,
+              ramMB: 9000,
+              storageMB: 5000,
+              hasGpu: true,
+              embeddingId: 'embedding-gemma-512',
+            ),
+            (
+              tier: DeviceTier.premium,
+              ramMB: 13000,
+              storageMB: 9000,
+              hasGpu: true,
+              embeddingId: 'embedding-gemma-1024',
+            ),
+          ];
       final platformCases =
-          <({String platform, bool hasGpu, String inferenceId})>[
-            (platform: 'web', hasGpu: true, inferenceId: 'gemma3-270m'),
-            (platform: 'android', hasGpu: true, inferenceId: 'gemma3-270m'),
-            (platform: 'ios', hasGpu: true, inferenceId: 'gemma3-270m'),
-            (platform: 'linux', hasGpu: false, inferenceId: 'gemma3-1b'),
-            (platform: 'macos', hasGpu: false, inferenceId: 'gemma3-1b'),
-            (platform: 'windows', hasGpu: false, inferenceId: 'gemma3-1b'),
+          <
+            ({
+              String platform,
+              ModelFileType fileType,
+              List<String> inferenceIds,
+            })
+          >[
+            (
+              platform: 'web',
+              fileType: ModelFileType.task,
+              inferenceIds: [
+                'gemma3-270m',
+                'gemma3-270m',
+                'gemma3n-e2b',
+                'gemma3n-e4b',
+              ],
+            ),
+            (
+              platform: 'android',
+              fileType: ModelFileType.task,
+              inferenceIds: [
+                'gemma3-270m',
+                'gemma3-270m',
+                'gemma3n-e2b',
+                'gemma3n-e4b',
+              ],
+            ),
+            (
+              platform: 'ios',
+              fileType: ModelFileType.task,
+              inferenceIds: [
+                'gemma3-270m',
+                'gemma3-270m',
+                'gemma3n-e2b',
+                'gemma3n-e4b',
+              ],
+            ),
+            (
+              platform: 'linux',
+              fileType: ModelFileType.litertlm,
+              inferenceIds: [
+                'gemma3-1b',
+                'gemma3-1b',
+                'gemma3-1b',
+                'gemma3-1b',
+              ],
+            ),
+            (
+              platform: 'macos',
+              fileType: ModelFileType.litertlm,
+              inferenceIds: [
+                'gemma3-1b',
+                'gemma3-1b',
+                'gemma3-1b',
+                'gemma3-1b',
+              ],
+            ),
+            (
+              platform: 'windows',
+              fileType: ModelFileType.litertlm,
+              inferenceIds: [
+                'gemma3-1b',
+                'gemma3-1b',
+                'gemma3-1b',
+                'gemma3-1b',
+              ],
+            ),
           ];
 
-      for (final entry in platformCases) {
-        test(
-          '${entry.platform} selects a runnable low-tier inference model',
-          () {
-            final recommendation = service.getRecommendedModels(
-              DeviceCapabilities(
-                totalRamMB: 4096,
-                availableStorageMB: 4096,
-                hasGpu: entry.hasGpu,
-                platform: entry.platform,
-              ),
+      for (final platformCase in platformCases) {
+        for (var index = 0; index < tierCases.length; index++) {
+          final tierCase = tierCases[index];
+          test('${platformCase.platform} ${tierCase.tier.name} tier returns a '
+              'runnable pair or the catalog fallback', () {
+            final capabilities = DeviceCapabilities(
+              totalRamMB: tierCase.ramMB,
+              availableStorageMB: tierCase.storageMB,
+              hasGpu: tierCase.hasGpu,
+              platform: platformCase.platform,
             );
 
-            expect(recommendation.inferenceModel.id, entry.inferenceId);
-            expect(
-              recommendation.inferenceModel.isCompatibleWith(
-                DeviceCapabilities(
-                  totalRamMB: 4096,
-                  availableStorageMB: 4096,
-                  hasGpu: entry.hasGpu,
-                  platform: entry.platform,
-                ),
-              ),
-              isTrue,
-            );
-            expect(
-              recommendation.embeddingModel.isCompatibleWith(
-                DeviceCapabilities(
-                  totalRamMB: 4096,
-                  availableStorageMB: 4096,
-                  hasGpu: entry.hasGpu,
-                  platform: entry.platform,
-                ),
-              ),
-              isTrue,
-            );
-          },
-        );
-      }
-
-      test(
-        'falls back to the compatible desktop LiteRT-LM model at every tier',
-        () {
-          for (final capabilities in <DeviceCapabilities>[
-            const DeviceCapabilities(
-              totalRamMB: 3072,
-              availableStorageMB: 2048,
-              hasGpu: false,
-              platform: 'linux',
-            ),
-            const DeviceCapabilities(
-              totalRamMB: 4096,
-              availableStorageMB: 4096,
-              hasGpu: false,
-              platform: 'linux',
-            ),
-            const DeviceCapabilities(
-              totalRamMB: 9000,
-              availableStorageMB: 5000,
-              hasGpu: false,
-              platform: 'linux',
-            ),
-            const DeviceCapabilities(
-              totalRamMB: 13000,
-              availableStorageMB: 9000,
-              hasGpu: false,
-              platform: 'linux',
-            ),
-          ]) {
             final recommendation = service.getRecommendedModels(capabilities);
-            expect(recommendation.inferenceModel.id, 'gemma3-1b');
+
+            expect(recommendation.tier, tierCase.tier);
+            expect(
+              recommendation.inferenceModel.id,
+              platformCase.inferenceIds[index],
+            );
+            expect(recommendation.embeddingModel.id, tierCase.embeddingId);
             expect(
               recommendation.inferenceModel.fileType,
-              ModelFileType.litertlm,
+              platformCase.fileType,
             );
-          }
-        },
-      );
+            expect(
+              recommendation.inferenceModel.isCompatibleWith(capabilities),
+              isTrue,
+            );
+            expect(
+              recommendation.embeddingModel.isCompatibleWith(capabilities),
+              isTrue,
+            );
+          });
+        }
+      }
 
       test('rejects GPU-only task models when GPU is unavailable', () {
         const capabilities = DeviceCapabilities(

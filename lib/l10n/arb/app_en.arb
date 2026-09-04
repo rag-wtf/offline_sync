@@ -139,5 +139,10 @@
     "downloadConsentTitle": "Download models?",
     "downloadConsentDescription": "The following models will be downloaded:",
     "downloadConsentUseSmaller": "Use smaller compatible models",
-    "downloadConsentDownload": "Download"
+    "downloadConsentDownload": "Download",
+    "downloadPolicyInsufficientStorage": "There is not enough free storage for the selected models.",
+    "downloadPolicyConnectivityUnknown": "Downloads are paused because the connection type could not be determined.",
+    "downloadPolicyMeteredConsent": "This connection may have data limits. Confirm the download.",
+    "downloadPolicyUnmeteredConsent": "Confirm the model download.",
+    "downloadPolicyConsentDenied": "The model download was not approved."
 }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:offline_sync/l10n/gen/app_localizations.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/ui/utils/download_policy_localizations.dart';
 import 'package:offline_sync/ui/utils/repo_link_copy.dart';
 import 'package:offline_sync/ui/views/startup/startup_viewmodel.dart';
 import 'package:stacked/stacked.dart';
@@ -181,6 +183,13 @@ class StartupView extends StackedView<StartupViewModel> {
   Widget _buildErrorState(BuildContext context, StartupViewModel viewModel) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final policyReason = viewModel.downloadPolicyReason;
+    final errorMessage = policyReason == null
+        ? viewModel.modelError?.toString() ?? 'Unknown error'
+        : localizeDownloadPolicyReason(
+            AppLocalizations.of(context),
+            policyReason,
+          );
 
     return Column(
       children: [
@@ -200,7 +209,7 @@ class StartupView extends StackedView<StartupViewModel> {
               ),
               const SizedBox(height: 16),
               Text(
-                viewModel.modelError?.toString() ?? 'Unknown error',
+                errorMessage,
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: colorScheme.onErrorContainer,

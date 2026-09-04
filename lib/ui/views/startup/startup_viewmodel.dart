@@ -57,6 +57,9 @@ class StartupViewModel extends BaseViewModel {
   bool _isUnsupportedDevice = false;
   bool get isUnsupportedDevice => _isUnsupportedDevice;
 
+  DownloadPolicyReason? _downloadPolicyReason;
+  DownloadPolicyReason? get downloadPolicyReason => _downloadPolicyReason;
+
   // Track recommended model IDs for navigation check
   String? _recommendedInferenceModelId;
   String? _recommendedEmbeddingModelId;
@@ -188,7 +191,7 @@ class StartupViewModel extends BaseViewModel {
           _capabilities!,
         );
         if (!policy.allowed) {
-          setError(policy.reason);
+          _setDownloadPolicyError(policy.reason);
           return;
         }
         if (policy.requiresConsent) {
@@ -201,7 +204,7 @@ class StartupViewModel extends BaseViewModel {
             ),
           );
           if (!consent.approved) {
-            setError('Model download was not approved.');
+            _setDownloadPolicyError(DownloadPolicyReason.consentDenied);
             return;
           }
           if (consent.useSmallerCompatible) {
@@ -323,6 +326,7 @@ class StartupViewModel extends BaseViewModel {
 
   Future<void> retry() async {
     setError(null);
+    _downloadPolicyReason = null;
     _needsToken = false;
     _statusMessage = 'Retrying...';
     notifyListeners();
@@ -330,6 +334,11 @@ class StartupViewModel extends BaseViewModel {
     _modelService.resetErroredModels();
 
     await runStartupLogic();
+  }
+
+  void _setDownloadPolicyError(DownloadPolicyReason reason) {
+    _downloadPolicyReason = reason;
+    setError(reason.name);
   }
 
   Future<DownloadConsentResult> _requestDownloadConsent(

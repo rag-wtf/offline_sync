@@ -88,3 +88,52 @@ The full `flutter test` suite was not run after the user requested that work
 stop and authorized committing after focused tests plus analysis. The focused
 Task 1 suite and `flutter analyze` are green; full-suite verification remains
 the only outstanding concern.
+
+## Final round-1 fixes
+
+- Replaced the fail-closed-only production connectivity default with a real
+  `connectivity_plus` 6.1.5 provider while retaining injection. Wi-Fi and
+  Ethernet are unmetered; mobile, other, satellite, and Bluetooth are treated
+  as metered; no connection, VPN-only, empty results, and plugin failures remain
+  unknown. A known connected result now reaches explicit consent.
+- Reused flutter_gemma's `ModelFileType` in catalog metadata and passed each
+  inference model's declared file type through cached activation and foreground
+  installation. The injected installer seam now exposes the file type.
+- Expanded recommendation coverage to all 24 supported platform-by-tier
+  combinations with literal expected model IDs, tier/fallback checks, runnable
+  inference file types, and compatibility assertions.
+- Replaced policy UI copy returned by the service with stable reason values.
+  Startup policy denials and consent reasons are localized through new English
+  and Spanish ARB entries.
+- Restored generated Linux, macOS, and Windows plugin registrant deltas after
+  verification.
+
+### Final verification
+
+```text
+flutter test test/services/download_policy_service_test.dart \
+  test/services/model_recommendation_service_test.dart \
+  test/services/model_management_service_test.dart \
+  test/ui/views/startup/startup_viewmodel_test.dart \
+  test/ui/views/startup/startup_view_test.dart \
+  test/ui/dialogs/download_consent_dialog_test.dart
+```
+
+Result: `00:04 +133: All tests passed!`.
+
+```text
+flutter analyze
+```
+
+Result: `No issues found! (ran in 4.0s)`.
+
+Controller verification supplied for this round:
+
+```text
+flutter test --coverage
+```
+
+Result: `385 passed, 0 failed`.
+
+Final concern: no additional full suite was run by this fixer, per instruction;
+the controller's full coverage run above is green.

@@ -139,5 +139,10 @@
     "downloadConsentTitle": "Â¿Descargar modelos?",
     "downloadConsentDescription": "Se descargarÃ¡n los siguientes modelos:",
     "downloadConsentUseSmaller": "Usar modelos compatibles mÃ¡s pequeÃ±os",
-    "downloadConsentDownload": "Descargar"
+    "downloadConsentDownload": "Descargar",
+    "downloadPolicyInsufficientStorage": "No hay suficiente espacio libre para los modelos seleccionados.",
+    "downloadPolicyConnectivityUnknown": "Las descargas están en pausa porque no se pudo determinar el tipo de conexión.",
+    "downloadPolicyMeteredConsent": "Esta conexión puede tener límites de datos. Confirma la descarga.",
+    "downloadPolicyUnmeteredConsent": "Confirma la descarga de los modelos.",
+    "downloadPolicyConsentDenied": "No se aprobó la descarga de los modelos."
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:offline_sync/l10n/gen/app_localizations.dart';
 import 'package:offline_sync/services/download_policy_service.dart';
+import 'package:offline_sync/ui/utils/download_policy_localizations.dart';
 
 class DownloadConsentDialog extends StatelessWidget {
   const DownloadConsentDialog({
@@ -29,7 +30,7 @@ class DownloadConsentDialog extends StatelessWidget {
             for (final model in request.selectedModels)
               Text('${model.name} (${model.sizeFormatted})'),
             const SizedBox(height: 12),
-            Text(request.reason),
+            Text(localizeDownloadPolicyReason(strings, request.reason)),
             if (smaller != null) ...[
               const SizedBox(height: 12),
               OutlinedButton(

@@ -603,7 +603,10 @@ void main() {
 
           expect(inferenceModel.status, ModelStatus.notDownloaded);
           expect(embeddingModel.status, ModelStatus.notDownloaded);
-          expect(viewModel.modelError, 'Model download was not approved.');
+          expect(
+            viewModel.downloadPolicyReason,
+            DownloadPolicyReason.consentDenied,
+          );
         },
       );
 

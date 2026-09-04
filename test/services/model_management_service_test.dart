@@ -183,15 +183,18 @@ void main() {
       );
 
       test(
-        'reactivates a cached inference model without foreground download',
+        'reactivates a cached inference model with its declared file type',
         () async {
           bool? requestedForeground;
+          ModelFileType? requestedFileType;
           final service = ModelManagementService(
             inferenceModelInstaller:
                 (
                   _, {
+                  required fileType,
                   required foreground,
                 }) async {
+                  requestedFileType = fileType;
                   requestedForeground = foreground;
                 },
           );
@@ -208,6 +211,7 @@ void main() {
           await service.switchInferenceModel(model.id);
 
           expect(requestedForeground, isFalse);
+          expect(requestedFileType, InferenceModels.gemma3_270M.fileType);
         },
       );
 
