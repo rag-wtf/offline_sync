@@ -233,7 +233,8 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
                                           Expanded(
                                             child: Text(
                                               l10n?.reindexUnavailable ??
-                                                  'Source unavailable for re-indexing.',
+                                                  'Source unavailable for '
+                                                      're-indexing.',
                                               style: TextStyle(
                                                 color: colorScheme.error,
                                               ),

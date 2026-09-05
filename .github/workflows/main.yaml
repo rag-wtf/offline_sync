@@ -17,11 +17,47 @@ jobs:
     uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/semantic_pull_request.yml@v1
 
   build:
-    uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/flutter_package.yml@v1.19.2
-    with:
-      flutter_version: "3.44.x"
-      run_bloc_lint: false
-      min_coverage: 95
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.x"
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate localization
+        run: flutter gen-l10n
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test with coverage
+        run: flutter test --coverage --reporter compact
+
+      - name: Enforce 95 percent line coverage
+        shell: bash
+        run: |
+          awk -F: '
+            /^DA:/ {
+              split($2, fields, ",");
+              total++;
+              if (fields[2] > 0) covered++;
+            }
+            END {
+              if (total == 0 || covered * 100 < total * 95) {
+                printf "Coverage %d/%d is below the required 95%%\\n", covered, total;
+                exit 1;
+              }
+              printf "Coverage %d/%d meets the required 95%%\\n", covered, total;
+            }
+          ' coverage/lcov.info
 
   spell-check:
     uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/spell_check.yml@v1

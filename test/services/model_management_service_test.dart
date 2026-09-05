@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_gemma/flutter_gemma.dart';
@@ -5,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/services/embedding_service.dart';
 import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
@@ -17,6 +19,8 @@ import '../helpers/test_helpers.dart';
 // Note: ModelManagementService depends heavily on FlutterGemma native plugin
 // which cannot be easily mocked. These tests focus on state management,
 // API contracts, and error handling rather than deep integration.
+
+class _MockModelFileManager extends Mock implements ModelFileManager {}
 
 void main() {
   group('ModelManagementService Tests -', () {
@@ -184,6 +188,70 @@ void main() {
       );
 
       test(
+        'clears the plugin inference identity when rollback has no prior model',
+        () async {
+          final manager = _MockModelFileManager();
+          var clearCalls = 0;
+          when(manager.clearActiveInferenceIdentity).thenAnswer((_) async {
+            clearCalls++;
+          });
+          when(
+            () => locator<RagSettingsService>().setActiveInferenceModelId(
+              any(),
+            ),
+          ).thenThrow(StateError('settings write failed'));
+
+          final service = ModelManagementService(
+            modelManager: manager,
+            inferenceModelActivator: (_) async {},
+          );
+          addTearDown(service.dispose);
+          final model = service.models.firstWhere(
+            (candidate) => candidate.type == AppModelType.inference,
+          )..status = ModelStatus.downloaded;
+
+          await expectLater(
+            service.switchInferenceModel(model.id),
+            throwsStateError,
+          );
+
+          expect(clearCalls, 1);
+        },
+      );
+
+      test(
+        'clears the plugin embedding identity when rollback has no prior model',
+        () async {
+          final manager = _MockModelFileManager();
+          var clearCalls = 0;
+          when(manager.clearActiveEmbeddingIdentity).thenAnswer((_) async {
+            clearCalls++;
+          });
+          when(
+            () => locator<RagSettingsService>().setActiveEmbeddingModelId(
+              any(),
+            ),
+          ).thenThrow(StateError('settings write failed'));
+
+          final service = ModelManagementService(
+            modelManager: manager,
+            embeddingModelActivator: (_) async {},
+          );
+          addTearDown(service.dispose);
+          final model = service.models.firstWhere(
+            (candidate) => candidate.type == AppModelType.embedding,
+          )..status = ModelStatus.downloaded;
+
+          await expectLater(
+            service.switchEmbeddingModel(model.id),
+            throwsStateError,
+          );
+
+          expect(clearCalls, 1);
+        },
+      );
+
+      test(
         'reactivates a cached inference model with its declared file type',
         () async {
           bool? requestedForeground;
@@ -278,6 +346,131 @@ void main() {
           expect(deleted?.id, target.id);
           expect(target.status, ModelStatus.notDownloaded);
           expect(other.status, ModelStatus.downloaded);
+        },
+      );
+
+      test(
+        'waits for an active inference operation to release before deleting',
+        () async {
+          final provider = getAndRegisterMockInferenceModelProvider();
+          var clearCalls = 0;
+          final releaseStarted = Completer<void>();
+          final release = Completer<void>();
+          when(provider.clearCacheAndWait).thenAnswer((_) async {
+            clearCalls++;
+            releaseStarted.complete();
+            await release.future;
+          });
+          when(
+            () => locator<RagSettingsService>().setActiveInferenceModelId(
+              any(),
+            ),
+          ).thenAnswer((_) async {});
+          when(
+            locator<RagSettingsService>().clearActiveInferenceModelId,
+          ).thenAnswer((_) async {});
+
+          var deleteStarted = false;
+          final service = ModelManagementService(
+            modelDeleter: (_) async {
+              deleteStarted = true;
+            },
+            inferenceModelActivator: (_) async {},
+            clearActiveInferenceIdentity: () async {},
+          );
+          addTearDown(service.dispose);
+          final model = service.models.firstWhere(
+            (candidate) => candidate.type == AppModelType.inference,
+          )..status = ModelStatus.downloaded;
+
+          await service.switchInferenceModel(model.id);
+          final deletion = service.deleteModel(model.id);
+          await releaseStarted.future;
+          expect(deleteStarted, isFalse);
+
+          release.complete();
+          expect(await deletion, isTrue);
+          expect(clearCalls, 1);
+        },
+      );
+
+      test(
+        'serializes embedding deletion with an active embedding operation',
+        () async {
+          final coordinator = EmbeddingModelCoordinator();
+          final operationStarted = Completer<void>();
+          final operationRelease = Completer<void>();
+          final operation = coordinator.run(() async {
+            operationStarted.complete();
+            await operationRelease.future;
+          });
+          await operationStarted.future;
+
+          var deleteStarted = false;
+          final service = ModelManagementService(
+            embeddingCoordinator: coordinator,
+            modelDeleter: (_) async {
+              deleteStarted = true;
+            },
+          );
+          addTearDown(service.dispose);
+          final model = service.models.firstWhere(
+            (candidate) => candidate.type == AppModelType.embedding,
+          )..status = ModelStatus.downloaded;
+
+          final deletion = service.deleteModel(model.id);
+          await Future<void>.delayed(Duration.zero);
+          expect(deleteStarted, isFalse);
+
+          operationRelease.complete();
+          await operation;
+          expect(await deletion, isTrue);
+        },
+      );
+
+      test(
+        'refresh restores embedding models through the coordinator',
+        () async {
+          const embeddingId = 'embedding-gemma-256';
+          when(
+            () => locator<RagSettingsService>().activeEmbeddingModelId,
+          ).thenReturn(embeddingId);
+          when(
+            () => locator<RagSettingsService>().activeInferenceModelId,
+          ).thenReturn(null);
+
+          final coordinator = EmbeddingModelCoordinator();
+          final operationStarted = Completer<void>();
+          final operationRelease = Completer<void>();
+          final operation = coordinator.run(() async {
+            operationStarted.complete();
+            await operationRelease.future;
+          });
+          await operationStarted.future;
+
+          final expectedFileName = ModelConfig.allModels
+              .firstWhere((model) => model.id == embeddingId)
+              .fileName;
+          var activationStarted = false;
+          final service = ModelManagementService(
+            embeddingCoordinator: coordinator,
+            modelInstalledChecker: (filename) async =>
+                filename == expectedFileName,
+            embeddingModelDownloader: (_, _, _) async {},
+            embeddingModelActivator: (_) async {
+              activationStarted = true;
+            },
+          );
+          addTearDown(service.dispose);
+
+          final refresh = service.refresh();
+          await Future<void>.delayed(Duration.zero);
+          expect(activationStarted, isFalse);
+
+          operationRelease.complete();
+          await operation;
+          await refresh;
+          expect(activationStarted, isTrue);
         },
       );
     });

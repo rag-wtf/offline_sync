@@ -105,7 +105,6 @@ void main() {
             'v1',
             embedding,
             limit: 20,
-            embeddingModelId: null,
           ),
         ).called(1);
         verify(
@@ -113,7 +112,6 @@ void main() {
             'v2',
             embedding,
             limit: 20,
-            embeddingModelId: null,
           ),
         ).called(1);
       });

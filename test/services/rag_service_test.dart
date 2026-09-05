@@ -191,9 +191,6 @@ void main() {
           () => mockVectorStore.hybridSearch(
             query,
             embedding,
-            limit: 5,
-            semanticWeight: null,
-            documentIds: null,
             embeddingModelId: 'gecko-64',
           ),
         ).called(1);
@@ -292,7 +289,6 @@ void main() {
             query,
             embedding,
             limit: 3,
-            semanticWeight: null,
             documentIds: any(named: 'documentIds'),
             embeddingModelId: 'gecko-64',
           ),
@@ -352,8 +348,6 @@ void main() {
             query,
             embedding,
             limit: 3,
-            semanticWeight: null,
-            documentIds: null,
             embeddingModelId: 'gecko-64',
           ),
         ).called(1);
@@ -398,7 +392,6 @@ void main() {
             embedding,
             limit: 4,
             documentIds: documentIds,
-            semanticWeight: null,
             embeddingModelId: 'gecko-64',
           ),
         ).called(1);
@@ -536,7 +529,6 @@ void main() {
             limit: 7,
             documentIds: any(named: 'documentIds'),
             embeddingModelId: any(named: 'embeddingModelId'),
-            semanticWeight: null,
           ),
         ).called(1);
       });

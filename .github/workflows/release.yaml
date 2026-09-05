@@ -64,6 +64,8 @@ jobs:
           cache: true
       - name: Install dependencies
         run: flutter pub get
+      - name: Generate localization
+        run: flutter gen-l10n
       - name: Analyze
         run: flutter analyze
       - name: Test

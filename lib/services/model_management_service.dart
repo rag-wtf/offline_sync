@@ -9,8 +9,8 @@ import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
-import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/embedding_service.dart';
+import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_checksum.dart';
@@ -130,6 +130,7 @@ class ModelManagementService {
     Future<SharedPreferences> Function()? sharedPreferencesLoader,
     Future<void> Function()? clearActiveInferenceIdentity,
     Future<void> Function()? clearActiveEmbeddingIdentity,
+    ModelFileManager? modelManager,
     bool? isWebOverride,
     DeviceCapabilityService? deviceService,
     Future<DeviceCapabilities> Function()? capabilitiesProvider,
@@ -147,6 +148,7 @@ class ModelManagementService {
        _sharedPreferencesLoader = sharedPreferencesLoader,
        _clearActiveInferenceIdentity = clearActiveInferenceIdentity,
        _clearActiveEmbeddingIdentity = clearActiveEmbeddingIdentity,
+       _modelManager = modelManager,
        _isWeb = isWebOverride ?? kIsWeb,
        _deviceService = deviceService,
        _capabilitiesProvider = capabilitiesProvider,
@@ -187,6 +189,7 @@ class ModelManagementService {
   final Future<SharedPreferences> Function()? _sharedPreferencesLoader;
   final Future<void> Function()? _clearActiveInferenceIdentity;
   final Future<void> Function()? _clearActiveEmbeddingIdentity;
+  final ModelFileManager? _modelManager;
   final bool _isWeb;
   final DeviceCapabilityService? _deviceService;
   final Future<DeviceCapabilities> Function()? _capabilitiesProvider;
@@ -326,14 +329,19 @@ class ModelManagementService {
       }
     }
 
-    if (savedEmbeddingId != null) {
-      final model = _modelForSavedId(savedEmbeddingId, AppModelType.embedding);
-      if (model != null && model.status == ModelStatus.downloaded) {
-        if (await _activateEmbeddingModel(model)) {
-          _activeEmbeddingModelId = model.id;
+    await _embeddingCoordinator.run(() async {
+      if (savedEmbeddingId != null) {
+        final model = _modelForSavedId(
+          savedEmbeddingId,
+          AppModelType.embedding,
+        );
+        if (model != null && model.status == ModelStatus.downloaded) {
+          if (await _activateEmbeddingModel(model)) {
+            _activeEmbeddingModelId = model.id;
+          }
         }
       }
-    }
+    });
 
     LoggingService.debug('initialize() completed, calling _notify()');
     _notify();
@@ -760,64 +768,65 @@ class ModelManagementService {
         ? _activeInferenceModelId == model.id
         : _activeEmbeddingModelId == model.id;
 
-    try {
-      final deleter = _modelDeleter;
-      if (deleter != null) {
-        await deleter(model);
+    Future<bool> deletion() async {
+      try {
         if (wasActive) {
+          if (model.type == AppModelType.inference &&
+              locator.isRegistered<InferenceModelProvider>()) {
+            await locator<InferenceModelProvider>().clearCacheAndWait();
+          }
           if (model.type == AppModelType.inference) {
-            await _clearActiveInferenceIdentity?.call();
+            await _clearPluginActiveInferenceIdentity();
           } else {
-            await _clearActiveEmbeddingIdentity?.call();
+            await _clearPluginActiveEmbeddingIdentity();
           }
         }
-      } else {
-        final manager = FlutterGemmaPlugin.instance.modelManager;
-        await manager.deleteModel(_buildModelSpec(definition));
-        if (wasActive) {
-          if (model.type == AppModelType.inference) {
-            await (_clearActiveInferenceIdentity?.call() ??
-                manager.clearActiveInferenceIdentity());
-          } else {
-            await (_clearActiveEmbeddingIdentity?.call() ??
-                manager.clearActiveEmbeddingIdentity());
-          }
-        }
-      }
 
-      if (wasActive) {
-        if (model.type == AppModelType.inference) {
-          _activeInferenceModelId = null;
-          await _ragSettings.clearActiveInferenceModelId();
-          if (locator.isRegistered<InferenceModelProvider>()) {
-            locator<InferenceModelProvider>().clearCache();
-          }
+        final deleter = _modelDeleter;
+        if (deleter != null) {
+          await deleter(model);
         } else {
-          _activeEmbeddingModelId = null;
-          await _ragSettings.clearActiveEmbeddingModelId();
+          final manager =
+              _modelManager ?? FlutterGemmaPlugin.instance.modelManager;
+          await manager.deleteModel(_buildModelSpec(definition));
         }
+
+        if (wasActive) {
+          if (model.type == AppModelType.inference) {
+            _activeInferenceModelId = null;
+            await _ragSettings.clearActiveInferenceModelId();
+          } else {
+            _activeEmbeddingModelId = null;
+            await _ragSettings.clearActiveEmbeddingModelId();
+          }
+        }
+        await _clearPersistedVerificationMetadata(model);
+        model
+          ..status = ModelStatus.notDownloaded
+          ..progress = 0.0
+          ..failureKind = ModelDownloadFailureKind.none
+          ..errorMessage = null;
+        _notify();
+        return true;
+      } on Object catch (_) {
+        model
+          ..status = ModelStatus.error
+          ..errorMessage = 'Unable to delete this model. Please try again.';
+        _notify();
+        return false;
       }
-      await _clearPersistedVerificationMetadata(model);
-      model
-        ..status = ModelStatus.notDownloaded
-        ..progress = 0.0
-        ..failureKind = ModelDownloadFailureKind.none
-        ..errorMessage = null;
-      _notify();
-      return true;
-    } on Object catch (_) {
-      model
-        ..status = ModelStatus.error
-        ..errorMessage = 'Unable to delete this model. Please try again.';
-      _notify();
-      return false;
     }
+
+    if (model.type == AppModelType.embedding) {
+      return _embeddingCoordinator.run(deletion);
+    }
+    return deletion();
   }
 
   Future<bool> _restoreInferenceModel(String? modelId) async {
     if (modelId == null) {
       try {
-        await _clearActiveInferenceIdentity?.call();
+        await _clearPluginActiveInferenceIdentity();
         return true;
       } on Object {
         return false;
@@ -830,7 +839,7 @@ class ModelManagementService {
   Future<bool> _restoreEmbeddingModel(String? modelId) async {
     if (modelId == null) {
       try {
-        await _clearActiveEmbeddingIdentity?.call();
+        await _clearPluginActiveEmbeddingIdentity();
         return true;
       } on Object {
         return false;
@@ -838,6 +847,18 @@ class ModelManagementService {
     }
     final model = _models.firstWhere((candidate) => candidate.id == modelId);
     return _activateEmbeddingModel(model);
+  }
+
+  Future<void> _clearPluginActiveInferenceIdentity() {
+    return _clearActiveInferenceIdentity?.call() ??
+        (_modelManager ?? FlutterGemmaPlugin.instance.modelManager)
+            .clearActiveInferenceIdentity();
+  }
+
+  Future<void> _clearPluginActiveEmbeddingIdentity() {
+    return _clearActiveEmbeddingIdentity?.call() ??
+        (_modelManager ?? FlutterGemmaPlugin.instance.modelManager)
+            .clearActiveEmbeddingIdentity();
   }
 
   void _notify() {

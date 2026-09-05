@@ -351,7 +351,7 @@ MockEmbeddingService getAndRegisterMockEmbeddingService() {
   _removeRegistrationIfExists<EmbeddingService>();
   final service = MockEmbeddingService();
   final model = MockEmbeddingModel();
-  when(() => service.pinActiveModel()).thenAnswer(
+  when(service.pinActiveModel).thenAnswer(
     (_) async => PinnedEmbeddingModel(id: 'gecko-64', model: model),
   );
   locator.registerSingleton<EmbeddingService>(service);

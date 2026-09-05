@@ -170,7 +170,8 @@ class DocumentLibraryViewModel extends BaseViewModel {
           title: _l10n?.errorTitle ?? 'Error',
           description:
               _l10n?.reindexUnavailable ??
-              'This document has no available source bytes or file to re-index.',
+              'This document has no available source bytes or file to '
+                  're-index.',
         );
         return false;
       }

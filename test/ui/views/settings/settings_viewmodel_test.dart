@@ -3,10 +3,14 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.router.dart';
+import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/services/document_management_service.dart';
+import 'package:offline_sync/services/document_parser_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/ui/views/settings/settings_viewmodel.dart';
+import 'package:stacked_services/stacked_services.dart';
 
 import '../../../helpers/test_helpers.dart';
 
@@ -19,6 +23,9 @@ class FakeDeviceCapabilityService extends DeviceCapabilityService {
   Future<DeviceCapabilities> getCapabilities({bool refresh = false}) async =>
       capabilities;
 }
+
+class MockDocumentManagementService extends Mock
+    implements DocumentManagementService {}
 
 void main() {
   late MockModelManagementService modelService;
@@ -227,6 +234,10 @@ void main() {
     await viewModel.onSemanticWeightChangeEnd(0.4);
     await viewModel.onSearchTopKChangeEnd(4);
     await viewModel.onMaxHistoryMessagesChangeEnd(3);
+    viewModel.onRerankTopKChanged(12);
+    await viewModel.onRerankTopKChangeEnd(12);
+    viewModel.onMaxDocumentSizeChanged(75);
+    await viewModel.onMaxDocumentSizeChangeEnd(75);
     await viewModel.onMaxTokensChangeEnd(2048);
     await viewModel.onMaxTokensChangeEnd(
       viewModel.modelDefaultMaxTokens.toDouble(),
@@ -241,6 +252,8 @@ void main() {
     verify(() => ragSettings.setSemanticWeight(0.4)).called(1);
     verify(() => ragSettings.setSearchTopK(4)).called(1);
     verify(() => ragSettings.setMaxHistoryMessages(3)).called(1);
+    verify(() => ragSettings.setRerankTopK(12)).called(1);
+    verify(() => ragSettings.setMaxDocumentSizeMB(75)).called(1);
     verify(() => ragSettings.setMaxTokens(2048)).called(1);
     verify(() => ragSettings.setMaxTokens(null)).called(1);
   });
@@ -357,6 +370,135 @@ void main() {
     );
 
     expect(await viewModel.clearChatHistory(), isTrue);
+  });
+
+  test('covers confirmed data controls and all displayed settings', () async {
+    final dialogService = getAndRegisterMockDialogService();
+    final documentService = MockDocumentManagementService();
+    final document = Document(
+      id: 'document-1',
+      title: 'Document',
+      filePath: '/tmp/document.txt',
+      format: DocumentFormat.plainText,
+      chunkCount: 1,
+      totalCharacters: 10,
+      contentHash: 'hash',
+      ingestedAt: DateTime(2024),
+      embeddingModelId: 'embedding-a',
+    );
+    when(
+      () => dialogService.showConfirmationDialog(
+        title: any(named: 'title'),
+        description: any(named: 'description'),
+        confirmationTitle: any(named: 'confirmationTitle'),
+      ),
+    ).thenAnswer((_) async => DialogResponse(confirmed: true));
+    when(
+      () => dialogService.showConfirmationDialog(
+        title: any(named: 'title'),
+        description: any(named: 'description'),
+        confirmationTitle: any(named: 'confirmationTitle'),
+        cancelTitle: any(named: 'cancelTitle'),
+      ),
+    ).thenAnswer((_) async => DialogResponse(confirmed: true));
+    when(documentService.getAllDocuments).thenAnswer((_) async => [document]);
+    when(() => modelService.deleteModel(any())).thenAnswer((_) async => true);
+    when(() => ragSettings.rerankTopK).thenReturn(9);
+    when(() => ragSettings.searchTopK).thenReturn(4);
+    when(() => ragSettings.maxHistoryMessages).thenReturn(3);
+    when(() => ragSettings.maxDocumentSizeMB).thenReturn(75);
+    when(() => ragSettings.activeInferenceContextLimit).thenReturn(2048);
+
+    final viewModel = SettingsViewModel(
+      modelService: modelService,
+      ragSettings: ragSettings,
+      navigationService: navigationService,
+      deviceService: FakeDeviceCapabilityService(
+        const DeviceCapabilities(
+          totalRamMB: 2048,
+          availableStorageMB: 2048,
+          hasGpu: false,
+          platform: 'android',
+        ),
+      ),
+      dialogService: dialogService,
+      documentService: documentService,
+      getCrashLogsAction: () async => ['diagnostic'],
+      clearCrashLogsAction: () async {},
+      clearChatHistoryAction: () async {},
+      saveTokenAction: (_) async {},
+      clearTokenAction: () async {},
+    );
+
+    expect(viewModel.rerankTopKDisplay, 9);
+    expect(viewModel.searchTopKDisplay, 4);
+    expect(viewModel.maxHistoryMessagesDisplay, 3);
+    expect(viewModel.maxDocumentSizeMB, 75);
+    expect(viewModel.maxDocumentSizeDisplay, 75);
+    expect(viewModel.maxTokensLimit, 2048);
+    viewModel
+      ..onRerankTopKChanged(12)
+      ..onSearchTopKChanged(2)
+      ..onMaxHistoryMessagesChanged(5)
+      ..onMaxDocumentSizeChanged(80);
+    await viewModel.onRerankTopKChangeEnd(12);
+    await viewModel.onSearchTopKChangeEnd(2);
+    await viewModel.onMaxHistoryMessagesChangeEnd(5);
+    await viewModel.onMaxDocumentSizeChangeEnd(80);
+
+    expect(await viewModel.deleteModel('inference-a'), isTrue);
+    expect(await viewModel.clearChatHistory(), isTrue);
+    await viewModel.loadCrashLogs();
+    await viewModel.clearCrashLogs();
+    await viewModel.enterToken();
+    await viewModel.switchEmbeddingModel('embedding-b');
+    await viewModel.exportCrashLogs();
+  });
+
+  test('surfaces recoverable action failures without throwing', () async {
+    final viewModel = SettingsViewModel(
+      modelService: modelService,
+      ragSettings: ragSettings,
+      navigationService: navigationService,
+      deviceService: FakeDeviceCapabilityService(
+        const DeviceCapabilities(
+          totalRamMB: 2048,
+          availableStorageMB: 2048,
+          hasGpu: false,
+          platform: 'android',
+        ),
+      ),
+      saveTokenAction: (_) async => throw StateError('save failed'),
+      clearTokenAction: () async => throw StateError('clear failed'),
+      clearChatHistoryAction: () async => throw StateError('history failed'),
+      getCrashLogsAction: () async => throw StateError('load failed'),
+      clearCrashLogsAction: () async => throw StateError('logs failed'),
+    );
+    when(() => modelService.downloadModel(any())).thenThrow(
+      StateError('download failed'),
+    );
+    when(() => modelService.deleteModel(any())).thenThrow(
+      StateError('delete failed'),
+    );
+    when(() => modelService.switchInferenceModel(any())).thenThrow(
+      StateError('inference switch failed'),
+    );
+    when(() => modelService.switchEmbeddingModel(any())).thenThrow(
+      StateError('embedding switch failed'),
+    );
+
+    await viewModel.downloadModel('inference-a');
+    expect(await viewModel.deleteModel('inference-a'), isFalse);
+    expect(await viewModel.saveToken('bad'), isFalse);
+    await viewModel.clearToken();
+    expect(await viewModel.clearChatHistory(), isFalse);
+    await viewModel.loadCrashLogs();
+    await viewModel.clearCrashLogs();
+    await viewModel.switchInferenceModel('inference-a');
+    await viewModel.switchEmbeddingModel('embedding-a');
+
+    expect(viewModel.actionError, isNotNull);
+    expect(viewModel.isLoadingCrashLogs, isFalse);
   });
 
   test(

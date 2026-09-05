@@ -362,9 +362,10 @@ class SettingsViewModel extends BaseViewModel {
           _l10n?.crashLogsLoadError ??
           'Unable to load crash logs. Please try again.';
     } finally {
-      if (disposed) return;
-      _isLoadingCrashLogs = false;
-      _notifyIfAlive();
+      if (!disposed) {
+        _isLoadingCrashLogs = false;
+        _notifyIfAlive();
+      }
     }
   }
 

@@ -44,7 +44,7 @@ void main() {
     test('crash records redact credentials, URLs, and paths', () async {
       await LoggingService.recordCrash(
         'request failed authorization=Bearer secret-token '
-        'https://example.com/private?token=secret C:\\Users\\alice\\notes.txt',
+        r'https://example.com/private?token=secret C:\Users\alice\notes.txt',
       );
 
       final prefs = await SharedPreferences.getInstance();
@@ -60,7 +60,7 @@ void main() {
           'hf_super_secret Bearer abc123 '
           '/data/user/0/com.example.app/files/model.tflite '
           r'\\server\share\private.txt '
-          '/opt/offline-sync/vectors.db C:\Users\alice\notes.txt';
+          '/opt/offline-sync/vectors.db C:Usersalice\notes.txt';
 
       final redacted = LoggingService.redact(message);
 

@@ -419,10 +419,12 @@ class VectorStore {
     if (activeModelId == null) return [];
     final documentFilter = documentIds == null || documentIds.isEmpty
         ? ''
-        : ' AND v.document_id IN (${List.filled(documentIds.length, '?').join(', ')})';
+        : ' AND v.document_id IN ('
+              '${List.filled(documentIds.length, '?').join(', ')})';
     final params = <Object?>[activeModelId, activeModelId, ...?documentIds];
     final rows = _readConsistentRows(
-      '''SELECT v.rowid, v.id, v.content, v.embedding, v.metadata,
+      '''
+         SELECT v.rowid, v.id, v.content, v.embedding, v.metadata,
          v.embedding_encoding, v.embedding_dimension
          FROM vectors v
          INNER JOIN documents d ON d.id = v.document_id
@@ -437,7 +439,7 @@ class VectorStore {
           (row) => {
             'id': row['id'],
             'content': row['content'],
-            'embedding': row['embedding'] as String,
+            'embedding': row['embedding']! as String,
             'encoding': row['embedding_encoding'] as String?,
             'dimension': row['embedding_dimension'] as int?,
             'metadata': row['metadata'],
@@ -531,7 +533,8 @@ class VectorStore {
         .join(' OR ');
 
     var sql =
-        '''SELECT v.* FROM vectors v
+        '''
+      SELECT v.* FROM vectors v
       INNER JOIN documents d ON d.id = v.document_id
       WHERE ($conditions) AND v.embedding_model_id = ?
       AND d.embedding_model_id = ? AND d.status = 'complete' ''';
@@ -698,7 +701,8 @@ class VectorStore {
       _db!.execute('DELETE FROM documents WHERE id = ?', [oldDocumentId]);
       insertDocument(replacement);
       _db!.execute(
-        r'''UPDATE vectors SET document_id = ?, metadata = json_set(
+        r'''
+UPDATE vectors SET document_id = ?, metadata = json_set(
           json_set(json_set(COALESCE(metadata, '{}'), '$.documentId', ?),
           '$.documentTitle', ?), '$.documentPath', ?)
           WHERE document_id = ?''',

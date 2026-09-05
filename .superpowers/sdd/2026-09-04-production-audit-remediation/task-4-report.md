@@ -1,32 +1,53 @@
 # Task 4 production audit remediation report
 
 Date: 2026-09-05
-Base: `978e07d90d3658f3383f11da98dbb75b91655086`
+Base: `89963c5 fix(task4): close remaining production audit findings`
 Fix-round commit: recorded after final verification
 
-## Findings addressed
+## Round-4 findings
 
-- Embedding activation and ingestion now share a serialized coordinator and a pinned model identity. RAG pins query embedding and vector search to the same identity.
-- Semantic, fallback, and FTS retrieval require complete documents and matching active embedder rows. Initialization removes orphan vectors and rebuilds the FTS index.
-- Documents persist source bytes, allowing re-indexing of pathless and web-origin documents.
-- Re-indexing stages vectors and atomically replaces the document; staged-vector cleanup failures propagate.
-- Activation rollback is checked and rollback failure is propagated.
-- Errored partial downloads follow the same deletion policy as the UI and are protected while actively downloading.
-- `SettingsViewModel.clearChatHistory` is restored as `Future<bool>`. Async Settings actions guard post-await state and notifications, including clipboard failures.
-- Crash-log deletion requires confirmation. Central redaction covers Hugging Face tokens, Bearer credentials, URLs, Android app paths, UNC paths, and Unix paths; startup errors are sanitized before display.
-- English and Spanish strings were regenerated, and the report has no trailing whitespace.
+1. **P0 clean checkout / localization generation**
 
-## Final verification
+   `.github/workflows/main.yaml` now explicitly checks out Flutter, fetches packages, runs `flutter gen-l10n`, and only then runs analyze/test and the unchanged 95% lcov threshold gate. `.github/workflows/release.yaml` also generates localization code before its verification analyze/test steps. Generated `lib/l10n/gen` remains CI-generated and ignored.
+
+2. **P1 analyzer gate**
+
+   Production and test diagnostics were fixed, including the final test cascade diagnostic. `flutter analyze` now reports zero issues.
+
+3. **P1 coverage gate**
+
+   Meaningful Settings action/error-path tests were added and the full suite passes, but the required gate is still not met: the latest completed `flutter test --coverage --reporter json` produced `4414/4755` covered lines, exactly `92.83%`, versus the required 95%. This remains a Task 4 handoff blocker; the threshold was not weakened.
+
+4. **P1 rollback with no previous active model**
+
+   `ModelManagementService` now falls back to the production plugin manager to clear active inference/embedding identity when no injected clear callback exists. Regression tests cover persistence failure with no previous model in `test/services/model_management_service_test.dart`.
+
+5. **P1 active model deletion**
+
+   Inference deletion awaits `InferenceModelProvider.clearCacheAndWait()` before file removal. Embedding deletion runs through the embedding coordinator, clears active identity before deletion, and is serialized with activation/ingestion. Tests cover deletion during an active inference operation and coordinated embedding deletion in `test/services/model_management_service_test.dart` and `test/services/inference_model_provider_test.dart`.
+
+6. **P2 public refresh race**
+
+   Saved embedding restoration in `ModelManagementService` now runs through `_embeddingCoordinator`. The model-management tests cover refresh blocked behind an in-flight coordinated switch.
+
+7. **P2 repository-root test fixture**
+
+   `test/services/document_management_service_test.dart` creates `reindex_failure.txt` (and the related refresh fixture) in a temporary directory and removes the directory with teardown; no repository-root fixture is used.
+
+## Verification
 
 - `flutter gen-l10n`: passed.
-- `dart run build_runner build --delete-conflicting-outputs`: passed; 3 outputs generated. Generated registrants plus `app.logger.dart` and `app.router.dart` were restored to baseline; the required `app.locator.dart` coordinator registration remains.
-- Focused regression suites, including document management, vector store, RAG/query expansion, model management, logging, Settings, startup, and document-library tests: passed.
-- `flutter test --coverage --reporter compact`: passed, 474 tests; coverage output generated.
-- `flutter analyze`: exit 1 with 31 non-error style diagnostics (infos/warnings only); no analyzer errors.
-- `flutter build web --release`: the repository has no `lib/main.dart`, so the default command fails at entrypoint resolution. `flutter build web --release --target lib/main_production.dart`: passed and produced `build/web`; the tool emitted dependency Wasm dry-run and icon-font warnings.
-- `git diff --check`: passed.
-- Temporary test artifacts were absent, and generated platform registrants were restored.
+- Focused model-management, inference-provider, document-management, and Settings suites: passed; the final Settings suite reported 12 tests passed.
+- Latest completed full `flutter test --coverage --reporter json`: exit 0; all tests passed; coverage `4414/4755 = 92.83%`.
+- `flutter analyze`: passed, `No issues found!`.
+- `flutter build web --release --target lib/main_production.dart`: passed in the preceding Task 4 verification; the default target is not applicable because this repository has no `lib/main.dart`.
+- `git diff --check`: run for the final commit handoff.
+- Known Flutter-generated platform registrant churn was restored before commit.
+
+## Handoff status
+
+The seven round-4 code findings are implemented and covered by regression tests, but Task 4 is **not ready to be marked complete** until meaningful additional coverage reaches the unchanged 95% gate. The report intentionally records this unmet gate rather than claiming completion.
 
 ## Changed areas
 
-Production changes cover model lifecycle and identity pinning, ingestion/re-indexing, durable document sources, vector schema and retrieval isolation, logging redaction, Settings safety, destructive-action confirmation, startup error handling, and localized UI copy. Regression tests cover the corresponding concurrency, persistence, cleanup, platform, redaction, and lifecycle cases.
+Round-4 changes cover CI localization generation, zero-diagnostic analyzer hygiene, model-manager identity fallback, serialized model deletion and release, coordinated saved-model refresh, temporary test fixtures, and coverage tests. Earlier Task 4 changes documented in the SDD ledger remain in the base commit.

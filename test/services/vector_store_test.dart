@@ -218,13 +218,14 @@ void main() {
       const id = 'test_1';
       const embedding = [0.1, 0.2, 0.3];
 
-      vectorStore.insertDocument(completeDocument('doc_1'));
-      vectorStore.insertEmbedding(
-        id: id,
-        documentId: 'doc_1',
-        content: 'This is a test content',
-        embedding: embedding,
-      );
+      vectorStore
+        ..insertDocument(completeDocument('doc_1'))
+        ..insertEmbedding(
+          id: id,
+          documentId: 'doc_1',
+          content: 'This is a test content',
+          embedding: embedding,
+        );
 
       final results = await vectorStore.hybridSearch(
         'test',
@@ -352,13 +353,14 @@ void main() {
     });
 
     test('FTS5 search fallback works', () async {
-      vectorStore.insertDocument(completeDocument('doc_2'));
-      vectorStore.insertEmbedding(
-        id: 'fts_1',
-        documentId: 'doc_2',
-        content: 'The quick brown fox jumps over the lazy dog',
-        embedding: [0.0, 0.0, 0.0],
-      );
+      vectorStore
+        ..insertDocument(completeDocument('doc_2'))
+        ..insertEmbedding(
+          id: 'fts_1',
+          documentId: 'doc_2',
+          content: 'The quick brown fox jumps over the lazy dog',
+          embedding: [0.0, 0.0, 0.0],
+        );
 
       final results = await vectorStore.hybridSearch(
         'fox jumps',
@@ -372,13 +374,14 @@ void main() {
     });
 
     test('FTS5 preserves punctuation and ordinary operator words', () async {
-      vectorStore.insertDocument(completeDocument('doc-punctuation'));
-      vectorStore.insertEmbedding(
-        id: 'punctuation',
-        documentId: 'doc-punctuation',
-        content: "What's the shipping time? Returns, refunds and shipping.",
-        embedding: [1, 0],
-      );
+      vectorStore
+        ..insertDocument(completeDocument('doc-punctuation'))
+        ..insertEmbedding(
+          id: 'punctuation',
+          documentId: 'doc-punctuation',
+          content: "What's the shipping time? Returns, refunds and shipping.",
+          embedding: [1, 0],
+        );
 
       final results = await vectorStore.hybridSearch(
         "What's the shipping time?",
@@ -393,13 +396,13 @@ void main() {
     test('punctuation-only queries still use semantic retrieval', () async {
       vectorStore
         ..insertDocument(completeDocument('old-document'))
-        ..insertDocument(completeDocument('new-document'));
-      vectorStore.insertEmbedding(
-        id: 'old-semantic-match',
-        documentId: 'old-document',
-        content: 'A semantic match from an older document',
-        embedding: [1, 0],
-      );
+        ..insertDocument(completeDocument('new-document'))
+        ..insertEmbedding(
+          id: 'old-semantic-match',
+          documentId: 'old-document',
+          content: 'A semantic match from an older document',
+          embedding: [1, 0],
+        );
       for (var i = 0; i < 500; i++) {
         vectorStore.insertEmbedding(
           id: 'new-$i',
@@ -424,8 +427,7 @@ void main() {
       () async {
         vectorStore
           ..insertDocument(completeDocument('include'))
-          ..insertDocument(completeDocument('exclude'));
-        vectorStore
+          ..insertDocument(completeDocument('exclude'))
           ..insertEmbedding(
             id: 'included',
             documentId: 'include',
@@ -457,8 +459,7 @@ void main() {
     test('falls back to LIKE search when FTS query execution fails', () async {
       vectorStore
         ..insertDocument(completeDocument('include-doc'))
-        ..insertDocument(completeDocument('exclude-doc'));
-      vectorStore
+        ..insertDocument(completeDocument('exclude-doc'))
         ..insertEmbedding(
           id: 'fallback-include',
           documentId: 'include-doc',
@@ -1021,8 +1022,8 @@ void main() {
     test(
       'semantic search skips rows with mismatched embedding dimension',
       () async {
-        vectorStore.insertDocument(completeDocument('d'));
         vectorStore
+          ..insertDocument(completeDocument('d'))
           ..insertEmbedding(
             id: 'ok',
             documentId: 'd',

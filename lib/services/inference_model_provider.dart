@@ -102,13 +102,20 @@ class InferenceModelProvider {
   /// in settings) to ensure the next call to [getModel] retrieves the
   /// new active model.
   void clearCache() {
+    unawaited(clearCacheAndWait());
+  }
+
+  /// Invalidates and releases the cached model, completing after all queued
+  /// inference work has finished and the model has been closed.
+  Future<void> clearCacheAndWait() {
     final cachedModel = _model;
     _model = null;
     _inFlightFuture = null;
     _modelGeneration++;
     if (cachedModel != null) {
-      unawaited(_enqueue(() => _closeModel(cachedModel)));
+      return _enqueue(() => _closeModel(cachedModel));
     }
+    return Future<void>.value();
   }
 
   /// Releases the loaded model, used when the application is paused.

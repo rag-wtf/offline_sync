@@ -27,10 +27,9 @@ class EmbeddingModelCoordinator {
 class EmbeddingService {
   EmbeddingService({
     Future<EmbeddingModel> Function()? activeEmbedderLoader,
-    Future<String?> Function()? activeEmbeddingIdLoader,
+    this._activeEmbeddingIdLoader,
   }) : _activeEmbedderLoader =
-           activeEmbedderLoader ?? FlutterGemma.getActiveEmbedder,
-       _activeEmbeddingIdLoader = activeEmbeddingIdLoader;
+           activeEmbedderLoader ?? FlutterGemma.getActiveEmbedder;
 
   final Future<EmbeddingModel> Function() _activeEmbedderLoader;
   final Future<String?> Function()? _activeEmbeddingIdLoader;
