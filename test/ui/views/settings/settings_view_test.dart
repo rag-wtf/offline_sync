@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:offline_sync/l10n/gen/app_localizations.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
@@ -89,8 +90,10 @@ void main() {
     when(() => ragSettings.contextualRetrievalEnabled).thenReturn(true);
     when(() => ragSettings.chunkOverlapPercent).thenReturn(0.2);
     when(() => ragSettings.semanticWeight).thenReturn(0.4);
+    when(() => ragSettings.rerankTopK).thenReturn(10);
     when(() => ragSettings.searchTopK).thenReturn(4);
     when(() => ragSettings.maxHistoryMessages).thenReturn(3);
+    when(() => ragSettings.maxDocumentSizeMB).thenReturn(10);
     when(
       () => ragSettings.setQueryExpansionEnabled(value: any(named: 'value')),
     ).thenAnswer((_) async {});
@@ -122,6 +125,8 @@ void main() {
   }) async {
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: SettingsView(
           viewModel: viewModel,
           onViewModelReadyCallback: callback,
@@ -212,7 +217,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Active Embedding Model'), findsOneWidget);
+      expect(find.text('Embedding Model'), findsOneWidget);
       expect(find.text('Embedding A'), findsWidgets);
       expect(find.text('Embedding B'), findsWidgets);
       expect(find.text('ACTIVE'), findsAtLeastNWidgets(2));

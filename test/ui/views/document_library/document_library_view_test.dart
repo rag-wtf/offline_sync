@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
+import 'package:offline_sync/l10n/gen/app_localizations.dart';
 import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/document_management_service.dart';
 import 'package:offline_sync/services/document_parser_service.dart';
@@ -120,7 +121,13 @@ void main() {
       () => documentService.getAllDocuments(),
     ).thenAnswer((_) => completer.future);
 
-    await tester.pumpWidget(const MaterialApp(home: DocumentLibraryView()));
+    await tester.pumpWidget(
+      const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: DocumentLibraryView(),
+      ),
+    );
     await tester.pump();
 
     expect(find.text('Loading documents...'), findsOneWidget);
@@ -132,7 +139,13 @@ void main() {
   testWidgets('shows empty state when there are no documents', (tester) async {
     when(() => documentService.getAllDocuments()).thenAnswer((_) async => []);
 
-    await tester.pumpWidget(const MaterialApp(home: DocumentLibraryView()));
+    await tester.pumpWidget(
+      const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: DocumentLibraryView(),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('No documents yet'), findsOneWidget);
@@ -150,7 +163,13 @@ void main() {
         () => documentService.getAllDocuments(),
       ).thenAnswer((_) async => [document]);
 
-      await tester.pumpWidget(const MaterialApp(home: DocumentLibraryView()));
+      await tester.pumpWidget(
+        const MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: DocumentLibraryView(),
+        ),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Knowledge Base'), findsOneWidget);
@@ -242,7 +261,13 @@ void main() {
       () => documentService.getAllDocuments(),
     ).thenAnswer((_) async => documents);
 
-    await tester.pumpWidget(const MaterialApp(home: DocumentLibraryView()));
+    await tester.pumpWidget(
+      const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: DocumentLibraryView(),
+      ),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('Pending'), findsOneWidget);
@@ -265,7 +290,13 @@ void main() {
       () => documentService.getAllDocuments(),
     ).thenAnswer((_) async => [document]);
 
-    await tester.pumpWidget(const MaterialApp(home: DocumentLibraryView()));
+    await tester.pumpWidget(
+      const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: DocumentLibraryView(),
+      ),
+    );
     await tester.pumpAndSettle();
 
     progressController.add(
@@ -339,6 +370,8 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
         home: DocumentLibraryView(
           onViewModelReadyCallback: callbackViewModels.add,
         ),

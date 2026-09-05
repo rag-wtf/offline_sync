@@ -16,6 +16,7 @@ class Document {
     this.lastRefreshed,
     this.contextualRetrievalEnabled = false,
     this.errorMessage,
+    this.embeddingModelId,
   });
 
   factory Document.fromJson(Map<String, dynamic> json) {
@@ -42,6 +43,7 @@ class Document {
           : null,
       contextualRetrievalEnabled: (json['contextual_retrieval'] as int?) == 1,
       errorMessage: json['error_message'] as String?,
+      embeddingModelId: json['embedding_model_id'] as String?,
     );
   }
 
@@ -57,6 +59,7 @@ class Document {
   final IngestionStatus status;
   final bool contextualRetrievalEnabled;
   final String? errorMessage;
+  final String? embeddingModelId;
 
   Map<String, dynamic> toJson() {
     return {
@@ -72,6 +75,15 @@ class Document {
       'last_refreshed': lastRefreshed?.millisecondsSinceEpoch,
       'contextual_retrieval': contextualRetrievalEnabled ? 1 : 0,
       'error_message': errorMessage,
+      'embedding_model_id': embeddingModelId,
     };
+  }
+
+  /// Whether this document's vectors cannot be used by the active embedder.
+  bool needsReindex(String? activeEmbeddingModelId) {
+    if (status != IngestionStatus.complete || chunkCount <= 0) return false;
+    return embeddingModelId == null ||
+        activeEmbeddingModelId == null ||
+        embeddingModelId != activeEmbeddingModelId;
   }
 }

@@ -30,7 +30,9 @@ void main() {
     PathProviderPlatform.instance = MockPathProviderPlatform();
 
     // Mock SharedPreferences for RagSettingsService
-    SharedPreferences.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({
+      'active_embedding_model_id': 'gecko-64',
+    });
 
     // Reset locator to ensure clean state before each test
     await locator.reset();
@@ -153,6 +155,41 @@ void main() {
       expect(chunks.single.metadata, {'kind': 'batch'});
     });
 
+    test(
+      'renameDocument updates stored document and source metadata atomically',
+      () {
+        final document = Document(
+          id: 'rename-doc',
+          title: 'Before',
+          filePath: '/tmp/before.txt',
+          format: DocumentFormat.plainText,
+          chunkCount: 1,
+          totalCharacters: 6,
+          contentHash: 'hash',
+          ingestedAt: DateTime(2024),
+        );
+        vectorStore
+          ..insertDocument(document)
+          ..insertEmbedding(
+            id: 'rename-chunk',
+            documentId: document.id,
+            content: 'chunk',
+            embedding: [1, 0],
+            metadata: const {'documentTitle': 'Before', 'seq': 0},
+          )
+          ..renameDocument(document.id, 'After');
+
+        expect(vectorStore.getDocument(document.id)?.title, 'After');
+        expect(
+          vectorStore
+              .getChunksForDocument(document.id)
+              .single
+              .metadata!['documentTitle'],
+          'After',
+        );
+      },
+    );
+
     test('stamps user_version to current schemaVersion on init', () {
       final version =
           vectorStore.db!.select('PRAGMA user_version').first.values.first
@@ -185,6 +222,53 @@ void main() {
       // RRF score for rank 1 with semanticWeight 1.0 is 1.0 / (60 + 1) approx 0.01639
       expect(results.first.score, closeTo(0.01639, 0.0001));
     });
+
+    test('document identity is authoritative over individual vector rows', () {
+      final document = Document(
+        id: 'identity-doc',
+        title: 'Identity',
+        filePath: 'identity.txt',
+        format: DocumentFormat.plainText,
+        chunkCount: 1,
+        totalCharacters: 4,
+        contentHash: 'identity-hash',
+        ingestedAt: DateTime(2024),
+        status: IngestionStatus.complete,
+        embeddingModelId: 'model-a',
+      );
+      vectorStore
+        ..insertDocument(document)
+        ..insertEmbedding(
+          id: 'identity-vector',
+          documentId: document.id,
+          content: 'text',
+          embedding: [1, 0],
+          embeddingModelId: 'model-b',
+        );
+
+      expect(vectorStore.getDocument(document.id)?.embeddingModelId, 'model-a');
+    });
+
+    test(
+      'keyword retrieval excludes vectors from another embedding model',
+      () async {
+        vectorStore.insertEmbedding(
+          id: 'stale-keyword',
+          documentId: 'stale-doc',
+          content: 'unique stale phrase',
+          embedding: [1, 0],
+          embeddingModelId: 'stale-model',
+        );
+
+        final results = await vectorStore.hybridSearch(
+          'unique stale phrase',
+          [0, 1],
+          semanticWeight: 0,
+        );
+
+        expect(results, isEmpty);
+      },
+    );
 
     test('FTS5 search fallback works', () async {
       vectorStore.insertEmbedding(
@@ -682,6 +766,35 @@ void main() {
           semanticWeight: 0.5,
         );
         expect(results.isEmpty, true);
+      });
+
+      test('reports the embedding model used by a document', () async {
+        final doc = Document(
+          id: 'embedding-doc',
+          title: 'Embedding document',
+          filePath: '/path/to/doc.txt',
+          format: DocumentFormat.plainText,
+          chunkCount: 1,
+          totalCharacters: 4,
+          contentHash: 'embedding-hash',
+          ingestedAt: DateTime.now(),
+          embeddingModelId: 'model-a',
+        );
+        vectorStore
+          ..insertDocument(doc)
+          ..insertEmbedding(
+            id: 'embedding-vector',
+            documentId: doc.id,
+            content: 'text',
+            embedding: [0.1, 0.2],
+            embeddingModelId: 'model-a',
+          );
+
+        expect(vectorStore.getDocument(doc.id)?.embeddingModelId, 'model-a');
+        expect(
+          vectorStore.getAllDocuments().single.embeddingModelId,
+          'model-a',
+        );
       });
 
       test('getChunksForDocument supports rows with null metadata', () {

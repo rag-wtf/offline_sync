@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:offline_sync/l10n/gen/app_localizations.dart';
 import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/document_management_service.dart';
 import 'package:offline_sync/services/document_parser_service.dart';
@@ -25,7 +26,6 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Knowledge Base'),
@@ -117,6 +117,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
 
     return Column(
       children: [
@@ -201,6 +202,44 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
                                           ?.copyWith(color: colorScheme.error),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                if (viewModel.needsReindex(doc))
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 8),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            l10n?.documentNeedsReindex ??
+                                                'This document needs '
+                                                    're-indexing.',
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color: colorScheme.error,
+                                                ),
+                                          ),
+                                        ),
+                                        if (viewModel.canReindex(doc))
+                                          TextButton(
+                                            onPressed: () =>
+                                                viewModel.reindexDocument(doc),
+                                            child: Text(
+                                              l10n?.reindexDocument ??
+                                                  'Re-index document',
+                                            ),
+                                          )
+                                        else
+                                          Expanded(
+                                            child: Text(
+                                              l10n?.reindexUnavailable ??
+                                                  'Source unavailable for re-indexing.',
+                                              style: TextStyle(
+                                                color: colorScheme.error,
+                                              ),
+                                            ),
+                                          ),
+                                      ],
                                     ),
                                   ),
                               ],

@@ -364,6 +364,79 @@ void main() {
       await file.delete();
     });
 
+    test('formats size-limit values with one stable decimal place', () {
+      expect(
+        DocumentManagementService.formatFileSizeMB(12.3456789),
+        '12.3 MB',
+      );
+    });
+
+    test('cleans partial vectors when embedding fails', () async {
+      when(
+        () => mockParserService.detectFormat(any<String>()),
+      ).thenReturn(DocumentFormat.plainText);
+      when(() => mockVectorStore.findByHash(any<String>())).thenReturn(null);
+      when(
+        () => mockVectorStore.insertDocument(any<Document>()),
+      ).thenReturn(null);
+      when(
+        () => mockVectorStore.updateDocument(any<Document>()),
+      ).thenReturn(null);
+      when(
+        () => mockVectorStore.insertEmbeddingsBatch(any<List<EmbeddingData>>()),
+      ).thenReturn(null);
+      when(
+        () => mockVectorStore.deleteVectorsForDocument(any<String>()),
+      ).thenReturn(null);
+
+      var embeddingCalls = 0;
+      when(
+        () => mockEmbeddingService.generateEmbedding(any<String>()),
+      ).thenAnswer((_) async {
+        embeddingCalls++;
+        if (embeddingCalls > 1) throw StateError('embedding failed');
+        return [0.1, 0.2];
+      });
+
+      await expectLater(
+        service.addDocumentFromPlatformFile(
+          FakePlatformFile(
+            name: 'partial.txt',
+            size: 2500,
+            bytes: Uint8List.fromList(List<int>.filled(2500, 97)),
+          ),
+        ),
+        throwsA(isA<StateError>()),
+      );
+
+      verify(
+        () => mockVectorStore.deleteVectorsForDocument(any<String>()),
+      ).called(1);
+    });
+
+    test(
+      'renames a document without changing its identity or vectors',
+      () async {
+        final document = Document(
+          id: 'doc',
+          title: 'Old title',
+          filePath: '/tmp/doc.txt',
+          format: DocumentFormat.plainText,
+          chunkCount: 1,
+          totalCharacters: 4,
+          contentHash: 'hash',
+          ingestedAt: DateTime(2024),
+        );
+        when(() => mockVectorStore.getDocument('doc')).thenReturn(document);
+
+        await service.renameDocument('doc', 'New title');
+
+        verify(
+          () => mockVectorStore.renameDocument('doc', 'New title'),
+        ).called(1);
+      },
+    );
+
     test('addDocumentFromPlatformFile uses path-backed size validation '
         'before reading bytes', () async {
       final file = File('oversized_platform_file.txt');
@@ -424,6 +497,46 @@ void main() {
 
       await file.delete();
     });
+
+    test(
+      'reindexDocument does not delete old vectors before success',
+      () async {
+        final file = File('reindex_failure.txt');
+        await file.writeAsString('reindex failure content');
+
+        final oldDoc = Document(
+          id: 'old_doc',
+          title: 'Old',
+          filePath: file.path,
+          format: DocumentFormat.plainText,
+          chunkCount: 1,
+          totalCharacters: 22,
+          contentHash: 'old-hash',
+          ingestedAt: DateTime.now(),
+          status: IngestionStatus.complete,
+          embeddingModelId: 'old-model',
+        );
+
+        when(() => mockVectorStore.getDocument('old_doc')).thenReturn(oldDoc);
+        when(
+          () => mockParserService.detectFormat(any<String>()),
+        ).thenReturn(DocumentFormat.plainText);
+        when(
+          () => mockEmbeddingService.generateEmbedding(any<String>()),
+        ).thenThrow(StateError('embedding failed'));
+        when(
+          () => mockVectorStore.deleteVectorsForDocument(any<String>()),
+        ).thenReturn(null);
+
+        await expectLater(
+          service.reindexDocument('old_doc'),
+          throwsA(isA<StateError>()),
+        );
+
+        verifyNever(() => mockVectorStore.deleteDocument('old_doc'));
+        await file.delete();
+      },
+    );
 
     test(
       'refreshDocument returns byte-backed documents without refreshing',

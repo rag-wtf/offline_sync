@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:offline_sync/l10n/gen/app_localizations.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/ui/views/settings/settings_viewmodel.dart';
@@ -24,8 +25,12 @@ class SettingsView extends StackedView<SettingsViewModel> {
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
     final semanticWeightPct = (viewModel.semanticWeightDisplay * 100)
         .toStringAsFixed(0);
+    final maxDocumentSizeText =
+        l10n?.settingsMaxDocumentSize(viewModel.maxDocumentSizeMB) ??
+        'Documents larger than ${viewModel.maxDocumentSizeMB} MB are rejected.';
 
     return Scaffold(
       appBar: AppBar(
@@ -36,6 +41,21 @@ class SettingsView extends StackedView<SettingsViewModel> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (viewModel.hasModelStatusError || viewModel.settingsError != null)
+            Card(
+              color: colorScheme.errorContainer,
+              child: ListTile(
+                leading: Icon(Icons.error_outline, color: colorScheme.error),
+                title: Text(
+                  viewModel.settingsError == null
+                      ? l10n?.modelStatusError ??
+                            'Model status is unavailable. Please retry.'
+                      : l10n?.settingsSaveError ??
+                            'Some settings could not be saved.',
+                  style: TextStyle(color: colorScheme.onErrorContainer),
+                ),
+              ),
+            ),
           // AI Model Management Section
           const _SectionHeader(
             icon: Icons.memory_rounded,
@@ -234,6 +254,11 @@ class SettingsView extends StackedView<SettingsViewModel> {
                         model: entry.value,
                         onDownload: () =>
                             viewModel.downloadModel(entry.value.id),
+                        onDelete:
+                            entry.value.status == ModelStatus.downloaded ||
+                                entry.value.status == ModelStatus.error
+                            ? () => viewModel.deleteModel(entry.value.id)
+                            : null,
                       ),
                       if (!isLast) const Divider(height: 1, indent: 16),
                     ],
@@ -419,7 +444,9 @@ class SettingsView extends StackedView<SettingsViewModel> {
                 ),
               ),
               title: const Text('Manage Knowledge Base'),
-              subtitle: const Text('Add, view, and delete documents'),
+              subtitle: Text(
+                'Add, view, and delete documents\n$maxDocumentSizeText',
+              ),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: viewModel.navigateToDocumentLibrary,
             ),
@@ -444,6 +471,103 @@ class SettingsView extends StackedView<SettingsViewModel> {
             ),
             const SizedBox(height: 32),
           ],
+
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.key_outlined),
+                  title: Text(
+                    l10n?.huggingFaceTokenTitle ?? 'Hugging Face token',
+                  ),
+                  subtitle: Text(
+                    viewModel.hasToken == true
+                        ? l10n?.tokenStatusSaved ?? 'Token saved'
+                        : l10n?.tokenStatusNotSet ?? 'No token saved',
+                  ),
+                  trailing: TextButton(
+                    onPressed: viewModel.enterToken,
+                    child: Text(
+                      l10n?.enterOrReplaceToken ?? 'Enter or replace',
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete_outline),
+                  title: Text(l10n?.clearSavedToken ?? 'Clear saved token'),
+                  enabled: viewModel.hasToken == true,
+                  onTap: viewModel.clearToken,
+                ),
+              ],
+            ),
+          ),
+          Card(
+            child: ExpansionTile(
+              leading: const Icon(Icons.bug_report_outlined),
+              title: Text(l10n?.crashLogsTitle ?? 'Crash Logs'),
+              subtitle: Text(
+                l10n?.diagnosticsCount(viewModel.crashLogs.length) ??
+                    '${viewModel.crashLogs.length} diagnostics',
+              ),
+              children: [
+                if (viewModel.crashLogs.isEmpty)
+                  ListTile(
+                    title: Text(l10n?.noCrashLogs ?? 'No crash logs recorded'),
+                  )
+                else
+                  SizedBox(
+                    height: 180,
+                    child: ListView.builder(
+                      itemCount: viewModel.crashLogs.length,
+                      itemBuilder: (context, index) => Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: SelectableText(viewModel.crashLogs[index]),
+                      ),
+                    ),
+                  ),
+                OverflowBar(
+                  children: [
+                    TextButton(
+                      onPressed: viewModel.crashLogs.isEmpty
+                          ? null
+                          : viewModel.exportCrashLogs,
+                      child: Text(l10n?.copyDiagnostics ?? 'Copy diagnostics'),
+                    ),
+                    TextButton(
+                      onPressed: viewModel.crashLogs.isEmpty
+                          ? null
+                          : viewModel.clearCrashLogs,
+                      child: Text(l10n?.clearCrashLogs ?? 'Clear Crash Logs'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.shield_outlined),
+              title: Text(
+                l10n?.privateLocalStorageTitle ?? 'Private local storage',
+              ),
+              subtitle: Text(
+                l10n?.privateLocalStorageSubtitle ??
+                    'Local documents and models are excluded '
+                        'from cloud backups.',
+              ),
+            ),
+          ),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.chat_bubble_outline),
+              title: Text(l10n?.clearChatHistoryTitle ?? 'Clear chat history'),
+              subtitle: Text(
+                l10n?.clearChatHistorySubtitle ??
+                    'Delete locally saved conversations.',
+              ),
+              onTap: viewModel.clearChatHistory,
+            ),
+          ),
         ],
       ),
     );
@@ -571,9 +695,14 @@ class _SliderSetting extends StatelessWidget {
 }
 
 class _ModelTile extends StatelessWidget {
-  const _ModelTile({required this.model, required this.onDownload});
+  const _ModelTile({
+    required this.model,
+    required this.onDownload,
+    this.onDelete,
+  });
   final ModelInfo model;
   final VoidCallback onDownload;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -633,17 +762,39 @@ class _ModelTile extends StatelessWidget {
                 ),
               ),
             ),
+          if (model.errorMessage != null)
+            Text(
+              model.errorMessage!,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: colorScheme.error,
+              ),
+            ),
         ],
       ),
-      trailing:
-          model.status == ModelStatus.notDownloaded ||
-              model.status == ModelStatus.error
+      trailing: model.status == ModelStatus.downloaded
           ? IconButton.filledTonal(
-              icon: Icon(
-                model.status == ModelStatus.error
-                    ? Icons.refresh_rounded
-                    : Icons.download_rounded,
-              ),
+              icon: const Icon(Icons.delete_outline),
+              onPressed: onDelete,
+            )
+          : model.status == ModelStatus.error
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton.filledTonal(
+                  icon: const Icon(Icons.refresh_rounded),
+                  onPressed: onDownload,
+                ),
+                IconButton.filledTonal(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: onDelete,
+                ),
+              ],
+            )
+          : model.status == ModelStatus.notDownloaded
+          ? IconButton.filledTonal(
+              icon: const Icon(Icons.download_rounded),
               onPressed: onDownload,
             )
           : null,

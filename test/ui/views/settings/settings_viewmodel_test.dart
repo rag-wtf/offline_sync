@@ -166,6 +166,32 @@ void main() {
     expect(notifications, greaterThanOrEqualTo(2));
   });
 
+  test(
+    'handles expected model stream errors without uncaught errors',
+    () async {
+      final viewModel = SettingsViewModel(
+        modelService: modelService,
+        ragSettings: ragSettings,
+        navigationService: navigationService,
+        deviceService: FakeDeviceCapabilityService(
+          const DeviceCapabilities(
+            totalRamMB: 2048,
+            availableStorageMB: 2048,
+            hasGpu: false,
+            platform: 'android',
+          ),
+        ),
+      )..setup();
+      await Future<void>.delayed(Duration.zero);
+
+      statusController.addError(StateError('expected download failure'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(viewModel.hasModelStatusError, isTrue);
+      viewModel.dispose();
+    },
+  );
+
   test('toggle and slider handlers persist new values', () async {
     final viewModel =
         SettingsViewModel(
@@ -275,6 +301,43 @@ void main() {
         transition: any(named: 'transition'),
       ),
     ).called(1);
+  });
+
+  test('delegates token and personal-data cleanup actions', () async {
+    var savedToken = '';
+    var tokenCleared = false;
+    var historyCleared = false;
+    var crashLogsCleared = false;
+    final viewModel = SettingsViewModel(
+      modelService: modelService,
+      ragSettings: ragSettings,
+      navigationService: navigationService,
+      deviceService: FakeDeviceCapabilityService(
+        const DeviceCapabilities(
+          totalRamMB: 2048,
+          availableStorageMB: 2048,
+          hasGpu: false,
+          platform: 'android',
+        ),
+      ),
+      saveTokenAction: (token) async => savedToken = token,
+      clearTokenAction: () async => tokenCleared = true,
+      clearChatHistoryAction: () async => historyCleared = true,
+      getCrashLogsAction: () async => ['[safe crash record]'],
+      clearCrashLogsAction: () async => crashLogsCleared = true,
+    );
+
+    expect(await viewModel.saveToken('hf_test'), isTrue);
+    await viewModel.clearToken();
+    await viewModel.clearChatHistory();
+    await viewModel.loadCrashLogs();
+    await viewModel.clearCrashLogs();
+
+    expect(savedToken, 'hf_test');
+    expect(tokenCleared, isTrue);
+    expect(historyCleared, isTrue);
+    expect(crashLogsCleared, isTrue);
+    expect(viewModel.crashLogs, isEmpty);
   });
 
   test('reads default dependencies from locator and preserves'

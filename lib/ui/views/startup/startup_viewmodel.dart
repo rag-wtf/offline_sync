@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 
 import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -155,17 +154,18 @@ class StartupViewModel extends BaseViewModel {
         'Tier=${recommended.tier}',
       );
 
-      // 4. Initialize model service (checks existing models)
+      // 4. Load persisted settings before model initialization restores the
+      // selected native model identity.
+      final ragSettings = _ragSettingsService ?? locator<RagSettingsService>();
+      await ragSettings.initialize();
+      log('RAG settings initialized', name: 'StartupViewModel');
+
+      // 4.5. Initialize model service (checks existing models)
       LoggingService.debug('About to call _modelService.initialize()');
       log('About to call _modelService.initialize()', name: 'StartupViewModel');
       await _modelService.initialize();
       LoggingService.debug('_modelService.initialize() completed');
       log('_modelService.initialize() completed', name: 'StartupViewModel');
-
-      // 4.5. Initialize RAG settings service
-      final ragSettings = _ragSettingsService ?? locator<RagSettingsService>();
-      await ragSettings.initialize();
-      log('RAG settings initialized', name: 'StartupViewModel');
 
       // 5. Download recommended models if not present
       var inferenceModel = _modelService.models
@@ -275,8 +275,13 @@ class StartupViewModel extends BaseViewModel {
 
       await _checkAndNavigate();
     } on Object catch (e) {
-      LoggingService.debug('Exception in runStartupLogic: $e');
-      log('Exception in runStartupLogic: $e', name: 'StartupViewModel');
+      LoggingService.debug(
+        'Exception in runStartupLogic: ${e.runtimeType}',
+      );
+      log(
+        'Exception in runStartupLogic: ${e.runtimeType}',
+        name: 'StartupViewModel',
+      );
       setError(e.toString());
     }
   }

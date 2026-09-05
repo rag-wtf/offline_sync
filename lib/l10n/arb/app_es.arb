@@ -1,10 +1,8 @@
 {
     "@@locale": "es",
     "counterAppBarTitle": "Contador",
-    "@counterAppBarTitle": {
-        "description": "Texto mostrado en la AppBar de la página del contador"
-    },
-    "ragSyncChatTitle": "RAG Sync Chat",
+    "@counterAppBarTitle": {"description": "Texto mostrado en la barra de la página del contador"},
+    "ragSyncChatTitle": "Chat RAG Sync",
     "appTitle": "Offline RAG Sync",
     "filterByDocuments": "Filtrar por documentos",
     "noDocumentsAvailable": "No hay documentos disponibles.",
@@ -12,137 +10,115 @@
     "loading": "Cargando...",
     "startConversation": "Iniciar una conversación",
     "startConversationSubtitle": "Haz preguntas sobre tus documentos\no sube nuevos para empezar.",
-    "sourceDetail": "Detalle de fuente",
+    "sourceDetail": "Detalle de la fuente",
     "ingestionErrorTitle": "Error de ingestión",
     "failedToProcessDocument": "No se pudo procesar {title}.",
-    "@failedToProcessDocument": {
-        "placeholders": {
-            "title": {
-                "type": "String"
-            }
-        }
-    },
+    "@failedToProcessDocument": {"placeholders": {"title": {"type": "String"}}},
     "errorTitle": "Error",
     "failedToAddDocument": "No se pudo agregar {fileName}: {error}",
-    "@failedToAddDocument": {
-        "placeholders": {
-            "fileName": {
-                "type": "String"
-            },
-            "error": {
-                "type": "String"
-            }
-        }
-    },
+    "@failedToAddDocument": {"placeholders": {"fileName": {"type": "String"}, "error": {"type": "String"}}},
     "deleteDocumentTitle": "¿Eliminar documento?",
     "deleteDocumentDescription": "¿Seguro que quieres eliminar \"{title}\"? Esto quitará todos los fragmentos de conocimiento asociados.",
-    "@deleteDocumentDescription": {
-        "placeholders": {
-            "title": {
-                "type": "String"
-            }
-        }
-    },
+    "@deleteDocumentDescription": {"placeholders": {"title": {"type": "String"}}},
     "deleteAction": "Eliminar",
     "settingsTooltip": "Ajustes",
     "initializationError": "Error de inicialización: {error}",
-    "@initializationError": {
-        "placeholders": {
-            "error": {
-                "type": "Object"
-            }
-        }
-    },
-    "authRequired": "Por favor proporcione autenticación e intente de nuevo",
+    "@initializationError": {"placeholders": {"error": {"type": "Object"}}},
+    "authRequired": "Proporciona autenticación e inténtalo de nuevo",
     "errorGeneric": "Error: {error}",
-    "@errorGeneric": {
-        "placeholders": {
-            "error": {
-                "type": "Object"
-            }
-        }
-    },
-    "failedIngestion": "No se pudieron ingestar {count} archivo(s)",
-    "@failedIngestion": {
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
-    "mixedIngestion": "Ingestado {success} archivo(s). Falló {failed} archivo(s).",
-    "@mixedIngestion": {
-        "placeholders": {
-            "success": {
-                "type": "int"
-            },
-            "failed": {
-                "type": "int"
-            }
-        }
-    },
-    "successIngestion": "Ingestado exitosamente {count} archivo(s)",
-    "@successIngestion": {
-        "placeholders": {
-            "count": {
-                "type": "int"
-            }
-        }
-    },
+    "@errorGeneric": {"placeholders": {"error": {"type": "Object"}}},
+    "failedIngestion": "No se pudieron ingerir {count} archivo(s)",
+    "@failedIngestion": {"placeholders": {"count": {"type": "int"}}},
+    "mixedIngestion": "Se ingirieron {success} archivo(s). Falló la ingesta de {failed} archivo(s).",
+    "@mixedIngestion": {"placeholders": {"success": {"type": "int"}, "failed": {"type": "int"}}},
+    "successIngestion": "Se ingirieron correctamente {count} archivo(s)",
+    "@successIngestion": {"placeholders": {"count": {"type": "int"}}},
     "ingestionError": "Error de ingestión: {error}",
-    "@ingestionError": {
-         "placeholders": {
-            "error": {
-                "type": "Object"
-            }
-        }
-    },
+    "@ingestionError": {"placeholders": {"error": {"type": "Object"}}},
     "attachDocument": "Adjuntar documento",
     "chatInputHint": "Pregunta sobre tus documentos...",
     "settingsTitle": "Ajustes",
-    "ragPipelineConfig": "Configuración de canalización RAG",
+    "ragPipelineConfig": "Configuración del canal RAG",
     "queryExpansionTitle": "Expansión de consultas",
-    "queryExpansionSubtitle": "Genera consultas de búsqueda alternativas para mejor recuperación",
+    "queryExpansionSubtitle": "Genera consultas de búsqueda alternativas para mejorar la recuperación",
     "rerankingTitle": "Reordenamiento",
-    "rerankingSubtitle": "Usa codificador cruzado para reordenar resultados de búsqueda",
+    "rerankingSubtitle": "Usa un codificador cruzado para reordenar los resultados",
     "retrievalParams": "Parámetros de recuperación",
-    "semanticWeightTitle": "Peso semántico (vs palabras clave)",
-    "rerankTopKTitle": "Top K candidatos a reordenar",
-    "searchTopKTitle": "Top K fragmentos para contexto",
+    "semanticWeightTitle": "Peso semántico (frente a palabras clave)",
+    "rerankTopKTitle": "Máximo de candidatos a reordenar",
+    "searchTopKTitle": "Máximo de fragmentos para el contexto",
     "maxHistoryMessagesTitle": "Mensajes del historial de conversación",
-    "contextWindowBudget": "Presupuesto de ventana de contexto",
-    "maxTokensTitle": "Tokens máximos",
-    "resetToDefault": "Restablecer a predeterminado",
-    "documentIngestion": "Ingestión de documentos",
-    "maxDocumentSizeTitle": "Tamaño máximo de documento",
+    "contextWindowBudget": "Presupuesto de la ventana de contexto",
+    "maxTokensTitle": "Máximo de tokens",
+    "resetToDefault": "Restablecer valores predeterminados",
+    "documentIngestion": "Ingesta de documentos",
+    "maxDocumentSizeTitle": "Tamaño máximo del documento",
     "contextualRetrievalTitle": "Recuperación contextual",
-    "contextualRetrievalSubtitle": "Enriquece fragmentos con contexto del documento antes de incrustar",
+    "contextualRetrievalSubtitle": "Enriquece los fragmentos con el contexto del documento antes de crear los vectores",
     "modelsSection": "Modelos",
     "inferenceModelTitle": "Modelo de inferencia",
-    "embeddingModelTitle": "Modelo de incrustación",
+    "embeddingModelTitle": "Modelo de embeddings",
     "crashLogsTitle": "Registros de fallos",
     "clearCrashLogs": "Borrar registros de fallos",
     "noCrashLogs": "No hay registros de fallos",
     "documentLibraryTitle": "Biblioteca de documentos",
     "uploadDocument": "Subir documento",
     "noDocumentsYet": "Aún no hay documentos subidos",
-    "noDocumentsYetSubtitle": "Agrega documentos para buscar a través de ellos con IA.",
+    "noDocumentsYetSubtitle": "Agrega documentos para buscarlos con IA.",
     "reindexAction": "Reindexar",
     "cancelAction": "Cancelar",
     "saveAction": "Guardar",
     "retryAction": "Reintentar",
     "hfTokenDialogTitle": "Token de Hugging Face",
-    "hfTokenInputHint": "Ingresa tu token de HF",
-    "hfTokenDescription": "Se requiere un token de acceso de Hugging Face para descargar modelos.",
+    "hfTokenInputHint": "Introduce tu token de HF",
+    "hfTokenDescription": "Se necesita un token de acceso de Hugging Face para descargar modelos.",
     "authRequiredTitle": "Autenticación requerida",
     "authRequiredSubtitle": "Proporciona un token de Hugging Face para descargar modelos.",
-    "downloadConsentTitle": "Â¿Descargar modelos?",
-    "downloadConsentDescription": "Se descargarÃ¡n los siguientes modelos:",
-    "downloadConsentUseSmaller": "Usar modelos compatibles mÃ¡s pequeÃ±os",
+    "downloadConsentTitle": "¿Descargar modelos?",
+    "downloadConsentDescription": "Se descargarán los siguientes modelos:",
+    "downloadConsentUseSmaller": "Usar modelos compatibles más pequeños",
     "downloadConsentDownload": "Descargar",
     "downloadPolicyInsufficientStorage": "No hay suficiente espacio libre para los modelos seleccionados.",
-    "downloadPolicyConnectivityUnknown": "Las descargas están en pausa porque no se pudo determinar el tipo de conexión.",
+    "downloadPolicyConnectivityUnknown": "Las descargas están pausadas porque no se pudo determinar el tipo de conexión.",
     "downloadPolicyMeteredConsent": "Esta conexión puede tener límites de datos. Confirma la descarga.",
     "downloadPolicyUnmeteredConsent": "Confirma la descarga de los modelos.",
-    "downloadPolicyConsentDenied": "No se aprobó la descarga de los modelos."
+    "downloadPolicyConsentDenied": "No se aprobó la descarga de los modelos.",
+    "modelStatusError": "El estado del modelo no está disponible. Inténtalo de nuevo.",
+    "settingsSaveError": "No se pudieron guardar algunos ajustes.",
+    "deleteModelTitle": "¿Eliminar modelo?",
+    "deleteModelDescription": "¿Eliminar {name} y sus archivos locales?",
+    "deleteModelAction": "Eliminar",
+    "modelDownloadError": "No se pudo descargar este modelo. Inténtalo de nuevo.",
+    "modelDeleteError": "No se pudo eliminar este modelo. Inténtalo de nuevo.",
+    "huggingFaceTokenTitle": "Token de Hugging Face",
+    "huggingFaceTokenSubtitle": "Se guarda de forma segura en este dispositivo para descargar modelos restringidos.",
+    "tokenStatusSaved": "Token guardado",
+    "tokenStatusNotSet": "No hay token guardado",
+    "tokenSaveError": "No se pudo guardar el token. Inténtalo de nuevo.",
+    "tokenClearError": "No se pudo borrar el token. Inténtalo de nuevo.",
+    "tokenStatusError": "No se pudo consultar el estado del token. Inténtalo de nuevo.",
+    "enterOrReplaceToken": "Introducir o reemplazar",
+    "clearSavedToken": "Borrar token guardado",
+    "diagnosticsCount": "{count} diagnósticos",
+    "copyDiagnostics": "Copiar diagnósticos",
+    "diagnosticsExportError": "No se pudieron copiar los diagnósticos.",
+    "privateLocalStorageTitle": "Almacenamiento local privado",
+    "privateLocalStorageSubtitle": "El corpus local, el historial de chat, los ajustes, los diagnósticos y los modelos descargados no se incluyen en las copias de seguridad en la nube del sistema operativo.",
+    "settingsMaxDocumentSize": "Se rechazan los documentos de más de {size} MB.",
+    "documentNeedsReindex": "Este documento usa otro modelo de embeddings y debe reindexarse antes de poder buscarlo.",
+    "reindexDocument": "Reindexar documento",
+    "reindexUnavailable": "Este documento no tiene bytes de origen ni un archivo disponible para reindexarlo.",
+    "clearChatHistoryTitle": "¿Borrar el historial de chat?",
+    "clearChatHistoryDescription": "¿Eliminar todas las conversaciones guardadas localmente?",
+    "clearChatHistorySubtitle": "Eliminar las conversaciones guardadas localmente.",
+    "chatHistoryClearError": "No se pudo borrar el historial de chat. Inténtalo de nuevo.",
+    "clearAction": "Borrar",
+    "crashLogsLoadError": "No se pudieron cargar los registros de fallos. Inténtalo de nuevo.",
+    "crashLogsClearError": "No se pudieron borrar los registros de fallos. Inténtalo de nuevo.",
+    "continueAction": "Continuar",
+    "embeddingSwitchTitle": "¿Cambiar el modelo de embeddings?",
+    "embeddingSwitchDescription": "Cambiar de modelo requiere reindexar {count} documento(s) antes de que la búsqueda semántica pueda utilizarlos.",
+    "@embeddingSwitchDescription": {"placeholders": {"count": {"type": "Object"}}},
+    "embeddingStatusCheckError": "No se pudo comprobar el estado del índice de documentos.",
+    "renameDocumentError": "No se pudo cambiar el nombre de este documento."
 }

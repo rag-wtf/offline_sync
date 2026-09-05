@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Adopt the no-backup posture for the local corpus, history, settings,
+         crash records, SQLite database, and downloaded model files. -->
+    <exclude domain="root" path="." />
+</full-backup-content>

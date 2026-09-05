@@ -3,6 +3,25 @@ import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/document_parser_service.dart';
 
 void main() {
+  test('reports when vectors are not in the active embedding space', () {
+    final document = Document(
+      id: 'document',
+      title: 'Document',
+      filePath: 'document.txt',
+      format: DocumentFormat.plainText,
+      chunkCount: 1,
+      totalCharacters: 10,
+      contentHash: 'hash',
+      ingestedAt: DateTime(2024),
+      status: IngestionStatus.complete,
+      embeddingModelId: 'model-a',
+    );
+
+    expect(document.needsReindex('model-b'), isTrue);
+    expect(document.needsReindex('model-a'), isFalse);
+    expect(document.needsReindex(null), isTrue);
+  });
+
   group('Document.fromJson -', () {
     test('tolerates missing/null numeric and string fields', () {
       final doc = Document.fromJson(<String, dynamic>{
@@ -68,6 +87,7 @@ void main() {
         status: IngestionStatus.error,
         lastRefreshed: refreshedAt,
         contextualRetrievalEnabled: true,
+        embeddingModelId: 'embedding-model',
         errorMessage: 'parse failed',
       );
 
@@ -83,6 +103,7 @@ void main() {
         'status': 'error',
         'last_refreshed': refreshedAt.millisecondsSinceEpoch,
         'contextual_retrieval': 1,
+        'embedding_model_id': 'embedding-model',
         'error_message': 'parse failed',
       });
     });
