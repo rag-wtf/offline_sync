@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/material.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -51,12 +52,53 @@ class _AppLifecycleRootState extends State<AppLifecycleRoot> {
           unawaited(locator<InferenceModelProvider>().releaseModel());
         }
       },
-      onDetach: () {
-        widget.onDetached?.call();
-        if (locator.isRegistered<VectorStore>()) {
-          unawaited(locator<VectorStore>().close());
-        }
-      },
+      onDetach: _handleDetach,
+      onExitRequested: _handleExitRequested,
+    );
+  }
+
+  void _handleDetach() {
+    widget.onDetached?.call();
+    // AppLifecycleListener.onDetach is synchronous. Observe the fallback
+    // close explicitly because the framework cannot await this callback.
+    _observeShutdown(_closeVectorStore());
+  }
+
+  Future<AppExitResponse> _handleExitRequested() async {
+    try {
+      await _closeVectorStore();
+      return AppExitResponse.exit;
+    } on Object catch (error, stackTrace) {
+      _reportShutdownFailure(error, stackTrace);
+      return AppExitResponse.cancel;
+    }
+  }
+
+  Future<void> _closeVectorStore() async {
+    if (locator.isRegistered<VectorStore>()) {
+      await locator<VectorStore>().close();
+    }
+  }
+
+  void _observeShutdown(Future<void> shutdown) {
+    shutdown
+        .then<void>(
+          (_) {},
+          onError: (Object error, StackTrace stackTrace) {
+            _reportShutdownFailure(error, stackTrace);
+          },
+        )
+        .ignore();
+  }
+
+  void _reportShutdownFailure(Object error, StackTrace stackTrace) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stackTrace,
+        library: 'app lifecycle shutdown',
+        context: ErrorDescription('while closing persistent storage'),
+      ),
     );
   }
 

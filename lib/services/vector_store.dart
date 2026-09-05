@@ -70,7 +70,15 @@ class EmbeddingData {
   final String? embeddingModelId;
 }
 
+typedef PersistenceOperation = Future<void> Function();
+
 class VectorStore {
+  VectorStore({
+    @visibleForTesting PersistenceOperation? flushDatabase,
+    @visibleForTesting PersistenceOperation? closeDatabase,
+  }) : _flushDatabase = flushDatabase ?? persistence.flushDatabase,
+       _closeDatabase = closeDatabase ?? persistence.closeDatabase;
+
   // Pre-compiled Regular Expressions for performance optimization
   static final _ftsWordRegex = RegExp(r'[\p{L}\p{N}_]+', unicode: true);
 
@@ -81,6 +89,9 @@ class VectorStore {
   CommonDatabase? _db;
   bool _hasFts5 = true;
   Future<void> _persistenceLane = Future<void>.value();
+  Future<void> _latestPersistenceFlush = Future<void>.value();
+  final PersistenceOperation _flushDatabase;
+  final PersistenceOperation _closeDatabase;
 
   /// Expose database for ChatRepository
   CommonDatabase? get db => _db;
@@ -793,20 +804,21 @@ class VectorStore {
     await flush();
     _db?.close();
     _db = null;
-    await persistence.closeDatabase();
+    await _closeDatabase();
   }
 
   /// Flushes platform-backed persistence, if the active database needs it.
-  Future<void> flush() => _persistenceLane;
+  Future<void> flush() => _latestPersistenceFlush;
 
   void _schedulePersistenceFlush() {
     final next = _persistenceLane.then<void>(
-      (_) => persistence.flushDatabase(),
+      (_) => _flushDatabase(),
     );
     _persistenceLane = next.then<void>(
       (_) {},
       onError: (Object _, StackTrace _) {},
     );
+    _latestPersistenceFlush = next;
   }
 }
 
