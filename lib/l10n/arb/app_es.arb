@@ -122,5 +122,10 @@
     "embeddingSwitchDescription": "Cambiar de modelo requiere reindexar {count} documento(s) antes de que la búsqueda semántica pueda utilizarlos.",
     "@embeddingSwitchDescription": {"placeholders": {"count": {"type": "Object"}}},
     "embeddingStatusCheckError": "No se pudo comprobar el estado del índice de documentos.",
-    "renameDocumentError": "No se pudo cambiar el nombre de este documento."
+    "renameDocumentError": "No se pudo cambiar el nombre de este documento.",
+    "bootstrapFailureTitle": "Offline Sync no pudo iniciar",
+    "bootstrapFailureDescription": "No se pudo inicializar la base de datos local o el motor de modelos. Reintenta o abre los diagnósticos para ver el tipo de error registrado.",
+    "bootstrapRetry": "Reintentar",
+    "bootstrapDiagnostics": "Mostrar diagnósticos",
+    "bootstrapDiagnosticsTitle": "Diagnósticos de inicio"
 }

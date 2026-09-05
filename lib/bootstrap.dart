@@ -11,6 +11,7 @@ import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/bootstrap_mobile.dart'
     if (dart.library.html) 'package:offline_sync/bootstrap_web.dart'
     as platform;
+import 'package:offline_sync/l10n/l10n.dart';
 import 'package:offline_sync/services/environment_service.dart';
 import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/ui/setup_dialog_ui.dart';
@@ -39,84 +40,24 @@ Future<void> bootstrap(
   final isWeb = isWebOverride ?? kIsWeb;
   final targetPlatform = targetPlatformOverride ?? defaultTargetPlatform;
   final runAppFn = runAppOverride ?? runApp;
+  LoggingService.configureFlavor(flavor);
 
-  // Configure FileDownloader for foreground mode on Android to prevent
-  // WorkManager from cancelling downloads on network state changes. This must
-  // be called before FlutterGemma.initialize() which uses the downloader.
-  // IMPORTANT: Foreground mode requires a notification to be configured!
-  if (!isWeb && targetPlatform == TargetPlatform.android) {
-    // Configure foreground mode for files >= 0 MB (all files)
-    if (configureDownloaderOverride != null) {
-      await configureDownloaderOverride();
-    } else {
-      // coverage:ignore-start
-      await FileDownloader().configure(
-        androidConfig: (Config.runInForegroundIfFileLargerThan, 0),
-      );
-      // coverage:ignore-end
-    }
-
-    // Configure notification for the 'smart_downloads' group used by
-    // SmartDownloader. Without a 'running' notification, foreground mode is
-    // ignored!
-    if (configureDownloaderNotificationOverride != null) {
-      configureDownloaderNotificationOverride();
-    } else {
-      // coverage:ignore-start
-      FileDownloader().configureNotificationForGroup(
-        'smart_downloads',
-        running: const TaskNotification(
-          'Downloading Model',
-          '{displayName} - {progress}%',
-        ),
-        progressBar: true,
-      );
-      // coverage:ignore-end
-    }
-
-    // Android 13+ requires a runtime grant for notification visibility.
-    // Downloads still run in the foreground if the permission is denied, so
-    // progress notifications are best-effort rather than required for success.
-    unawaited(
-      requestNotificationPermissionOverride?.call() ??
-          // coverage:ignore-start
-          _requestAndroidNotificationPermissionIfNeeded(),
-      // coverage:ignore-end
-    );
-  }
-
-  await (flutterGemmaInitialize ??
-      () => FlutterGemma.initialize(
-        inferenceEngines: const [
-          LiteRtLmEngine(),
-          MediaPipeEngine(),
-        ],
-        embeddingBackends: const [
-          LiteRtEmbeddingBackend(),
-        ],
-      ))();
-
+  // These handlers must be installed before plugin, database, or locator
+  // setup. A failure during startup must be recorded and rendered instead of
+  // leaving a blank screen.
   FlutterError.onError = (details) {
     FlutterError.presentError(details);
     unawaited(
-      LoggingService.recordCrash(
+      _recordCrashSafely(
         'Unhandled Flutter framework error',
         error: details.exception,
         stackTrace: details.stack,
       ),
     );
   };
-
-  // Platform-specific SQLite initialization
-  await (initializeSqliteOverride ?? platform.initializeSqlite)();
-
-  await (setupLocatorOverride ?? setupLocator)();
-  (setupDialogUiOverride ?? setupDialogUi)();
-  (environmentServiceOverride ?? locator<EnvironmentService>()).flavor = flavor;
-
   PlatformDispatcher.instance.onError = (error, stackTrace) {
     unawaited(
-      LoggingService.recordCrash(
+      _recordCrashSafely(
         'Unhandled platform error',
         error: error,
         stackTrace: stackTrace,
@@ -126,13 +67,187 @@ Future<void> bootstrap(
   };
 
   try {
+    // Configure FileDownloader for foreground mode on Android to prevent
+    // WorkManager from cancelling downloads on network state changes. This must
+    // be called before FlutterGemma.initialize() which uses the downloader.
+    // IMPORTANT: Foreground mode requires a notification to be configured!
+    if (!isWeb && targetPlatform == TargetPlatform.android) {
+      // Configure foreground mode for files >= 0 MB (all files)
+      if (configureDownloaderOverride != null) {
+        await configureDownloaderOverride();
+      } else {
+        // coverage:ignore-start
+        await FileDownloader().configure(
+          androidConfig: (Config.runInForegroundIfFileLargerThan, 0),
+        );
+        // coverage:ignore-end
+      }
+
+      // Configure notification for the 'smart_downloads' group used by
+      // SmartDownloader. Without a 'running' notification, foreground mode is
+      // ignored!
+      if (configureDownloaderNotificationOverride != null) {
+        configureDownloaderNotificationOverride();
+      } else {
+        // coverage:ignore-start
+        FileDownloader().configureNotificationForGroup(
+          'smart_downloads',
+          running: const TaskNotification(
+            'Downloading Model',
+            '{displayName} - {progress}%',
+          ),
+          progressBar: true,
+        );
+        // coverage:ignore-end
+      }
+
+      // Android 13+ requires a runtime grant for notification visibility.
+      // Downloads still run in the foreground if the permission is denied, so
+      // Progress notifications are best-effort rather than required for
+      // success.
+      unawaited(
+        requestNotificationPermissionOverride?.call() ??
+            // coverage:ignore-start
+            _requestAndroidNotificationPermissionIfNeeded(),
+        // coverage:ignore-end
+      );
+    }
+
+    await (flutterGemmaInitialize ??
+        () => FlutterGemma.initialize(
+          inferenceEngines: const [
+            LiteRtLmEngine(),
+            MediaPipeEngine(),
+          ],
+          embeddingBackends: const [
+            LiteRtEmbeddingBackend(),
+          ],
+        ))();
+
+    // Platform-specific SQLite initialization
+    await (initializeSqliteOverride ?? platform.initializeSqlite)();
+
+    await (setupLocatorOverride ?? setupLocator)();
+    (setupDialogUiOverride ?? setupDialogUi)();
+    (environmentServiceOverride ?? locator<EnvironmentService>()).flavor =
+        flavor;
+
     runAppFn(await builder());
   } on Object catch (error, stackTrace) {
-    unawaited(
-      LoggingService.recordCrash(
-        'Unhandled bootstrap error',
+    await _recordCrashSafely(
+      'Bootstrap initialization failed',
+      error: error,
+      stackTrace: stackTrace,
+    );
+    runAppFn(
+      _BootstrapFailureApp(
         error: error,
-        stackTrace: stackTrace,
+        onRetry: () => bootstrap(
+          builder,
+          flavor: flavor,
+          isWebOverride: isWebOverride,
+          targetPlatformOverride: targetPlatformOverride,
+          flutterGemmaInitialize: flutterGemmaInitialize,
+          initializeSqliteOverride: initializeSqliteOverride,
+          setupLocatorOverride: setupLocatorOverride,
+          setupDialogUiOverride: setupDialogUiOverride,
+          environmentServiceOverride: environmentServiceOverride,
+          runAppOverride: runAppOverride,
+          requestNotificationPermissionOverride:
+              requestNotificationPermissionOverride,
+          configureDownloaderOverride: configureDownloaderOverride,
+          configureDownloaderNotificationOverride:
+              configureDownloaderNotificationOverride,
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _recordCrashSafely(
+  String message, {
+  Object? error,
+  StackTrace? stackTrace,
+}) async {
+  try {
+    await LoggingService.recordCrash(
+      message,
+      error: error,
+      stackTrace: stackTrace,
+    );
+  } on Object catch (recordingError) {
+    debugPrint('Crash recording failed: ${recordingError.runtimeType}');
+  }
+}
+
+class _BootstrapFailureApp extends StatelessWidget {
+  const _BootstrapFailureApp({required this.error, required this.onRetry});
+
+  final Object error;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: _BootstrapFailureScreen(error: error, onRetry: onRetry),
+    );
+  }
+}
+
+class _BootstrapFailureScreen extends StatelessWidget {
+  const _BootstrapFailureScreen({required this.error, required this.onRetry});
+
+  final Object error;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final details = LoggingService.redact(error.toString());
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  l10n.bootstrapFailureTitle,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(l10n.bootstrapFailureDescription),
+                const SizedBox(height: 16),
+                FilledButton(
+                  onPressed: onRetry,
+                  child: Text(l10n.bootstrapRetry),
+                ),
+                TextButton(
+                  onPressed: () => showDialog<void>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: Text(l10n.bootstrapDiagnosticsTitle),
+                      content: SelectableText(details),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: Text(l10n.done),
+                        ),
+                      ],
+                    ),
+                  ),
+                  child: Text(l10n.bootstrapDiagnostics),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

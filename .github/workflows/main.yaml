@@ -14,16 +14,16 @@ on:
 
 jobs:
   semantic-pull-request:
-    uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/semantic_pull_request.yml@v1
+    uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/semantic_pull_request.yml@473652d54b9c5fe3b6ca663e6e5b2934f1326e7a # v1
 
   build:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: "3.44.x"
           channel: stable
@@ -60,9 +60,54 @@ jobs:
           ' coverage/lcov.info
 
   spell-check:
-    uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/spell_check.yml@v1
+    uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/spell_check.yml@473652d54b9c5fe3b6ca663e6e5b2934f1326e7a # v1
     with:
       config: .github/cspell.json
       includes: |
         **/*.md
       modified_files_only: false
+
+  web-release-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: "3.44.x"
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Generate localization
+        run: flutter gen-l10n
+      - name: Build production web release
+        run: flutter build web --release --target lib/main_production.dart
+
+  android-debug-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Setup Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          packages: "platform-tools build-tools;36.0.0 platforms;android-36"
+      - name: Setup Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
+        with:
+          flutter-version: "3.44.x"
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Generate localization
+        run: flutter gen-l10n
+      - name: Build Android debug smoke APK
+        run: flutter build apk --debug --flavor development --target lib/main_development.dart

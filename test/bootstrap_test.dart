@@ -1,4 +1,7 @@
+import 'dart:ui';
+
 import 'package:background_downloader/background_downloader.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -201,8 +204,9 @@ void main() {
     expect(renderedApp, isA<Directionality>());
   });
 
-  testWidgets('bootstrap runs Android-specific configuration'
-      ' hooks and swallows zone errors', (tester) async {
+  testWidgets('bootstrap runs Android-specific configuration hooks', (
+    tester,
+  ) async {
     final previousOnError = FlutterError.onError;
     final previousPresentError = FlutterError.presentError;
     FlutterError.presentError = (_) {};
@@ -241,14 +245,46 @@ void main() {
     expect(configureNotificationCalls, 1);
     expect(requestPermissionCalls, 1);
     expect(environmentService.flavor, 'android');
+  });
 
-    final handler = FlutterError.onError;
-    expect(handler, isNotNull);
-    handler!(
-      FlutterErrorDetails(
-        exception: StateError('framework failed'),
-        stack: StackTrace.current,
+  testWidgets('bootstrap renders a retryable localized failure app', (
+    tester,
+  ) async {
+    final previousOnError = FlutterError.onError;
+    final previousPlatformError = PlatformDispatcher.instance.onError;
+    addTearDown(() {
+      FlutterError.onError = previousOnError;
+      PlatformDispatcher.instance.onError = previousPlatformError;
+    });
+
+    Widget? renderedApp;
+    var handlersInstalledBeforeFailure = false;
+
+    await bootstrap(
+      () async => const Directionality(
+        textDirection: TextDirection.ltr,
+        child: Text('unreachable'),
       ),
+      flavor: 'production',
+      isWebOverride: true,
+      flutterGemmaInitialize: () async {
+        handlersInstalledBeforeFailure =
+            FlutterError.onError != null &&
+            PlatformDispatcher.instance.onError != null;
+        throw StateError('sqlite unavailable');
+      },
+      runAppOverride: (app) {
+        renderedApp = app;
+      },
     );
+
+    FlutterError.onError = previousOnError;
+    PlatformDispatcher.instance.onError = previousPlatformError;
+    expect(handlersInstalledBeforeFailure, isTrue);
+    expect(renderedApp, isNotNull);
+    await tester.pumpWidget(renderedApp!);
+    expect(find.text('Offline Sync could not start'), findsOneWidget);
+    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('Show diagnostics'), findsOneWidget);
   });
 }

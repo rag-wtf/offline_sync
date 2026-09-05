@@ -103,7 +103,18 @@
     "viewmodels",
     "xcassets",
     "xcworkspace",
-    "xyzzy"
+    "xyzzy",
+    "opfs",
+    "OPFS",
+    "xcconfig",
+    "xcodeproj",
+    "pbxproj",
+    "linuxdeploy",
+    "Metaspace",
+    "worktrees",
+    "androidx",
+    "licence",
+    "unreviewed"
   ],
   "ignorePaths": [
     "pubspec.lock",

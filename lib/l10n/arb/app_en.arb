@@ -184,5 +184,10 @@
     "embeddingStatusCheckError": "Unable to check document index status.",
     "reindexUnavailable": "This document has no source bytes or available file to re-index.",
     "modelDeleteError": "Unable to delete this model. Please try again.",
-    "modelDownloadError": "Unable to download this model. Please try again."
+    "modelDownloadError": "Unable to download this model. Please try again.",
+    "bootstrapFailureTitle": "Offline Sync could not start",
+    "bootstrapFailureDescription": "The local database or model runtime could not be initialized. Retry, or open diagnostics to see the recorded error type.",
+    "bootstrapRetry": "Retry",
+    "bootstrapDiagnostics": "Show diagnostics",
+    "bootstrapDiagnosticsTitle": "Startup diagnostics"
 }
