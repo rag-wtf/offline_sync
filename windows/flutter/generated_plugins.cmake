@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  connectivity_plus
   disk_usage
   flutter_gemma
   flutter_secure_storage_windows

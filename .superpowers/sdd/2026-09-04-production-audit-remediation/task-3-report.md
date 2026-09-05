@@ -76,7 +76,8 @@ H-1, M-6, L-6, and L-19 behavior.
   prevent compilation.
 - `git diff --check` — no whitespace errors.
 - Flutter-generated Linux, macOS, and Windows registrants were restored after
-  verification and are excluded from the fix-round changes.
+  verification. The macOS and Windows connectivity registrations changed in
+  this round and are included in the commit.
 
 ## Review notes and residuals
 
@@ -90,6 +91,51 @@ H-1, M-6, L-6, and L-19 behavior.
 - Native model generation and cancellation depend on the installed
   `flutter_gemma` runtime and were covered here through mockable lifecycle
   seams, not a device run.
+
+## Fix round 2: L-7 review remediation
+
+This round was limited to the remaining L-7 review issue. On `924f6c5`,
+`_schedulePersistenceFlush` converted each flush failure into a successful
+`_persistenceLane` future, so `flush()` and `close()` could not observe an
+IndexedDB failure. `AppLifecycleListener.onDetach` also called the async
+`VectorStore.close()` through `unawaited`; Flutter's `onDetach` callback is
+synchronous and cannot await a future.
+
+The vector store now keeps a normalized serialization barrier for subsequent
+flushes and separately retains the latest actual flush future. `flush()` and
+`close()` therefore propagate the actual failure, while a later scheduled
+flush can retry after the failed operation. `close()` still flushes before
+closing SQLite and then awaits the platform persistence close.
+
+Graceful exit is wired through Flutter's awaitable `onExitRequested` callback,
+which awaits the complete vector-store close and cancels exit after reporting
+a failure. The synchronous detach fallback explicitly observes and reports
+close failures rather than discarding the future.
+
+Regression coverage:
+
+- `test/services/vector_store_test.dart`: injected persistence failure is
+  propagated by `flush()`, and the next scheduled flush succeeds.
+- `test/app/main_app_test.dart`: app exit remains pending until the mocked
+  vector-store close future completes.
+
+Round 2 verification:
+
+- Red/green focused tests: both new tests first failed for the missing seam /
+  missing exit close, then passed after the implementation.
+- `flutter test test/services/vector_store_test.dart test/app/main_app_test.dart
+  --reporter expanded`: **32 tests passed**.
+- `flutter test --reporter compact`: **447 tests passed**.
+- `flutter analyze`: **No issues found**.
+- `flutter build web --no-pub -t lib/main_production.dart`: **built
+  successfully** and produced `build/web`.
+- `git diff --check`: no whitespace errors.
+
+Residuals: this environment has no browser-backed IndexedDB runtime test, so
+the web persistence path is compile/build verified and failure propagation is
+covered through the injected persistence seam. Flutter's synchronous detach
+callback cannot provide an awaitable completion contract; graceful exit uses
+the awaitable exit-request path, while detach explicitly observes failures.
 
 ## Commit
 

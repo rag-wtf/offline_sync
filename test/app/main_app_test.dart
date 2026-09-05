@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:ui' show AppExitResponse;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -31,6 +34,32 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.detached);
     await tester.pump();
 
+    verify(mockVectorStore.close).called(1);
+  });
+
+  testWidgets('AppLifecycleRoot awaits VectorStore close before app exit', (
+    tester,
+  ) async {
+    final closeCompleter = Completer<void>();
+    var closeCompleted = false;
+    final mockVectorStore = MockVectorStore();
+    when(
+      mockVectorStore.close,
+    ).thenAnswer(
+      (_) => closeCompleter.future.then((_) => closeCompleted = true),
+    );
+    locator.registerSingleton<VectorStore>(mockVectorStore);
+
+    await tester.pumpWidget(
+      const AppLifecycleRoot(child: MaterialApp(home: SizedBox())),
+    );
+
+    final exitFuture = tester.binding.handleRequestAppExit();
+    await tester.pump();
+    expect(closeCompleted, isFalse);
+
+    closeCompleter.complete();
+    expect(await exitFuture, AppExitResponse.exit);
     verify(mockVectorStore.close).called(1);
   });
 

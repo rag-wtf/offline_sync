@@ -97,6 +97,45 @@ void main() {
       expect(result.chunkIndex, 2);
     });
 
+    test('flush propagates failures and permits a later retry', () async {
+      await vectorStore.close();
+
+      final expectedError = StateError('IndexedDB flush failed');
+      var shouldFail = true;
+      var flushAttempts = 0;
+      vectorStore = VectorStore(
+        flushDatabase: () async {
+          flushAttempts++;
+          if (shouldFail) {
+            shouldFail = false;
+            throw expectedError;
+          }
+        },
+        closeDatabase: () async {},
+      );
+      await vectorStore.initialize();
+
+      vectorStore.insertEmbedding(
+        id: 'flush-failure',
+        documentId: 'flush-document',
+        content: 'flush failure',
+        embedding: [0.1],
+      );
+
+      await expectLater(vectorStore.flush(), throwsA(same(expectedError)));
+      expect(flushAttempts, 1);
+
+      vectorStore.insertEmbedding(
+        id: 'flush-retry',
+        documentId: 'flush-document',
+        content: 'flush retry',
+        embedding: [0.2],
+      );
+
+      await vectorStore.flush();
+      expect(flushAttempts, 2);
+    });
+
     test('batch insertion handles empty and metadata-bearing batches', () {
       vectorStore
         ..insertEmbeddingsBatch([])
