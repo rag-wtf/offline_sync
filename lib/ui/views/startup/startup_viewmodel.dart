@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:developer';
 
 import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -15,6 +14,18 @@ import 'package:offline_sync/ui/setup_dialog_ui.dart';
 import 'package:offline_sync/utils/download_failure.dart';
 import 'package:stacked/stacked.dart';
 import 'package:stacked_services/stacked_services.dart';
+
+void log(String message, {String? name}) {
+  final safeMessage = LoggingService.redact(message);
+  final isFailure = RegExp(
+    'error|exception|failed|failure',
+    caseSensitive: false,
+  ).hasMatch(safeMessage);
+  LoggingService.debug(
+    isFailure ? 'Startup operation failed' : safeMessage,
+    name: name,
+  );
+}
 
 class StartupViewModel extends BaseViewModel {
   StartupViewModel({

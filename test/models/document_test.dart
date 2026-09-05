@@ -83,6 +83,7 @@ void main() {
         'status': 'error',
         'last_refreshed': refreshedAt.millisecondsSinceEpoch,
         'contextual_retrieval': 1,
+        'embedding_model_id': null,
         'error_message': 'parse failed',
       });
     });

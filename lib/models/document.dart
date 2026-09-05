@@ -15,6 +15,7 @@ class Document {
     this.status = IngestionStatus.pending,
     this.lastRefreshed,
     this.contextualRetrievalEnabled = false,
+    this.embeddingModelId,
     this.errorMessage,
   });
 
@@ -41,6 +42,7 @@ class Document {
           ? DateTime.fromMillisecondsSinceEpoch(json['last_refreshed'] as int)
           : null,
       contextualRetrievalEnabled: (json['contextual_retrieval'] as int?) == 1,
+      embeddingModelId: json['embedding_model_id'] as String?,
       errorMessage: json['error_message'] as String?,
     );
   }
@@ -56,6 +58,7 @@ class Document {
   final DateTime? lastRefreshed;
   final IngestionStatus status;
   final bool contextualRetrievalEnabled;
+  final String? embeddingModelId;
   final String? errorMessage;
 
   Map<String, dynamic> toJson() {
@@ -71,6 +74,7 @@ class Document {
       'status': status.name,
       'last_refreshed': lastRefreshed?.millisecondsSinceEpoch,
       'contextual_retrieval': contextualRetrievalEnabled ? 1 : 0,
+      'embedding_model_id': embeddingModelId,
       'error_message': errorMessage,
     };
   }

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer';
 
 // Constructor parameters keep public names while assigning private test hooks.
 // ignore_for_file: prefer_initializing_formals
@@ -25,6 +24,18 @@ enum ModelStatus { notDownloaded, downloading, downloaded, error }
 enum ModelDownloadFailureKind { none, authentication, gatedAccess }
 
 enum _InstalledModelPathResolutionKind { resolved, unavailable, readError }
+
+void log(String message, {String? name}) {
+  final safeMessage = LoggingService.redact(message);
+  final isFailure = RegExp(
+    'error|exception|failed|failure',
+    caseSensitive: false,
+  ).hasMatch(safeMessage);
+  LoggingService.debug(
+    isFailure ? 'Model operation failed' : safeMessage,
+    name: name,
+  );
+}
 
 class _InstalledModelPathResolution {
   const _InstalledModelPathResolution.resolved(String path)
@@ -53,6 +64,8 @@ typedef InferenceModelInstaller =
       required ModelFileType fileType,
       required bool foreground,
     });
+
+typedef ModelDeleter = Future<void> Function(ModelInfo model);
 
 class ModelInfo {
   ModelInfo({
@@ -112,6 +125,7 @@ class ModelManagementService {
     embeddingModelDownloader,
     Future<bool> Function(ChecksumFile file, String expectedSha256)?
     fileChecksumVerifier,
+    ModelDeleter? modelDeleter,
     Future<SharedPreferences> Function()? sharedPreferencesLoader,
     bool? isWebOverride,
     DeviceCapabilityService? deviceService,
@@ -125,6 +139,7 @@ class ModelManagementService {
        _inferenceModelDownloader = inferenceModelDownloader,
        _embeddingModelDownloader = embeddingModelDownloader,
        _fileChecksumVerifier = fileChecksumVerifier,
+       _modelDeleter = modelDeleter,
        _sharedPreferencesLoader = sharedPreferencesLoader,
        _isWeb = isWebOverride ?? kIsWeb,
        _deviceService = deviceService,
@@ -157,6 +172,7 @@ class ModelManagementService {
   _embeddingModelDownloader;
   final Future<bool> Function(ChecksumFile file, String expectedSha256)?
   _fileChecksumVerifier;
+  final ModelDeleter? _modelDeleter;
   final Future<SharedPreferences> Function()? _sharedPreferencesLoader;
   final bool _isWeb;
   final DeviceCapabilityService? _deviceService;
@@ -172,6 +188,7 @@ class ModelManagementService {
           tokenizerUrl: config.tokenizerUrl,
           type: config.type,
           fileType: config.fileType,
+          fileName: config.fileName,
         ),
       )
       .toList();
@@ -674,10 +691,69 @@ class ModelManagementService {
     for (final model in _models) {
       if (model.id == id && model.type == type) return model;
     }
-    for (final model in _models) {
-      if (model.type == type) return model;
-    }
     return null;
+  }
+
+  Future<bool> deleteModel(String modelId) async {
+    final matchingModels = _models
+        .where((candidate) => candidate.id == modelId)
+        .toList();
+    if (matchingModels.isEmpty) return false;
+    final model = matchingModels.first;
+    if (model.status != ModelStatus.downloaded) return false;
+
+    final definition = _modelDefinitionsById[model.id];
+    if (definition == null) return false;
+    final wasActive = model.type == AppModelType.inference
+        ? _activeInferenceModelId == model.id
+        : _activeEmbeddingModelId == model.id;
+
+    try {
+      final deleter = _modelDeleter;
+      if (deleter != null) {
+        await deleter(model);
+      } else {
+        final manager = FlutterGemmaPlugin.instance.modelManager;
+        await manager.deleteModel(_buildModelSpec(definition));
+        if (wasActive) {
+          if (model.type == AppModelType.inference) {
+            await manager.clearActiveInferenceIdentity();
+          } else {
+            await manager.clearActiveEmbeddingIdentity();
+          }
+        }
+      }
+
+      if (wasActive) {
+        if (model.type == AppModelType.inference) {
+          _activeInferenceModelId = null;
+          await _ragSettings.clearActiveInferenceModelId();
+          if (locator.isRegistered<InferenceModelProvider>()) {
+            locator<InferenceModelProvider>().clearCache();
+          }
+        } else {
+          _activeEmbeddingModelId = null;
+          await _ragSettings.clearActiveEmbeddingModelId();
+        }
+      }
+      await _clearPersistedVerificationMetadata(model);
+      model
+        ..status = ModelStatus.notDownloaded
+        ..progress = 0.0
+        ..errorMessage = null;
+      _notify();
+      return true;
+    } on Object catch (error) {
+      model
+        ..status = ModelStatus.error
+        ..errorMessage = 'Unable to delete this model. Please try again.';
+      LoggingService.warning(
+        'Model deletion failed: ${error.runtimeType}',
+        name: 'ModelManagementService',
+      );
+      _notify();
+      return false;
+    }
   }
 
   Future<bool> _isCompatible(ModelInfo model) async {

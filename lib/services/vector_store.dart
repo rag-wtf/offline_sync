@@ -84,7 +84,7 @@ class VectorStore {
 
   /// Current on-disk schema version. Bump when the schema changes and add a
   /// matching branch in [_migrate].
-  static const int schemaVersion = 6;
+  static const int schemaVersion = 7;
 
   CommonDatabase? _db;
   bool _hasFts5 = true;
@@ -178,6 +178,7 @@ class VectorStore {
         last_refreshed INTEGER,
         status TEXT DEFAULT 'complete',
         contextual_retrieval INTEGER DEFAULT 0,
+        embedding_model_id TEXT,
         error_message TEXT
       )
     ''');
@@ -312,6 +313,13 @@ class VectorStore {
         _db!.execute(
           'ALTER TABLE chat_messages ADD COLUMN is_pending INTEGER '
           'NOT NULL DEFAULT 0',
+        );
+      } on Object catch (_) {}
+    }
+    if (fromVersion < 7) {
+      try {
+        _db!.execute(
+          'ALTER TABLE documents ADD COLUMN embedding_model_id TEXT',
         );
       } on Object catch (_) {}
     }
@@ -623,8 +631,8 @@ class VectorStore {
       INSERT INTO documents (
         id, title, file_path, format, chunk_count, total_characters, 
         content_hash, ingested_at, last_refreshed, status, 
-        contextual_retrieval, error_message
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        contextual_retrieval, embedding_model_id, error_message
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         file_path = excluded.file_path,
@@ -636,6 +644,7 @@ class VectorStore {
         last_refreshed = excluded.last_refreshed,
         status = excluded.status,
         contextual_retrieval = excluded.contextual_retrieval,
+        embedding_model_id = excluded.embedding_model_id,
         error_message = excluded.error_message
     ''');
     try {
@@ -651,6 +660,7 @@ class VectorStore {
         doc.lastRefreshed?.millisecondsSinceEpoch,
         doc.status.name,
         if (doc.contextualRetrievalEnabled) 1 else 0,
+        doc.embeddingModelId,
         doc.errorMessage,
       ]);
     } finally {
@@ -661,6 +671,52 @@ class VectorStore {
 
   void updateDocument(Document doc) {
     insertDocument(doc);
+  }
+
+  /// Renames a document and updates source-attribution metadata atomically.
+  void renameDocument(String documentId, String title) {
+    final normalizedTitle = title.trim();
+    if (normalizedTitle.isEmpty) {
+      throw ArgumentError.value(title, 'title', 'Title cannot be empty');
+    }
+    _db!.execute('BEGIN TRANSACTION');
+    try {
+      _db!.execute(
+        'UPDATE documents SET title = ? WHERE id = ?',
+        [normalizedTitle, documentId],
+      );
+      final rows = _db!.select(
+        'SELECT id, metadata FROM vectors WHERE document_id = ?',
+        [documentId],
+      );
+      for (final row in rows) {
+        final metadata = row['metadata'] == null
+            ? <String, dynamic>{}
+            : jsonDecode(row['metadata'] as String) as Map<String, dynamic>;
+        metadata['documentTitle'] = normalizedTitle;
+        _db!.execute(
+          'UPDATE vectors SET metadata = ? WHERE id = ?',
+          [jsonEncode(metadata), row['id']],
+        );
+      }
+      _db!.execute('COMMIT');
+      _schedulePersistenceFlush();
+    } on Object catch (_) {
+      _db!.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+
+  void deleteDocumentEmbeddings(String id) {
+    _db!.execute('BEGIN TRANSACTION');
+    try {
+      _db!.execute('DELETE FROM vectors WHERE document_id = ?', [id]);
+      _db!.execute('COMMIT');
+      _schedulePersistenceFlush();
+    } on Object catch (_) {
+      _db!.execute('ROLLBACK');
+      rethrow;
+    }
   }
 
   Document? getDocument(String id) {

@@ -381,6 +381,35 @@ void main() {
         expect(hasUnique, isTrue);
       });
 
+      test('renaming updates the inventory and source metadata atomically', () {
+        final document = Document(
+          id: 'rename-doc',
+          title: 'Old title',
+          filePath: '/tmp/rename.txt',
+          format: DocumentFormat.plainText,
+          chunkCount: 1,
+          totalCharacters: 5,
+          contentHash: 'rename-hash',
+          ingestedAt: DateTime.now(),
+        );
+        vectorStore
+          ..insertDocument(document)
+          ..insertEmbedding(
+            id: 'rename-chunk',
+            documentId: document.id,
+            content: 'hello',
+            embedding: [1, 0],
+            metadata: const {'documentTitle': 'Old title', 'seq': 0},
+          )
+          ..renameDocument(document.id, 'New title');
+
+        expect(vectorStore.getDocument(document.id)!.title, 'New title');
+        expect(
+          vectorStore.getChunksForDocument(document.id).single.metadata,
+          containsPair('documentTitle', 'New title'),
+        );
+      });
+
       test(
         'v2 migration removes duplicate documents and their vectors',
         () async {

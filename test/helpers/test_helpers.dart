@@ -215,6 +215,7 @@ MockRagSettingsService getAndRegisterMockRagSettingsService() {
   when(() => service.maxHistoryMessages).thenReturn(10);
   when(() => service.activeInferenceContextLimit).thenReturn(8192);
   when(() => service.contextualRetrievalEnabled).thenReturn(false);
+  when(() => service.maxDocumentSizeMB).thenReturn(10);
   when(service.initialize).thenAnswer((_) async {});
 
   if (!locator.isRegistered<DeviceCapabilityService>()) {

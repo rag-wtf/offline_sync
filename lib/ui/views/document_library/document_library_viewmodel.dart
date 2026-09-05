@@ -7,14 +7,30 @@ import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/l10n/gen/app_localizations.dart';
 import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/document_management_service.dart';
+import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:stacked/stacked.dart';
 import 'package:stacked_services/stacked_services.dart';
 
 class DocumentLibraryViewModel extends BaseViewModel {
-  final DocumentManagementService _documentService =
-      locator<DocumentManagementService>();
-  final NavigationService _navigationService = locator<NavigationService>();
-  final DialogService _dialogService = locator<DialogService>();
+  DocumentLibraryViewModel({
+    DocumentManagementService? documentService,
+    NavigationService? navigationService,
+    DialogService? dialogService,
+    RagSettingsService? settingsService,
+  }) : _documentService =
+           documentService ?? locator<DocumentManagementService>(),
+       _navigationService = navigationService ?? locator<NavigationService>(),
+       _dialogService = dialogService ?? locator<DialogService>(),
+       _settingsService =
+           settingsService ??
+           (locator.isRegistered<RagSettingsService>()
+               ? locator<RagSettingsService>()
+               : RagSettingsService());
+
+  final DocumentManagementService _documentService;
+  final NavigationService _navigationService;
+  final DialogService _dialogService;
+  final RagSettingsService _settingsService;
 
   List<Document> _documents = [];
   List<Document> get documents => _documents;
@@ -25,6 +41,11 @@ class DocumentLibraryViewModel extends BaseViewModel {
   StreamSubscription<IngestionProgress>? _progressSubscription;
 
   bool get isIngesting => _activeIngestions.isNotEmpty;
+
+  bool needsReindex(Document document) =>
+      document.status == IngestionStatus.complete &&
+      document.embeddingModelId != null &&
+      document.embeddingModelId != _settingsService.activeEmbeddingModelId;
 
   AppLocalizations? get _l10n {
     final context = StackedService.navigatorKey?.currentContext;
@@ -95,12 +116,12 @@ class DocumentLibraryViewModel extends BaseViewModel {
       for (final file in files) {
         try {
           await _documentService.addDocumentFromPlatformFile(file);
-        } on Exception catch (e) {
+        } on Object catch (_) {
           await _dialogService.showDialog(
             title: _l10n?.errorTitle ?? 'Error',
             description:
-                _l10n?.failedToAddDocument(file.name, e.toString()) ??
-                'Failed to add ${file.name}: $e',
+                _l10n?.failedToProcessDocument(file.name) ??
+                'Failed to add ${file.name}.',
           );
         }
       }
@@ -138,6 +159,38 @@ class DocumentLibraryViewModel extends BaseViewModel {
       Routes.documentDetailView,
       arguments: DocumentDetailViewArguments(document: doc),
     );
+  }
+
+  Future<bool> reindexDocument(Document document) async {
+    setBusy(true);
+    try {
+      await _documentService.reindexDocument(document.id);
+      await _refreshDocuments();
+      return true;
+    } on Object catch (_) {
+      await _dialogService.showDialog(
+        title: _l10n?.errorTitle ?? 'Error',
+        description:
+            _l10n?.failedToProcessDocument(document.title) ??
+            'Failed to re-index ${document.title}.',
+      );
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  Future<void> renameDocument(Document document, String title) async {
+    try {
+      await _documentService.renameDocument(document.id, title);
+      await _refreshDocuments();
+    } on Object catch (_) {
+      await _dialogService.showDialog(
+        title: _l10n?.errorTitle ?? 'Error',
+        description:
+            _l10n?.renameDocumentError ?? 'Unable to rename this document.',
+      );
+    }
   }
 
   @override

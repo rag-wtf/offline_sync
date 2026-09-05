@@ -257,6 +257,26 @@ void main() {
           expect(service.activeEmbeddingModel, isNull);
         }
       });
+
+      test('deletes only the requested downloaded model', () async {
+        final deletedIds = <String>[];
+        final service = ModelManagementService(
+          modelDeleter: (model) async => deletedIds.add(model.id),
+        );
+        addTearDown(service.dispose);
+        final first = service.models.firstWhere(
+          (model) => model.type == AppModelType.inference,
+        )..status = ModelStatus.downloaded;
+        final second = service.models.firstWhere(
+          (model) => model.type == AppModelType.embedding,
+        )..status = ModelStatus.downloaded;
+
+        expect(await service.deleteModel(first.id), isTrue);
+
+        expect(deletedIds, [first.id]);
+        expect(first.status, ModelStatus.notDownloaded);
+        expect(second.status, ModelStatus.downloaded);
+      });
     });
 
     group('Model status enum -', () {
@@ -528,8 +548,7 @@ void main() {
       );
 
       test(
-        'initialize falls back only to a matching model type when saved ids '
-        'are unknown',
+        'initialize does not activate an unknown persisted model id',
         () async {
           final firstModel = ModelConfig.allModels.first;
           when(
@@ -562,7 +581,7 @@ void main() {
 
           await service.initialize();
 
-          expect(service.activeInferenceModel?.id, firstModel.id);
+          expect(service.activeInferenceModel, isNull);
           expect(service.activeEmbeddingModel, isNull);
         },
       );

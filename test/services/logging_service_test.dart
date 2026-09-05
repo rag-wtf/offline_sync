@@ -13,23 +13,29 @@ void main() {
       expect(LoggingService.minimumLevel, Level.debug);
     });
 
-    test('recordCrash persists message, error, and stack trace', () async {
-      final trace = StackTrace.fromString('stack line 1\nstack line 2');
+    test(
+      'recordCrash persists safe diagnostics without raw error data',
+      () async {
+        final trace = StackTrace.fromString('stack line 1\nstack line 2');
 
-      await LoggingService.recordCrash(
-        'Unexpected failure',
-        error: StateError('bad state'),
-        stackTrace: trace,
-      );
+        await LoggingService.recordCrash(
+          'Failed to process /Users/alice/Documents/private.txt with token=hf_secret',
+          error: StateError('document contents: confidential text'),
+          stackTrace: trace,
+        );
 
-      final prefs = await SharedPreferences.getInstance();
-      final crashLogs = prefs.getStringList('crash_logs');
+        final prefs = await SharedPreferences.getInstance();
+        final crashLogs = prefs.getStringList('crash_logs');
 
-      expect(crashLogs, hasLength(1));
-      expect(crashLogs!.single, contains('Unexpected failure'));
-      expect(crashLogs.single, contains('Bad state: bad state'));
-      expect(crashLogs.single, contains('stack line 1'));
-    });
+        expect(crashLogs, hasLength(1));
+        expect(crashLogs!.single, contains('Failed to process'));
+        expect(crashLogs.single, contains('errorType: StateError'));
+        expect(crashLogs.single, isNot(contains('private.txt')));
+        expect(crashLogs.single, isNot(contains('hf_secret')));
+        expect(crashLogs.single, isNot(contains('confidential text')));
+        expect(crashLogs.single, contains('stack line 1'));
+      },
+    );
 
     test('recordCrash keeps only the newest fifty crash logs', () async {
       SharedPreferences.setMockInitialValues({

@@ -166,6 +166,32 @@ void main() {
     expect(notifications, greaterThanOrEqualTo(2));
   });
 
+  test(
+    'handles expected model stream errors without an uncaught error',
+    () async {
+      final viewModel = SettingsViewModel(
+        modelService: modelService,
+        ragSettings: ragSettings,
+        navigationService: navigationService,
+        deviceService: FakeDeviceCapabilityService(
+          const DeviceCapabilities(
+            totalRamMB: 2048,
+            availableStorageMB: 2048,
+            hasGpu: false,
+            platform: 'android',
+          ),
+        ),
+      )..setup();
+      await Future<void>.delayed(Duration.zero);
+
+      statusController.addError(StateError('expected download failure'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(viewModel.hasModelStatusError, isTrue);
+      viewModel.dispose();
+    },
+  );
+
   test('toggle and slider handlers persist new values', () async {
     final viewModel =
         SettingsViewModel(

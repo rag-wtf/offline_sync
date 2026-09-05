@@ -1,6 +1,9 @@
-import 'dart:developer';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_config.dart';
+
+void log(String message, {String? name}) =>
+    LoggingService.debug(LoggingService.redact(message), name: name);
 
 /// Recommended models for a device
 class RecommendedModels {

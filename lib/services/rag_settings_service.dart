@@ -64,8 +64,29 @@ class RagSettingsService {
       0,
       5,
     );
-    _activeInferenceModelId = prefs.getString(_keyActiveInferenceModel);
-    _activeEmbeddingModelId = prefs.getString(_keyActiveEmbeddingModel);
+    final savedInferenceModelId = prefs.getString(_keyActiveInferenceModel);
+    _activeInferenceModelId =
+        _isModelIdValid(
+          savedInferenceModelId,
+          AppModelType.inference,
+        )
+        ? savedInferenceModelId
+        : null;
+    if (savedInferenceModelId != null && _activeInferenceModelId == null) {
+      await prefs.remove(_keyActiveInferenceModel);
+    }
+
+    final savedEmbeddingModelId = prefs.getString(_keyActiveEmbeddingModel);
+    _activeEmbeddingModelId =
+        _isModelIdValid(
+          savedEmbeddingModelId,
+          AppModelType.embedding,
+        )
+        ? savedEmbeddingModelId
+        : null;
+    if (savedEmbeddingModelId != null && _activeEmbeddingModelId == null) {
+      await prefs.remove(_keyActiveEmbeddingModel);
+    }
     final rawMaxTokens = prefs.getInt(_keyMaxTokens);
     _maxTokens = rawMaxTokens == null ? null : _clampMaxTokens(rawMaxTokens);
     if (_maxTokens != null && _maxTokens != rawMaxTokens) {
@@ -82,56 +103,62 @@ class RagSettingsService {
   }
 
   Future<void> setQueryExpansionEnabled({required bool value}) async {
-    _queryExpansionEnabled = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyQueryExpansion, value);
+    _queryExpansionEnabled = value;
   }
 
   Future<void> setRerankingEnabled({required bool value}) async {
-    _rerankingEnabled = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyReranking, value);
+    _rerankingEnabled = value;
   }
 
   Future<void> setChunkOverlapPercent(double value) async {
-    _chunkOverlapPercent = value.clamp(0.0, 0.3); // Max 30% overlap
+    final normalizedValue = value.clamp(0.0, 0.3); // Max 30% overlap
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keyChunkOverlap, _chunkOverlapPercent);
+    await prefs.setDouble(_keyChunkOverlap, normalizedValue);
+    _chunkOverlapPercent = normalizedValue;
   }
 
   Future<void> setSemanticWeight(double value) async {
-    _semanticWeight = value.clamp(0.0, 1.0);
+    final normalizedValue = value.clamp(0.0, 1.0);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble(_keySemanticWeight, _semanticWeight);
+    await prefs.setDouble(_keySemanticWeight, normalizedValue);
+    _semanticWeight = normalizedValue;
   }
 
   Future<void> setRerankTopK(int value) async {
-    _rerankTopK = value.clamp(5, 20); // Between 5 and 20
+    final normalizedValue = value.clamp(5, 20); // Between 5 and 20
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keyRerankTopK, _rerankTopK);
+    await prefs.setInt(_keyRerankTopK, normalizedValue);
+    _rerankTopK = normalizedValue;
   }
 
   Future<void> setSearchTopK(int value) async {
-    _searchTopK = value.clamp(1, 5); // Between 1 and 5
+    final normalizedValue = value.clamp(1, 5); // Between 1 and 5
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keySearchTopK, _searchTopK);
+    await prefs.setInt(_keySearchTopK, normalizedValue);
+    _searchTopK = normalizedValue;
   }
 
   Future<void> setMaxHistoryMessages(int value) async {
-    _maxHistoryMessages = value.clamp(0, 5); // Between 0 and 5
+    final normalizedValue = value.clamp(0, 5); // Between 0 and 5
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keyMaxHistoryMessages, _maxHistoryMessages);
+    await prefs.setInt(_keyMaxHistoryMessages, normalizedValue);
+    _maxHistoryMessages = normalizedValue;
   }
 
   Future<void> setMaxTokens(int? value) async {
     if (value == null) {
-      _maxTokens = null;
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_keyMaxTokens); // Remove to use model default
+      _maxTokens = null;
     } else {
-      _maxTokens = _clampMaxTokens(value);
+      final normalizedValue = _clampMaxTokens(value);
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(_keyMaxTokens, _maxTokens!);
+      await prefs.setInt(_keyMaxTokens, normalizedValue);
+      _maxTokens = normalizedValue;
     }
     if (locator.isRegistered<InferenceModelProvider>()) {
       locator<InferenceModelProvider>().clearCache();
@@ -139,9 +166,10 @@ class RagSettingsService {
   }
 
   Future<void> setActiveInferenceModelId(String id) async {
-    _activeInferenceModelId = id;
+    _validateModelId(id, AppModelType.inference);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyActiveInferenceModel, id);
+    _activeInferenceModelId = id;
     if (_maxTokens != null) {
       _maxTokens = _clampMaxTokens(_maxTokens!);
       await prefs.setInt(_keyMaxTokens, _maxTokens!);
@@ -152,9 +180,22 @@ class RagSettingsService {
   }
 
   Future<void> setActiveEmbeddingModelId(String id) async {
-    _activeEmbeddingModelId = id;
+    _validateModelId(id, AppModelType.embedding);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyActiveEmbeddingModel, id);
+    _activeEmbeddingModelId = id;
+  }
+
+  Future<void> clearActiveInferenceModelId() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyActiveInferenceModel);
+    _activeInferenceModelId = null;
+  }
+
+  Future<void> clearActiveEmbeddingModelId() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyActiveEmbeddingModel);
+    _activeEmbeddingModelId = null;
   }
 
   // Document Management Settings
@@ -174,19 +215,33 @@ class RagSettingsService {
   bool get doubleMaxTokens => _contextualRetrievalEnabled;
 
   Future<void> setMaxDocumentSizeMB(int value) async {
-    _maxDocumentSizeMB = value.clamp(1, 50); // 1MB to 50MB
+    final normalizedValue = value.clamp(1, 50); // 1MB to 50MB
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keyMaxDocumentSizeMB, _maxDocumentSizeMB);
+    await prefs.setInt(_keyMaxDocumentSizeMB, normalizedValue);
+    _maxDocumentSizeMB = normalizedValue;
   }
 
   Future<void> setContextualRetrievalEnabled({required bool value}) async {
-    _contextualRetrievalEnabled = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyContextualRetrieval, value);
+    _contextualRetrievalEnabled = value;
   }
 
   int _clampMaxTokens(int value) {
     final upperBound = activeInferenceContextLimit;
     return value.clamp(512, upperBound);
+  }
+
+  bool _isModelIdValid(String? id, AppModelType type) {
+    if (id == null) return false;
+    return ModelConfig.allModels.any(
+      (model) => model.id == id && model.type == type,
+    );
+  }
+
+  void _validateModelId(String id, AppModelType type) {
+    if (!_isModelIdValid(id, type)) {
+      throw ArgumentError.value(id, 'id', 'Unknown $type model id');
+    }
   }
 }
