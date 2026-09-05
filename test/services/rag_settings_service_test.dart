@@ -23,7 +23,7 @@ void main() {
       await service.setMaxHistoryMessages(3);
       await service.setActiveInferenceModelId('gemma3-1b');
       await service.setMaxTokens(4096);
-      await service.setActiveEmbeddingModelId('gecko-64');
+      await service.setActiveEmbeddingModelId('embedding-gemma-256');
       await service.setMaxDocumentSizeMB(24);
       await service.setContextualRetrievalEnabled(value: true);
 
@@ -39,7 +39,7 @@ void main() {
       expect(reloaded.maxHistoryMessages, 3);
       expect(reloaded.maxTokens, 4096);
       expect(reloaded.activeInferenceModelId, 'gemma3-1b');
-      expect(reloaded.activeEmbeddingModelId, 'gecko-64');
+      expect(reloaded.activeEmbeddingModelId, 'embedding-gemma-256');
       expect(reloaded.maxDocumentSizeMB, 24);
       expect(reloaded.contextualRetrievalEnabled, isTrue);
       expect(reloaded.doubleMaxTokens, isTrue);
@@ -80,11 +80,11 @@ void main() {
     });
 
     test(
-      'removes persisted model ids that are missing or the wrong type',
+      'clears persisted model ids that are not valid for their setting',
       () async {
         SharedPreferences.setMockInitialValues({
-          'active_inference_model_id': 'gecko-64',
-          'active_embedding_model_id': 'not-a-model',
+          'active_inference_model_id': 'embedding-gemma-256',
+          'active_embedding_model_id': 'missing-embedding',
         });
 
         final service = RagSettingsService();
@@ -98,21 +98,18 @@ void main() {
       },
     );
 
-    test(
-      'rejects model ids that do not belong to the requested setting',
-      () async {
-        final service = RagSettingsService();
-        await service.initialize();
+    test('rejects model ids with the wrong model type', () async {
+      final service = RagSettingsService();
+      await service.initialize();
 
-        expect(
-          () => service.setActiveInferenceModelId('gecko-64'),
-          throwsArgumentError,
-        );
-        expect(
-          () => service.setActiveEmbeddingModelId('gemma3-1b'),
-          throwsArgumentError,
-        );
-      },
-    );
+      await expectLater(
+        service.setActiveInferenceModelId('embedding-gemma-256'),
+        throwsArgumentError,
+      );
+      await expectLater(
+        service.setActiveEmbeddingModelId('gemma3-1b'),
+        throwsArgumentError,
+      );
+    });
   });
 }

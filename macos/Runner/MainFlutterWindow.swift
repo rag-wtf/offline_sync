@@ -21,14 +21,18 @@ class MainFlutterWindow: NSWindow {
         result(FlutterMethodNotImplemented)
         return
       }
-      var url = URL(fileURLWithPath: path, isDirectory: true)
+      guard !path.isEmpty else {
+        result(FlutterError(code: "BACKUP_EXCLUSION_FAILED", message: "Path is empty", details: nil))
+        return
+      }
+      let url = URL(fileURLWithPath: path)
       do {
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
         try url.setResourceValues(values)
         result(nil)
       } catch {
-        result(FlutterError(code: "BACKUP_EXCLUSION_FAILED", message: nil, details: nil))
+        result(FlutterError(code: "BACKUP_EXCLUSION_FAILED", message: error.localizedDescription, details: path))
       }
     }
 

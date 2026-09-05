@@ -284,4 +284,63 @@ void main() {
       ),
     ).called(1);
   });
+
+  test('identifies documents embedded with a different model', () async {
+    final settings = getAndRegisterMockRagSettingsService();
+    when(() => settings.activeEmbeddingModelId).thenReturn('active-model');
+    final mismatched = Document(
+      id: 'mismatch',
+      title: 'Mismatch',
+      filePath: '/tmp/mismatch.txt',
+      format: DocumentFormat.plainText,
+      chunkCount: 1,
+      totalCharacters: 1,
+      contentHash: 'hash',
+      ingestedAt: DateTime(2024),
+      status: IngestionStatus.complete,
+      embeddingModelId: 'old-model',
+    );
+    final viewModel = DocumentLibraryViewModel(
+      settingsService: settings,
+    );
+
+    expect(viewModel.needsReindex(mismatched), isTrue);
+  });
+
+  test('marks indexed documents as unavailable when no embedder is active', () {
+    final settings = getAndRegisterMockRagSettingsService();
+    when(() => settings.activeEmbeddingModelId).thenReturn(null);
+    final indexed = Document(
+      id: document.id,
+      title: document.title,
+      filePath: document.filePath,
+      format: document.format,
+      chunkCount: document.chunkCount,
+      totalCharacters: document.totalCharacters,
+      contentHash: document.contentHash,
+      ingestedAt: document.ingestedAt,
+      status: IngestionStatus.complete,
+      embeddingModelId: 'gecko-64',
+    );
+
+    final viewModel = DocumentLibraryViewModel(settingsService: settings);
+
+    expect(viewModel.needsReindex(indexed), isTrue);
+  });
+
+  test(
+    'reindex action uses the ingestion pipeline and refreshes state',
+    () async {
+      when(
+        () => documentService.reindexDocument(document.id),
+      ).thenAnswer((_) async => document);
+      when(documentService.getAllDocuments).thenAnswer((_) async => [document]);
+
+      final viewModel = DocumentLibraryViewModel();
+      await viewModel.reindexDocument(document);
+
+      verify(() => documentService.reindexDocument(document.id)).called(1);
+      verify(documentService.getAllDocuments).called(1);
+    },
+  );
 }

@@ -19,6 +19,9 @@ import 'package:offline_sync/utils/download_failure.dart';
 import 'package:offline_sync/utils/hugging_face.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+void log(String message, {String? name}) =>
+    LoggingService.debug(message, name: name);
+
 enum ModelStatus { notDownloaded, downloading, downloaded, error }
 
 enum ModelDownloadFailureKind { none, authentication, gatedAccess }
@@ -127,6 +130,8 @@ class ModelManagementService {
     fileChecksumVerifier,
     ModelDeleter? modelDeleter,
     Future<SharedPreferences> Function()? sharedPreferencesLoader,
+    Future<void> Function()? clearActiveInferenceIdentity,
+    Future<void> Function()? clearActiveEmbeddingIdentity,
     bool? isWebOverride,
     DeviceCapabilityService? deviceService,
     Future<DeviceCapabilities> Function()? capabilitiesProvider,
@@ -141,6 +146,8 @@ class ModelManagementService {
        _fileChecksumVerifier = fileChecksumVerifier,
        _modelDeleter = modelDeleter,
        _sharedPreferencesLoader = sharedPreferencesLoader,
+       _clearActiveInferenceIdentity = clearActiveInferenceIdentity,
+       _clearActiveEmbeddingIdentity = clearActiveEmbeddingIdentity,
        _isWeb = isWebOverride ?? kIsWeb,
        _deviceService = deviceService,
        _capabilitiesProvider = capabilitiesProvider;
@@ -174,6 +181,8 @@ class ModelManagementService {
   _fileChecksumVerifier;
   final ModelDeleter? _modelDeleter;
   final Future<SharedPreferences> Function()? _sharedPreferencesLoader;
+  final Future<void> Function()? _clearActiveInferenceIdentity;
+  final Future<void> Function()? _clearActiveEmbeddingIdentity;
   final bool _isWeb;
   final DeviceCapabilityService? _deviceService;
   final Future<DeviceCapabilities> Function()? _capabilitiesProvider;
@@ -187,6 +196,7 @@ class ModelManagementService {
           url: config.modelUrl,
           tokenizerUrl: config.tokenizerUrl,
           type: config.type,
+          fileName: config.fileName,
           fileType: config.fileType,
           fileName: config.fileName,
         ),
@@ -266,8 +276,10 @@ class ModelManagementService {
             'FlutterGemma.isModelInstalled returned: $isDownloaded',
           );
         } on Object catch (e) {
-          log('Error checking model status for $filename: $e');
-          LoggingService.debug('Error checking model status: $e');
+          log('Error checking model status for $filename: ${e.runtimeType}');
+          LoggingService.debug(
+            'Error checking model status: ${e.runtimeType}',
+          );
           // Assume not downloaded if check fails
         }
 
@@ -351,11 +363,11 @@ class ModelManagementService {
       return true;
       // coverage:ignore-end
     } on Object catch (e) {
-      log('Error activating embedding model: $e');
+      log('Error activating embedding model: ${e.runtimeType}');
       model
         ..status = ModelStatus.error
-        ..errorMessage = e.toString();
-      _statusController.addError('Activation error: $e');
+        ..errorMessage = _safeFailureDetails(e);
+      _statusController.addError('Activation error: ${_safeFailureDetails(e)}');
       return false;
     }
   }
@@ -389,11 +401,11 @@ class ModelManagementService {
       return true;
       // coverage:ignore-end
     } on Object catch (e) {
-      log('Error activating inference model: $e');
+      log('Error activating inference model: ${e.runtimeType}');
       model
         ..status = ModelStatus.error
-        ..errorMessage = e.toString();
-      _statusController.addError('Activation error: $e');
+        ..errorMessage = _safeFailureDetails(e);
+      _statusController.addError('Activation error: ${_safeFailureDetails(e)}');
       return false;
     }
   }
@@ -445,7 +457,9 @@ class ModelManagementService {
     LoggingService.debug('_performDownload started for ${model.id}');
     model
       ..status = ModelStatus.downloading
-      ..progress = 0.0;
+      ..progress = 0.0
+      ..errorMessage = null
+      ..failureKind = ModelDownloadFailureKind.none;
     _notify();
 
     // Capture currently active model of the same type to restore later
@@ -581,8 +595,10 @@ class ModelManagementService {
   }
 
   void _recordDownloadError(ModelInfo model, Object error) {
-    log('Download failed for ${model.id}: $error');
-    LoggingService.debug('Download failed for ${model.id}: $error');
+    log('Download failed for ${model.id}: ${error.runtimeType}');
+    LoggingService.debug(
+      'Download failed for ${model.id}: ${error.runtimeType}',
+    );
     model.status = ModelStatus.error;
 
     final isGatedError = isGatedAccessError(error);
@@ -592,7 +608,7 @@ class ModelManagementService {
     if (isAuthenticationError) {
       final description = isGatedError
           ? describeDownloadFailure(error, repoPage: model.repoPage)
-          : error.toString();
+          : 'Authentication is required to download this model.';
       model
         ..failureKind = isGatedError
             ? ModelDownloadFailureKind.gatedAccess
@@ -601,10 +617,11 @@ class ModelManagementService {
       _statusController.addError(AuthenticationRequiredException(description));
     } else {
       // coverage:ignore-start
+      final details = _safeFailureDetails(error);
       model
         ..failureKind = ModelDownloadFailureKind.none
-        ..errorMessage = error.toString();
-      _statusController.addError('Download error: $error');
+        ..errorMessage = details;
+      _statusController.addError('Download error: $details');
       // coverage:ignore-end
     }
     _notify();
@@ -648,8 +665,13 @@ class ModelManagementService {
       _notify();
       return;
     }
+    try {
+      await _ragSettings.setActiveInferenceModelId(modelId);
+    } on Object {
+      await _restoreInferenceModel(previousActiveId);
+      rethrow;
+    }
     _activeInferenceModelId = modelId;
-    await _ragSettings.setActiveInferenceModelId(modelId);
     if (locator.isRegistered<InferenceModelProvider>()) {
       locator<InferenceModelProvider>().clearCache();
     }
@@ -678,9 +700,103 @@ class ModelManagementService {
       return;
       // coverage:ignore-end
     }
+    try {
+      await _ragSettings.setActiveEmbeddingModelId(modelId);
+    } on Object {
+      await _restoreEmbeddingModel(previousActiveId);
+      rethrow;
+    }
     _activeEmbeddingModelId = modelId;
-    await _ragSettings.setActiveEmbeddingModelId(modelId);
     _notify();
+  }
+
+  Future<bool> deleteModel(String modelId) async {
+    final matchingModels = _models.where(
+      (candidate) => candidate.id == modelId,
+    );
+    if (matchingModels.isEmpty) return false;
+    final model = matchingModels.first;
+    if (model.status == ModelStatus.downloading ||
+        model.status == ModelStatus.notDownloaded) {
+      return false;
+    }
+
+    final definition = _modelDefinitionsById[model.id];
+    if (definition == null) return false;
+    final wasActive = model.type == AppModelType.inference
+        ? _activeInferenceModelId == model.id
+        : _activeEmbeddingModelId == model.id;
+
+    try {
+      final deleter = _modelDeleter;
+      if (deleter != null) {
+        await deleter(model);
+        if (wasActive) {
+          if (model.type == AppModelType.inference) {
+            await _clearActiveInferenceIdentity?.call();
+          } else {
+            await _clearActiveEmbeddingIdentity?.call();
+          }
+        }
+      } else {
+        final manager = FlutterGemmaPlugin.instance.modelManager;
+        await manager.deleteModel(_buildModelSpec(definition));
+        if (wasActive) {
+          if (model.type == AppModelType.inference) {
+            await (_clearActiveInferenceIdentity?.call() ??
+                manager.clearActiveInferenceIdentity());
+          } else {
+            await (_clearActiveEmbeddingIdentity?.call() ??
+                manager.clearActiveEmbeddingIdentity());
+          }
+        }
+      }
+
+      if (wasActive) {
+        if (model.type == AppModelType.inference) {
+          _activeInferenceModelId = null;
+          await _ragSettings.clearActiveInferenceModelId();
+          if (locator.isRegistered<InferenceModelProvider>()) {
+            locator<InferenceModelProvider>().clearCache();
+          }
+        } else {
+          _activeEmbeddingModelId = null;
+          await _ragSettings.clearActiveEmbeddingModelId();
+        }
+      }
+      await _clearPersistedVerificationMetadata(model);
+      model
+        ..status = ModelStatus.notDownloaded
+        ..progress = 0.0
+        ..failureKind = ModelDownloadFailureKind.none
+        ..errorMessage = null;
+      _notify();
+      return true;
+    } on Object catch (_) {
+      model
+        ..status = ModelStatus.error
+        ..errorMessage = 'Unable to delete this model. Please try again.';
+      _notify();
+      return false;
+    }
+  }
+
+  Future<void> _restoreInferenceModel(String? modelId) async {
+    if (modelId == null) {
+      await _clearActiveInferenceIdentity?.call();
+      return;
+    }
+    final model = _models.firstWhere((candidate) => candidate.id == modelId);
+    await _activateInferenceModel(model);
+  }
+
+  Future<void> _restoreEmbeddingModel(String? modelId) async {
+    if (modelId == null) {
+      await _clearActiveEmbeddingIdentity?.call();
+      return;
+    }
+    final model = _models.firstWhere((candidate) => candidate.id == modelId);
+    await _activateEmbeddingModel(model);
   }
 
   void _notify() {
@@ -878,7 +994,7 @@ class ModelManagementService {
         try {
           await deleteChecksumFile(modelFile);
         } on Object catch (error) {
-          log('Unable to delete mismatched model file: $error');
+          log('Unable to delete mismatched model file: ${error.runtimeType}');
         }
         await _clearPersistedVerificationMetadata(model);
         model
@@ -933,7 +1049,10 @@ class ModelManagementService {
         }
       }
     } on Object catch (error) {
-      log('Error resolving installed model path for ${definition.id}: $error');
+      log(
+        'Error resolving installed model path for '
+        '${definition.id}: ${error.runtimeType}',
+      );
       return _InstalledModelPathResolution.readError(error);
     }
     // coverage:ignore-end
@@ -988,7 +1107,7 @@ class ModelManagementService {
           decoded['modified'] == metadata.modifiedMillisecondsSinceEpoch &&
           decoded['sha256'] == expectedSha256;
     } on Object catch (error) {
-      log('Unable to read persisted checksum metadata: $error');
+      log('Unable to read persisted checksum metadata: ${error.runtimeType}');
       return false;
     }
   }
@@ -1013,7 +1132,7 @@ class ModelManagementService {
     } on Object catch (error) {
       // A cache write must not turn an already verified model into a failed
       // download. The next start will simply hash it again.
-      log('Unable to persist checksum metadata: $error');
+      log('Unable to persist checksum metadata: ${error.runtimeType}');
     }
   }
 
@@ -1022,7 +1141,7 @@ class ModelManagementService {
       final prefs = await _sharedPreferences();
       await prefs.remove(_verificationMetadataKey(model.id));
     } on Object catch (error) {
-      log('Unable to clear checksum metadata: $error');
+      log('Unable to clear checksum metadata: ${error.runtimeType}');
     }
   }
 
@@ -1049,11 +1168,33 @@ class ModelManagementService {
     model
       ..status = ModelStatus.error
       ..progress = 0.0
-      ..errorMessage = 'Unable to read model for checksum verification: $error';
+      ..errorMessage =
+          'Unable to read model for checksum verification: '
+          '${_safeFailureDetails(error)}';
     _statusController.addError(
       'Unable to read model for checksum verification for ${model.id}.',
     );
     return false;
+  }
+
+  String _safeFailureDetails(Object error) {
+    var details = error.toString();
+    details = details.replaceAll(
+      RegExp(
+        r'(authorization|bearer|token)\s*[:=]\s*\S+',
+        caseSensitive: false,
+      ),
+      '[redacted]',
+    );
+    details = details.replaceAll(
+      RegExp(r'https?://[^\s]+'),
+      '[URL redacted]',
+    );
+    details = details.replaceAll(
+      RegExp(r'(?:[A-Za-z]:[\\/]|/(?:Users|home|tmp)[\\/])[^\s]+'),
+      '[path redacted]',
+    );
+    return details;
   }
 
   // coverage:ignore-start

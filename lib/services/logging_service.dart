@@ -22,21 +22,22 @@ class LoggingService {
     Object? error,
     StackTrace? stackTrace,
     Level level = Level.info,
-  }) => _logger.log(
-    level,
-    redact(message),
-    error: _safeError(error),
-    stackTrace: _safeStackTrace(stackTrace),
-  );
+  }) {
+    _logger.log(
+      level,
+      _safeMessage(message),
+      error: _safeError(error),
+    );
+  }
 
   static void info(String message, {String? name}) =>
-      _logger.i(redact(message));
+      _logger.i(_safeMessage(message));
 
   static void debug(String message, {String? name}) =>
-      _logger.d(redact(message));
+      _logger.d(_safeMessage(message));
 
   static void warning(String message, {String? name}) =>
-      _logger.w(redact(message));
+      _logger.w(_safeMessage(message));
 
   static void error(
     String message, {
@@ -44,9 +45,8 @@ class LoggingService {
     Object? error,
     StackTrace? stackTrace,
   }) => _logger.e(
-    redact(message),
+    _safeMessage(message),
     error: _safeError(error),
-    stackTrace: _safeStackTrace(stackTrace),
   );
 
   static Future<void> recordCrash(
@@ -54,35 +54,22 @@ class LoggingService {
     Object? error,
     StackTrace? stackTrace,
   }) async {
-    final safeMessage = redact(message);
-    final safeError = _safeError(error);
-    final errorType = error?.runtimeType.toString();
-    final safeStackTrace = _safeStackTrace(stackTrace);
-    _logger.e(safeMessage, error: safeError, stackTrace: safeStackTrace);
+    _logger.e(_safeMessage(message), error: _safeError(error));
 
     if (kIsWeb) {
       // coverage:ignore-line
       // coverage:ignore-start
-      return _persistCrashRecord(
-        safeMessage,
-        errorType: errorType,
-        stackTrace: safeStackTrace,
-      );
+      return _persistCrashRecord(message, error: error, stackTrace: stackTrace);
       // coverage:ignore-end
     }
 
     try {
-      await _persistCrashRecord(
-        safeMessage,
-        errorType: errorType,
-        stackTrace: safeStackTrace,
-      );
+      await _persistCrashRecord(message, error: error, stackTrace: stackTrace);
       // coverage:ignore-start
-    } on Object catch (writeError, writeStackTrace) {
+    } on Object catch (writeError) {
       _logger.w(
         'Failed to persist crash log',
-        error: writeError,
-        stackTrace: writeStackTrace,
+        error: writeError.runtimeType.toString(),
       );
     }
     // coverage:ignore-end
@@ -90,17 +77,16 @@ class LoggingService {
 
   static Future<void> _persistCrashRecord(
     String message, {
-    String? errorType,
+    Object? error,
     StackTrace? stackTrace,
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final crashLogs = prefs.getStringList(_crashLogKey) ?? <String>[];
     final buffer = StringBuffer()
-      ..writeln('[${DateTime.now().toIso8601String()}] $message')
-      ..writeln('errorType: ${errorType ?? 'none'}');
-    if (stackTrace != null) {
-      buffer.writeln(redact(stackTrace.toString()));
-    }
+      ..writeln(
+        '[${DateTime.now().toIso8601String()}] ${_safeMessage(message)}',
+      )
+      ..writeln('errorType: ${error?.runtimeType ?? 'none'}');
     crashLogs.add(buffer.toString());
     if (crashLogs.length > 50) {
       crashLogs.removeRange(0, crashLogs.length - 50);
@@ -111,8 +97,8 @@ class LoggingService {
   static Future<List<String>> getCrashLogs() async {
     final prefs = await SharedPreferences.getInstance();
     return (prefs.getStringList(_crashLogKey) ?? <String>[])
-        .map(redact)
-        .toList(growable: false);
+        .map(_sanitizePersistedRecord)
+        .toList();
   }
 
   static Future<void> clearCrashLogs() async {
@@ -120,28 +106,37 @@ class LoggingService {
     await prefs.remove(_crashLogKey);
   }
 
-  /// Redacts values that may identify a user, local file, or credential.
-  /// This is deliberately public so platform/UI diagnostics can share the
-  /// same privacy boundary without depending on logger internals.
+  static Object? _safeError(Object? error) => error?.runtimeType.toString();
+
+  static String _safeMessage(String message) {
+    if (RegExp(
+      r'\b(query|content|document|prompt|file(?:path|name)?)\b|'
+      r'(?:[A-Za-z]:[\\/]|\\\\|/(?:Users|home)[\\/])',
+      caseSensitive: false,
+    ).hasMatch(message)) {
+      return 'Crash recorded';
+    }
+    return redact(message);
+  }
+
+  /// Removes credentials, URLs, and local paths before diagnostics leave the
+  /// process or are persisted. This is also used for legacy records.
   static String redact(String value) {
-    final safe = value
-        .replaceAll(
-          RegExp(r'\b(?:hf|sk)-[A-Za-z0-9_-]{8,}\b', caseSensitive: false),
-          '[redacted-token]',
-        )
-        .replaceAll(
-          RegExp(
-            r'\b(?:authorization|bearer|token|api[-_ ]?key|password|secret)\s*[:=]\s*[^\s,;]+',
-            caseSensitive: false,
-          ),
-          '[redacted-credential]',
-        )
-        .replaceAll(
-          RegExp(r'\bhttps?://[^\s)]+', caseSensitive: false),
-          '[redacted-url]',
-        );
-    // Keep the first redaction pass separate so path replacement also applies
-    // to messages that contained a URL or credential.
+    var safe = value.replaceAll(
+      RegExp(
+        r'\b(?:authorization|token|api[-_ ]?key|password|secret)\s*[:=]\s*(?:bearer\s+)?[^\s,;)]*|\bbearer\s+[^\s,;)]*',
+        caseSensitive: false,
+      ),
+      '[redacted-credential]',
+    );
+    safe = safe.replaceAll(
+      RegExp(r'\b(?:hf|sk)-[A-Za-z0-9_-]{8,}\b', caseSensitive: false),
+      '[redacted-token]',
+    );
+    safe = safe.replaceAll(
+      RegExp(r'https?://[^\s)]+', caseSensitive: false),
+      '[redacted-url]',
+    );
     return safe.replaceAll(
       RegExp(
         r'(?:[A-Z]:[\\/]|\\\\|/(?:Users|home|private|tmp|var)/)[^\s\n,;)]*',
@@ -151,13 +146,12 @@ class LoggingService {
     );
   }
 
-  static Object? _safeError(Object? error) {
-    if (error == null) return null;
-    return error.runtimeType.toString();
-  }
-
-  static StackTrace? _safeStackTrace(StackTrace? stackTrace) {
-    if (stackTrace == null) return null;
-    return StackTrace.fromString(redact(stackTrace.toString()));
+  static String _sanitizePersistedRecord(String record) {
+    final firstLine = record.split('\n').first;
+    final separator = firstLine.indexOf('] ');
+    if (separator == -1) return 'Crash recorded';
+    final timestamp = firstLine.substring(0, separator + 1);
+    final message = firstLine.substring(separator + 2);
+    return '$timestamp ${_safeMessage(message)}\nerrorType: LegacyCrashRecord';
   }
 }

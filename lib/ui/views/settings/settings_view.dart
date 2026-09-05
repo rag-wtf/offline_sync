@@ -254,8 +254,10 @@ class SettingsView extends StackedView<SettingsViewModel> {
                         model: entry.value,
                         onDownload: () =>
                             viewModel.downloadModel(entry.value.id),
-                        onDelete: entry.value.status == ModelStatus.downloaded
-                            ? () => viewModel.deleteModel(entry.value)
+                        onDelete:
+                            entry.value.status == ModelStatus.downloaded ||
+                                entry.value.status == ModelStatus.error
+                            ? () => viewModel.deleteModel(entry.value.id)
                             : null,
                       ),
                       if (!isLast) const Divider(height: 1, indent: 16),
@@ -776,14 +778,23 @@ class _ModelTile extends StatelessWidget {
               icon: const Icon(Icons.delete_outline),
               onPressed: onDelete,
             )
-          : model.status == ModelStatus.notDownloaded ||
-                model.status == ModelStatus.error
+          : model.status == ModelStatus.error
+          ? Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton.filledTonal(
+                  icon: const Icon(Icons.refresh_rounded),
+                  onPressed: onDownload,
+                ),
+                IconButton.filledTonal(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: onDelete,
+                ),
+              ],
+            )
+          : model.status == ModelStatus.notDownloaded
           ? IconButton.filledTonal(
-              icon: Icon(
-                model.status == ModelStatus.error
-                    ? Icons.refresh_rounded
-                    : Icons.download_rounded,
-              ),
+              icon: const Icon(Icons.download_rounded),
               onPressed: onDownload,
             )
           : null,

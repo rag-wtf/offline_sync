@@ -199,7 +199,10 @@ Future<void> requestAndroidNotificationPermissionIfNeeded({
             FileDownloader().permissions.request(PermissionType.notifications)
     // coverage:ignore-end
     )();
-  } on Object catch (error, stackTrace) {
-    debugPrint('Notification permission request failed: $error\n$stackTrace');
+  } on Object catch (error) {
+    // Permission failures are expected on unsupported/restricted devices.
+    // Keep diagnostics type-only so paths and platform details never enter
+    // console logs.
+    debugPrint('Notification permission request failed: ${error.runtimeType}');
   }
 }

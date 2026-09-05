@@ -220,14 +220,25 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
                                                 ),
                                           ),
                                         ),
-                                        TextButton(
-                                          onPressed: () =>
-                                              viewModel.reindexDocument(doc),
-                                          child: Text(
-                                            l10n?.reindexDocument ??
-                                                'Re-index document',
+                                        if (viewModel.canReindex(doc))
+                                          TextButton(
+                                            onPressed: () =>
+                                                viewModel.reindexDocument(doc),
+                                            child: Text(
+                                              l10n?.reindexDocument ??
+                                                  'Re-index document',
+                                            ),
+                                          )
+                                        else
+                                          Expanded(
+                                            child: Text(
+                                              l10n?.reindexUnavailable ??
+                                                  'Source unavailable for re-indexing.',
+                                              style: TextStyle(
+                                                color: colorScheme.error,
+                                              ),
+                                            ),
                                           ),
-                                        ),
                                       ],
                                     ),
                                   ),

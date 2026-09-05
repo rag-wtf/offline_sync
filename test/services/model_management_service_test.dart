@@ -258,25 +258,28 @@ void main() {
         }
       });
 
-      test('deletes only the requested downloaded model', () async {
-        final deletedIds = <String>[];
-        final service = ModelManagementService(
-          modelDeleter: (model) async => deletedIds.add(model.id),
-        );
-        addTearDown(service.dispose);
-        final first = service.models.firstWhere(
-          (model) => model.type == AppModelType.inference,
-        )..status = ModelStatus.downloaded;
-        final second = service.models.firstWhere(
-          (model) => model.type == AppModelType.embedding,
-        )..status = ModelStatus.downloaded;
+      test(
+        'deletes only the requested model and refreshes its state',
+        () async {
+          ModelInfo? deleted;
+          final service = ModelManagementService(
+            modelDeleter: (model) async => deleted = model,
+          );
+          addTearDown(service.dispose);
+          final target = service.models.firstWhere(
+            (model) => model.type == AppModelType.inference,
+          )..status = ModelStatus.downloaded;
+          final other = service.models.firstWhere(
+            (model) => model.id != target.id && model.type == target.type,
+          )..status = ModelStatus.downloaded;
 
-        expect(await service.deleteModel(first.id), isTrue);
+          expect(await service.deleteModel(target.id), isTrue);
 
-        expect(deletedIds, [first.id]);
-        expect(first.status, ModelStatus.notDownloaded);
-        expect(second.status, ModelStatus.downloaded);
-      });
+          expect(deleted?.id, target.id);
+          expect(target.status, ModelStatus.notDownloaded);
+          expect(other.status, ModelStatus.downloaded);
+        },
+      );
     });
 
     group('Model status enum -', () {
@@ -548,7 +551,7 @@ void main() {
       );
 
       test(
-        'initialize does not activate an unknown persisted model id',
+        'initialize does not activate a model when saved ids are unknown',
         () async {
           final firstModel = ModelConfig.allModels.first;
           when(

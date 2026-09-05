@@ -6,7 +6,6 @@ import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/logging_service.dart';
-import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/rag_constants.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store_path_stub.dart'
@@ -316,6 +315,14 @@ class VectorStore {
         );
       } on Object catch (_) {}
     }
+
+    if (_activeEmbeddingModelId != null) {
+      _db!.execute(
+        'UPDATE vectors SET embedding_model_id = ? '
+        'WHERE embedding_model_id IS NULL',
+        [_activeEmbeddingModelId],
+      );
+    }
     if (fromVersion < 7) {
       try {
         _db!.execute(
@@ -323,22 +330,13 @@ class VectorStore {
         );
       } on Object catch (_) {}
     }
-
-    // v3 databases may already exist with legacy NULL model identifiers.
-    // Keep those rows in the active embedder's corpus instead of mixing them
-    // into searches implicitly.
-    _db!.execute(
-      'UPDATE vectors SET embedding_model_id = ? '
-      'WHERE embedding_model_id IS NULL',
-      [_activeEmbeddingModelId],
-    );
   }
 
-  String get _activeEmbeddingModelId {
+  String? get _activeEmbeddingModelId {
     final configured = locator.isRegistered<RagSettingsService>()
         ? locator<RagSettingsService>().activeEmbeddingModelId
         : null;
-    return configured ?? EmbeddingModels.gecko64.id;
+    return configured;
   }
 
   Future<List<SearchResult>> hybridSearch(
@@ -351,6 +349,8 @@ class VectorStore {
     // Get semantic weight from settings if not provided
     final settingsService = locator<RagSettingsService>();
     final weight = semanticWeight ?? settingsService.semanticWeight;
+    final activeModelId = _activeEmbeddingModelId;
+    if (activeModelId == null) return [];
 
     // 1. Fetch candidates (Keyword Search)
     // coverage:ignore-start
@@ -358,11 +358,13 @@ class VectorStore {
         ? _fts5Search(
             query,
             limit: RagConstants.hybridSearchCandidatePoolSize,
+            embeddingModelId: activeModelId,
             documentIds: documentIds,
           ) // Increase candidate pool
         : _fallbackKeywordSearch(
             query,
             limit: RagConstants.hybridSearchCandidatePoolSize,
+            embeddingModelId: activeModelId,
             documentIds: documentIds,
           );
     // coverage:ignore-end
@@ -372,6 +374,7 @@ class VectorStore {
     final semanticResults = await _semanticSearchAsync(
       queryEmbedding,
       limit: limit * 2,
+      embeddingModelId: activeModelId,
       documentIds: documentIds,
     );
 
@@ -389,70 +392,45 @@ class VectorStore {
     List<String>? documentIds,
     String? embeddingModelId,
   }) async {
-    final conditions = <String>[];
-
     final activeModelId = embeddingModelId ?? _activeEmbeddingModelId;
-    conditions.add('embedding_model_id = ?');
-
-    const batchSize = 256;
-    var lastRowId = 0;
-    final bestResults = <SearchResult>[];
-
-    while (true) {
-      var sql =
-          'SELECT rowid, id, content, embedding, metadata, '
-          'embedding_encoding, embedding_dimension FROM vectors';
-      final params = <Object?>[activeModelId];
-      final batchConditions = <String>[...conditions, 'rowid > ?'];
-      params.add(lastRowId);
-
-      if (documentIds != null && documentIds.isNotEmpty) {
-        final placeholders = List.filled(documentIds.length, '?').join(', ');
-        batchConditions.add('document_id IN ($placeholders)');
-        params.addAll(documentIds);
-      }
-
-      sql +=
-          ' WHERE ${batchConditions.join(' AND ')} '
-          'ORDER BY rowid ASC LIMIT ?';
-      params.add(batchSize);
-      final rows = _db!.select(sql, params);
-      if (rows.isEmpty) break;
-      lastRowId = rows.last['rowid'] as int;
-
-      final data = rows
-          .map(
-            (row) => {
-              'id': row['id'],
-              'content': row['content'],
-              'embedding': row['embedding'] as String,
-              'encoding': row['embedding_encoding'] as String?,
-              'dimension': row['embedding_dimension'] as int?,
-              'metadata': row['metadata'],
-            },
-          )
-          .toList();
-
-      bestResults.addAll(
-        await compute(_calculateSimilarities, {
-          'queryEmbedding': embedding,
-          'data': data,
-          'limit': limit,
-        }),
-      );
-      final rankedResults = bestResults
-        ..sort((a, b) => b.score.compareTo(a.score));
-      if (rankedResults.length > limit) {
-        rankedResults.removeRange(limit, rankedResults.length);
-      }
-    }
-
-    return bestResults;
+    if (activeModelId == null) return [];
+    final documentFilter = documentIds == null || documentIds.isEmpty
+        ? ''
+        : ' AND v.document_id IN (${List.filled(documentIds.length, '?').join(', ')})';
+    final params = <Object?>[activeModelId, ...?documentIds];
+    final rows = _readConsistentRows(
+      '''SELECT v.rowid, v.id, v.content, v.embedding, v.metadata,
+         v.embedding_encoding, v.embedding_dimension
+         FROM vectors v
+         LEFT JOIN documents d ON d.id = v.document_id
+         WHERE v.embedding_model_id = ?
+           AND (d.id IS NULL OR d.status = 'complete')$documentFilter
+         ORDER BY v.rowid ASC''',
+      params,
+    );
+    final data = rows
+        .map(
+          (row) => {
+            'id': row['id'],
+            'content': row['content'],
+            'embedding': row['embedding'] as String,
+            'encoding': row['embedding_encoding'] as String?,
+            'dimension': row['embedding_dimension'] as int?,
+            'metadata': row['metadata'],
+          },
+        )
+        .toList();
+    return compute(_calculateSimilarities, {
+      'queryEmbedding': embedding,
+      'data': data,
+      'limit': limit,
+    });
   }
 
   List<SearchResult> _fts5Search(
     String query, {
     required int limit,
+    required String embeddingModelId,
     List<String>? documentIds,
   }) {
     final sanitized = _sanitizeFtsQuery(query);
@@ -463,9 +441,9 @@ class VectorStore {
       SELECT v.*, bm25(vectors_fts) as score
       FROM vectors_fts
       JOIN vectors v ON vectors_fts.rowid = v.rowid
-      WHERE vectors_fts MATCH ?
+      WHERE vectors_fts MATCH ? AND v.embedding_model_id = ?
     ''';
-      final params = <Object?>[sanitized];
+      final params = <Object?>[sanitized, embeddingModelId];
 
       if (documentIds != null && documentIds.isNotEmpty) {
         final placeholders = List.filled(documentIds.length, '?').join(', ');
@@ -498,6 +476,7 @@ class VectorStore {
       return _fallbackKeywordSearch(
         query,
         limit: limit,
+        embeddingModelId: embeddingModelId,
         documentIds: documentIds,
       );
     }
@@ -506,6 +485,7 @@ class VectorStore {
   List<SearchResult> _fallbackKeywordSearch(
     String query, {
     required int limit,
+    required String embeddingModelId,
     List<String>? documentIds,
   }) {
     LoggingService.warning(
@@ -524,8 +504,12 @@ class VectorStore {
         .map((w) => "LOWER(content) LIKE '%' || ? || '%'")
         .join(' OR ');
 
-    var sql = 'SELECT * FROM vectors WHERE ($conditions)';
-    final params = <Object?>[...words];
+    var sql =
+        '''SELECT v.* FROM vectors v
+      LEFT JOIN documents d ON d.id = v.document_id
+      WHERE ($conditions) AND v.embedding_model_id = ?
+      AND (d.id IS NULL OR d.status = 'complete')''';
+    final params = <Object?>[...words, embeddingModelId];
 
     if (documentIds != null && documentIds.isNotEmpty) {
       final placeholders = List.filled(documentIds.length, '?').join(', ');
@@ -673,32 +657,31 @@ class VectorStore {
     insertDocument(doc);
   }
 
-  /// Renames a document and updates source-attribution metadata atomically.
-  void renameDocument(String documentId, String title) {
-    final normalizedTitle = title.trim();
-    if (normalizedTitle.isEmpty) {
-      throw ArgumentError.value(title, 'title', 'Title cannot be empty');
-    }
+  void replaceDocument({
+    required String oldDocumentId,
+    required String stagedDocumentId,
+    required Document replacement,
+  }) {
     _db!.execute('BEGIN TRANSACTION');
     try {
+      _db!.execute('DELETE FROM vectors WHERE document_id = ?', [
+        oldDocumentId,
+      ]);
+      _db!.execute('DELETE FROM documents WHERE id = ?', [oldDocumentId]);
+      insertDocument(replacement);
       _db!.execute(
-        'UPDATE documents SET title = ? WHERE id = ?',
-        [normalizedTitle, documentId],
+        r'''UPDATE vectors SET document_id = ?, metadata = json_set(
+          json_set(json_set(COALESCE(metadata, '{}'), '$.documentId', ?),
+          '$.documentTitle', ?), '$.documentPath', ?)
+          WHERE document_id = ?''',
+        [
+          oldDocumentId,
+          oldDocumentId,
+          replacement.title,
+          replacement.filePath,
+          stagedDocumentId,
+        ],
       );
-      final rows = _db!.select(
-        'SELECT id, metadata FROM vectors WHERE document_id = ?',
-        [documentId],
-      );
-      for (final row in rows) {
-        final metadata = row['metadata'] == null
-            ? <String, dynamic>{}
-            : jsonDecode(row['metadata'] as String) as Map<String, dynamic>;
-        metadata['documentTitle'] = normalizedTitle;
-        _db!.execute(
-          'UPDATE vectors SET metadata = ? WHERE id = ?',
-          [jsonEncode(metadata), row['id']],
-        );
-      }
       _db!.execute('COMMIT');
       _schedulePersistenceFlush();
     } on Object catch (_) {
@@ -707,10 +690,34 @@ class VectorStore {
     }
   }
 
-  void deleteDocumentEmbeddings(String id) {
+  /// Renames a document and keeps source-attribution metadata in sync.
+  void renameDocument(String documentId, String title) {
     _db!.execute('BEGIN TRANSACTION');
     try {
-      _db!.execute('DELETE FROM vectors WHERE document_id = ?', [id]);
+      _db!.execute(
+        'UPDATE documents SET title = ? WHERE id = ?',
+        [title, documentId],
+      );
+      _db!.execute(
+        r'''
+        UPDATE vectors SET metadata = json_set(COALESCE(metadata, '{}'),
+        '$.documentTitle', ?) WHERE document_id = ?''',
+        [title, documentId],
+      );
+      _db!.execute('COMMIT');
+      _schedulePersistenceFlush();
+    } on Object catch (_) {
+      _db!.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+
+  /// Removes only a document's vectors, retaining its inventory record for
+  /// error bookkeeping after a failed ingest or re-index operation.
+  void deleteVectorsForDocument(String documentId) {
+    _db!.execute('BEGIN TRANSACTION');
+    try {
+      _db!.execute('DELETE FROM vectors WHERE document_id = ?', [documentId]);
       _db!.execute('COMMIT');
       _schedulePersistenceFlush();
     } on Object catch (_) {
@@ -740,6 +747,24 @@ class VectorStore {
     if (result.isEmpty) return null;
     return Document.fromJson(result.first);
   }
+
+  List<Map<String, Object?>> _readConsistentRows(
+    String sql,
+    List<Object?> params,
+  ) {
+    _db!.execute('BEGIN');
+    try {
+      final rows = _db!.select(sql, params).map(_copyRow).toList();
+      _db!.execute('COMMIT');
+      return rows;
+    } on Object catch (_) {
+      _db!.execute('ROLLBACK');
+      rethrow;
+    }
+  }
+
+  Map<String, Object?> _copyRow(Map<String, Object?> row) =>
+      Map<String, Object?>.from(row);
 
   List<EmbeddingData> getChunksForDocument(String documentId) {
     final results = _db!.select(

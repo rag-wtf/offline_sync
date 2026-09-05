@@ -108,7 +108,7 @@ class RagService {
   }) async {
     if (!_isInitialized) throw Exception('RAG Service not initialized');
 
-    LoggingService.info('Performing RAG query: $query');
+    LoggingService.info('Performing RAG query');
     final settings = locator<RagSettingsService>();
     final stopwatch = Stopwatch()..start();
 

@@ -43,9 +43,10 @@ class DocumentLibraryViewModel extends BaseViewModel {
   bool get isIngesting => _activeIngestions.isNotEmpty;
 
   bool needsReindex(Document document) =>
-      document.status == IngestionStatus.complete &&
-      document.embeddingModelId != null &&
-      document.embeddingModelId != _settingsService.activeEmbeddingModelId;
+      document.needsReindex(_settingsService.activeEmbeddingModelId);
+
+  bool canReindex(Document document) =>
+      _documentService.hasSourceForReindex(document);
 
   AppLocalizations? get _l10n {
     final context = StackedService.navigatorKey?.currentContext;
@@ -164,6 +165,15 @@ class DocumentLibraryViewModel extends BaseViewModel {
   Future<bool> reindexDocument(Document document) async {
     setBusy(true);
     try {
+      if (!canReindex(document)) {
+        await _dialogService.showDialog(
+          title: _l10n?.errorTitle ?? 'Error',
+          description:
+              _l10n?.reindexUnavailable ??
+              'This document has no available source bytes or file to re-index.',
+        );
+        return false;
+      }
       await _documentService.reindexDocument(document.id);
       await _refreshDocuments();
       return true;

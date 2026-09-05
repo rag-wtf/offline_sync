@@ -13,29 +13,47 @@ void main() {
       expect(LoggingService.minimumLevel, Level.debug);
     });
 
-    test(
-      'recordCrash persists safe diagnostics without raw error data',
-      () async {
-        final trace = StackTrace.fromString('stack line 1\nstack line 2');
+    test('crash records omit error and stack data', () async {
+      await LoggingService.recordCrash(
+        'Unexpected failure',
+        error: StateError('document secret content and query text'),
+        stackTrace: StackTrace.fromString('query: document secret content'),
+      );
 
-        await LoggingService.recordCrash(
-          'Failed to process /Users/alice/Documents/private.txt with token=hf_secret',
-          error: StateError('document contents: confidential text'),
-          stackTrace: trace,
-        );
+      final prefs = await SharedPreferences.getInstance();
+      final crashLogs = prefs.getStringList('crash_logs');
 
-        final prefs = await SharedPreferences.getInstance();
-        final crashLogs = prefs.getStringList('crash_logs');
+      expect(crashLogs, hasLength(1));
+      expect(crashLogs!.single, contains('Unexpected failure'));
+      expect(crashLogs.single, isNot(contains('document secret content')));
+      expect(crashLogs.single, isNot(contains('query text')));
+      expect(crashLogs.single, isNot(contains('stack line 1')));
+    });
 
-        expect(crashLogs, hasLength(1));
-        expect(crashLogs!.single, contains('Failed to process'));
-        expect(crashLogs.single, contains('errorType: StateError'));
-        expect(crashLogs.single, isNot(contains('private.txt')));
-        expect(crashLogs.single, isNot(contains('hf_secret')));
-        expect(crashLogs.single, isNot(contains('confidential text')));
-        expect(crashLogs.single, contains('stack line 1'));
-      },
-    );
+    test('crash records redact private paths from messages', () async {
+      await LoggingService.recordCrash(
+        r'Failed to open C:\Users\alice\private\notes.txt',
+      );
+
+      final logs = await LoggingService.getCrashLogs();
+
+      expect(logs.single, isNot(contains(r'C:\Users\alice\private\notes.txt')));
+      expect(logs.single, contains('Crash recorded'));
+    });
+
+    test('crash records redact credentials, URLs, and paths', () async {
+      await LoggingService.recordCrash(
+        'request failed authorization=Bearer secret-token '
+        'https://example.com/private?token=secret C:\\Users\\alice\\notes.txt',
+      );
+
+      final prefs = await SharedPreferences.getInstance();
+      final record = prefs.getStringList('crash_logs')!.single;
+
+      expect(record, isNot(contains('secret-token')));
+      expect(record, isNot(contains('https://example.com')));
+      expect(record, isNot(contains(r'C:\Users\alice\notes.txt')));
+    });
 
     test('recordCrash keeps only the newest fifty crash logs', () async {
       SharedPreferences.setMockInitialValues({

@@ -167,5 +167,20 @@
     "clearChatHistoryDescription": "Delete all locally saved conversations?",
     "clearChatHistorySubtitle": "Delete locally saved conversations.",
     "clearAction": "Clear",
-    "renameDocumentError": "Unable to rename this document."
+    "renameDocumentError": "Unable to rename this document.",
+    "tokenSaveError": "Unable to save the token. Please try again.",
+    "tokenClearError": "Unable to clear the token. Please try again.",
+    "tokenStatusError": "Unable to read token status. Please try again.",
+    "chatHistoryClearError": "Unable to clear chat history. Please try again.",
+    "crashLogsLoadError": "Unable to load crash logs. Please try again.",
+    "crashLogsClearError": "Unable to clear crash logs. Please try again.",
+    "diagnosticsExportError": "Unable to copy diagnostics. Please try again.",
+    "embeddingSwitchTitle": "Change embedding model?",
+    "embeddingSwitchDescription": "Switching models requires re-indexing {count} document(s) before semantic search can use them.",
+    "@embeddingSwitchDescription": {"placeholders": {"count": {"type": "Object"}}},
+    "continueAction": "Continue",
+    "embeddingStatusCheckError": "Unable to check document index status.",
+    "reindexUnavailable": "This document has no source bytes or available file to re-index.",
+    "modelDeleteError": "Unable to delete this model. Please try again.",
+    "modelDownloadError": "Unable to download this model. Please try again."
 }

@@ -5,7 +5,7 @@
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A Very Good Project created by Very Good CLI.",
+    "description": "On-device, fully offline RAG assistant. Local corpus, chat history, diagnostics, and models are not included in operating-system cloud backups.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
