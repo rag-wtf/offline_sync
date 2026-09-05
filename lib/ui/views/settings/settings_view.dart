@@ -383,8 +383,10 @@ class SettingsView extends StackedView<SettingsViewModel> {
                     slider: Slider(
                       value: viewModel.maxTokensDisplay,
                       min: 512,
-                      max: 8192,
-                      divisions: 15,
+                      max: viewModel.maxTokensLimit,
+                      divisions: ((viewModel.maxTokensLimit - 512) / 256)
+                          .round()
+                          .clamp(1, 100),
                       label: '${viewModel.maxTokensDisplay.round()}',
                       onChanged: viewModel.onMaxTokensChanged,
                       onChangeEnd: viewModel.onMaxTokensChangeEnd,

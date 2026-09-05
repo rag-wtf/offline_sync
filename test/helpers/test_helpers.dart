@@ -209,6 +209,7 @@ MockRagSettingsService getAndRegisterMockRagSettingsService() {
   when(() => service.rerankTopK).thenReturn(10);
   when(() => service.searchTopK).thenReturn(5);
   when(() => service.maxHistoryMessages).thenReturn(10);
+  when(() => service.activeInferenceContextLimit).thenReturn(8192);
   when(() => service.contextualRetrievalEnabled).thenReturn(false);
   when(service.initialize).thenAnswer((_) async {});
 

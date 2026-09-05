@@ -85,17 +85,22 @@ Document: $truncatedContent
 Relevance score:''';
 
     try {
-      final chat = await inferenceModel.createChat(temperature: 0.1);
-      await chat.initSession();
-      await chat.addQuery(Message(text: prompt, isUser: true));
-
       final response = StringBuffer();
-      final stream = chat.generateChatResponseAsync();
-      await for (final modelResponse in stream) {
-        if (modelResponse is TextResponse) {
-          response.write(modelResponse.token);
-        }
-      }
+      await InferenceModelProvider.withSerializedChat(
+        inferenceModel,
+        temperature: 0.1,
+        action: (chat) async {
+          await chat.initSession();
+          await chat.addQuery(Message(text: prompt, isUser: true));
+
+          final stream = chat.generateChatResponseAsync();
+          await for (final modelResponse in stream) {
+            if (modelResponse is TextResponse) {
+              response.write(modelResponse.token);
+            }
+          }
+        },
+      );
 
       // Parse score from response
       final scoreText = response.toString().trim().split('\n').first;

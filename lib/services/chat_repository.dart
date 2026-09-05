@@ -31,8 +31,9 @@ class ChatRepository {
   /// Save a chat message
   Future<void> saveMessage(ChatMessage message) async {
     final stmt = db.prepare('''
-      INSERT INTO chat_messages (content, is_user, timestamp, sources, metrics)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO chat_messages (
+        content, is_user, timestamp, sources, metrics, is_failed
+      ) VALUES (?, ?, ?, ?, ?, ?)
     ''');
     try {
       stmt.execute([
@@ -63,10 +64,12 @@ class ChatRepository {
           })
         else
           null,
+        if (message.isFailed) 1 else 0,
       ]);
     } finally {
       stmt.close();
     }
+    await _vectorStore.flush();
   }
 
   /// Load recent messages (default: last 50)
@@ -122,6 +125,7 @@ class ChatRepository {
             ),
             sources: sources,
             metrics: metrics,
+            isFailed: (row['is_failed'] as int? ?? 0) == 1,
           );
         })
         .toList()
@@ -129,9 +133,27 @@ class ChatRepository {
         .toList(); // Reverse to get chronological order
   }
 
+  /// Marks a previously persisted user message as failed.
+  Future<void> markMessageFailed(ChatMessage message) async {
+    db.execute(
+      '''
+      UPDATE chat_messages
+      SET is_failed = 1
+      WHERE id = (
+        SELECT id FROM chat_messages
+        WHERE content = ? AND is_user = 1 AND timestamp = ?
+        ORDER BY id DESC LIMIT 1
+      )
+      ''',
+      [message.content, message.timestamp.millisecondsSinceEpoch],
+    );
+    await _vectorStore.flush();
+  }
+
   /// Clear all chat history
   Future<void> clearHistory() async {
     db.execute('DELETE FROM chat_messages');
+    await _vectorStore.flush();
   }
 
   /// Get message count

@@ -44,6 +44,11 @@ class ModelConfig {
 
     return InferenceModels.gemma3_270M;
   }
+
+  static int activeInferenceContextLimit(String? activeInferenceModelId) {
+    final model = activeInferenceModelOrDefault(activeInferenceModelId);
+    return model.contextLimit ?? model.maxTokens;
+  }
 }
 
 /// Inference models catalog
@@ -60,6 +65,7 @@ class InferenceModels {
     requiresGpu: false,
     tier: DeviceTier.low,
     maxTokens: 1024, // Conservative for low-end devices
+    contextLimit: 1024,
     sha256: '0f7147f1c22eaf758b819bbf7841793e4c90096c9352cde7fbe5c631f2265ef5',
     fileType: ModelFileType.task,
     supportedPlatforms: {
@@ -81,6 +87,7 @@ class InferenceModels {
     requiresGpu: false,
     tier: DeviceTier.mid,
     maxTokens: 2048, // Moderate context for mid-tier devices
+    contextLimit: 4096,
     sha256: '1325ae366d31950f137c9c357b9fa89448b176d76998180c08ceaca78bba98be',
     fileType: ModelFileType.litertlm,
     supportedPlatforms: {
@@ -102,6 +109,7 @@ class InferenceModels {
     requiresGpu: true,
     tier: DeviceTier.high,
     maxTokens: 4096, // Larger context for high-end devices
+    contextLimit: 4096,
     sha256: 'a7f544cfee68f579fabadb22aa9284faa4020a0f5358d0e15b49fdd4cefe4200',
     fileType: ModelFileType.task,
     supportedPlatforms: {
@@ -123,6 +131,7 @@ class InferenceModels {
     requiresGpu: true,
     tier: DeviceTier.premium,
     maxTokens: 8192, // Maximum context for premium devices
+    contextLimit: 8192,
     sha256: '2b8e9d04bf8c5c50346d248c5e24a7e65102251c94dee6f04d5dce5ce3e6ac4f',
     fileType: ModelFileType.task,
     supportedPlatforms: {
@@ -231,6 +240,7 @@ class ModelDefinition {
     required this.requiresGpu,
     required this.tier,
     required this.maxTokens,
+    this.contextLimit,
     this.tokenizerUrl,
     this.sha256,
     this.fileType = ModelFileType.binary,
@@ -256,6 +266,9 @@ class ModelDefinition {
   final bool requiresGpu;
   final DeviceTier tier;
   final int maxTokens; // Maximum context window (input + output)
+  /// Exact context window supported by the model file's KV cache.
+  /// [maxTokens] remains the compatibility/default value for older callers.
+  final int? contextLimit;
   final String? sha256; // For future checksum validation
   final ModelFileType fileType;
   final Set<ModelPlatform> supportedPlatforms;

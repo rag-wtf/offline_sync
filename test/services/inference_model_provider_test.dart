@@ -8,6 +8,8 @@ import '../helpers/test_helpers.dart';
 
 class _MockInferenceModel extends Mock implements InferenceModel {}
 
+class _MockInferenceChat extends Mock implements InferenceChat {}
+
 void main() {
   late MockRagSettingsService settings;
 
@@ -124,5 +126,50 @@ void main() {
 
     expect(await provider.getModel(), same(secondModel));
     expect(loadCalls, 2);
+  });
+
+  test(
+    'serialized chat operations close their chat on success and failure',
+    () async {
+      final model = _MockInferenceModel();
+      final chat = _MockInferenceChat();
+      when(
+        () => model.createChat(temperature: any(named: 'temperature')),
+      ).thenAnswer((_) async => chat);
+      when(chat.close).thenAnswer((_) async {});
+
+      await InferenceModelProvider.withSerializedChat<void>(
+        model,
+        temperature: 0.1,
+        action: (_) async {},
+      );
+      verify(chat.close).called(1);
+
+      await expectLater(
+        InferenceModelProvider.withSerializedChat<void>(
+          model,
+          temperature: 0.1,
+          action: (_) async => throw StateError('generation failed'),
+        ),
+        throwsStateError,
+      );
+    verify(chat.close).called(1);
+    },
+  );
+
+  test('clearCache closes the cached model', () async {
+    final model = _MockInferenceModel();
+    when(() => settings.maxTokens).thenReturn(1024);
+    when(() => settings.activeInferenceModelId).thenReturn(null);
+    when(model.close).thenAnswer((_) async {});
+    final provider = InferenceModelProvider(
+      activeModelLoader: ({required maxTokens}) async => model,
+    );
+
+    await provider.getModel();
+    provider.clearCache();
+    await Future<void>.delayed(Duration.zero);
+
+    verify(model.close).called(1);
   });
 }

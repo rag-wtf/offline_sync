@@ -5,6 +5,7 @@ import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/app/main_app.dart';
 import 'package:offline_sync/l10n/l10n.dart';
+import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
@@ -31,6 +32,26 @@ void main() {
     await tester.pump();
 
     verify(mockVectorStore.close).called(1);
+  });
+
+  testWidgets('AppLifecycleRoot releases the inference model on pause', (
+    tester,
+  ) async {
+    final provider = MockInferenceModelProvider();
+    when(provider.releaseModel).thenAnswer((_) async {});
+    locator.registerSingleton<
+      // Register under the interface used by the application.
+      InferenceModelProvider
+    >(provider);
+
+    await tester.pumpWidget(
+      const AppLifecycleRoot(child: MaterialApp(home: SizedBox())),
+    );
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+
+    verify(provider.releaseModel).called(1);
   });
 
   testWidgets('MainApp wires MaterialApp shell with router and localization', (

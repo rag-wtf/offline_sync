@@ -90,6 +90,9 @@ void main() {
       ),
     ).thenReturn(null);
     when(
+      () => chatRepository.markMessageFailed(any()),
+    ).thenAnswer((_) async {});
+    when(
       () => navigationService.navigateWithTransition<bool?>(
         any(),
         transitionStyle: any(named: 'transitionStyle'),
@@ -391,6 +394,9 @@ void main() {
       ' generation requires authentication', () async {
     when(() => chatRepository.saveMessage(any())).thenAnswer((_) async {});
     when(
+      () => chatRepository.markMessageFailed(any()),
+    ).thenAnswer((_) async {});
+    when(
       () => ragService.askWithRAGStream(
         any(),
         includeMetrics: any(named: 'includeMetrics'),
@@ -420,6 +426,8 @@ void main() {
         duration: any(named: 'duration'),
       ),
     ).called(1);
+    expect(viewModel.messages.single.isFailed, isTrue);
+    verify(() => chatRepository.markMessageFailed(any())).called(1);
   });
 
   test('sendMessage removes placeholder and shows generic error', () async {

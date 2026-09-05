@@ -14,13 +14,24 @@ void main() {
         expect(manager.estimateTokens(''), equals(0));
       });
 
-      test('should return approx 1 token for 4 characters', () {
-        expect(manager.estimateTokens('abcd'), equals(1));
+      test('should use a conservative three-code-point fallback', () {
+        expect(manager.estimateTokens('abcd'), equals(2));
       });
 
-      test('should return 3 tokens for 10 characters', () {
-        // (10/4).ceil() = 3
-        expect(manager.estimateTokens('abcdefghij'), equals(3));
+      test('should count Unicode code points for fallback budgeting', () {
+        expect(manager.estimateTokens('abcdefghij'), equals(4));
+      });
+
+      test('uses an exact session tokenizer when available', () async {
+        final count = await manager.countTokens(
+          'prompt',
+          exactCounter: (text) async {
+            expect(text, 'prompt');
+            return 17;
+          },
+        );
+
+        expect(count, 17);
       });
     });
 

@@ -62,6 +62,8 @@ class SettingsViewModel extends BaseViewModel {
   double get maxHistoryMessagesDisplay =>
       _pendingMaxHistoryMessages ?? _ragSettings.maxHistoryMessages.toDouble();
   double get maxTokensDisplay => _pendingMaxTokens ?? maxTokens.toDouble();
+  double get maxTokensLimit =>
+      _ragSettings.activeInferenceContextLimit.toDouble();
 
   // Get user-configured maxTokens or model default
   int get maxTokens {
@@ -71,14 +73,20 @@ class SettingsViewModel extends BaseViewModel {
     // Return active model default
     return ModelConfig.activeInferenceModelOrDefault(
       _ragSettings.activeInferenceModelId,
-    ).maxTokens;
+    ).contextLimit ??
+        ModelConfig.activeInferenceModelOrDefault(
+          _ragSettings.activeInferenceModelId,
+        ).maxTokens;
   }
 
   // Get the model's default maxTokens for display
   int get modelDefaultMaxTokens {
     return ModelConfig.activeInferenceModelOrDefault(
       _ragSettings.activeInferenceModelId,
-    ).maxTokens;
+    ).contextLimit ??
+        ModelConfig.activeInferenceModelOrDefault(
+          _ragSettings.activeInferenceModelId,
+        ).maxTokens;
   }
 
   // Whether user has overridden the default

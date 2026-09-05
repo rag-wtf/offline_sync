@@ -379,6 +379,14 @@ class DocumentManagementService {
       return oldDoc;
     }
 
+    // Avoid re-ingesting an unchanged file. This also prevents the UNIQUE
+    // content-hash index from turning a harmless refresh into an error record.
+    final sourceFile = File(oldDoc.filePath);
+    final currentHash = await _calculateFileHash(sourceFile);
+    if (currentHash == oldDoc.contentHash) {
+      return oldDoc;
+    }
+
     final refreshedDoc = await addDocument(
       oldDoc.filePath,
       skipDuplicateCheck: true,

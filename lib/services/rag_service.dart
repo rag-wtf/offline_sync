@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter_gemma/flutter_gemma.dart';
@@ -341,7 +342,8 @@ class RagService {
       settings.activeInferenceModelId,
     );
     // Calculate token budget honoring user maxTokens override
-    final maxTokens = settings.maxTokens ?? modelConfig.maxTokens;
+    final contextLimit = modelConfig.contextLimit ?? modelConfig.maxTokens;
+    final maxTokens = min(settings.maxTokens ?? contextLimit, contextLimit);
     final outputReserve = (maxTokens * RagConstants.outputReserveRatio).floor();
     final queryTokens = _tokenManager.estimateTokens(query);
     final rawAvailable = maxTokens - outputReserve - queryTokens;
@@ -379,23 +381,27 @@ Instructions:
 
     final response = StringBuffer();
     final inferenceModel = await _inferenceModelProvider.getModel();
-    final chat = await inferenceModel.createChat(temperature: 0.1);
+    await InferenceModelProvider.withSerializedChat(
+      inferenceModel,
+      temperature: 0.1,
+      action: (chat) async {
+        await chat.initSession();
+        final exactPromptTokens = await _countPromptTokens(chat, prompt);
+        LoggingService.debug(
+          'Prompt token count: $exactPromptTokens/$maxTokens',
+        );
+        await chat.addQuery(Message(text: prompt, isUser: true));
 
-    // Initialize the chat session
-    await chat.initSession();
-
-    // Add the prompt as a query
-    await chat.addQuery(Message(text: prompt, isUser: true));
-
-    // Get the streaming response with inactivity timeout
-    final stream = chat.generateChatResponseAsync().timeout(
-      const Duration(seconds: 30),
+        final stream = chat.generateChatResponseAsync().timeout(
+          const Duration(seconds: 30),
+        );
+        await for (final modelResponse in stream) {
+          if (modelResponse is TextResponse) {
+            response.write(modelResponse.token);
+          }
+        }
+      },
     );
-    await for (final modelResponse in stream) {
-      if (modelResponse is TextResponse) {
-        response.write(modelResponse.token);
-      }
-    }
 
     return cleanResponse(response.toString());
   }
@@ -411,7 +417,8 @@ Instructions:
       settings.activeInferenceModelId,
     );
     // Calculate token budget honoring user maxTokens override
-    final maxTokens = settings.maxTokens ?? modelConfig.maxTokens;
+    final contextLimit = modelConfig.contextLimit ?? modelConfig.maxTokens;
+    final maxTokens = min(settings.maxTokens ?? contextLimit, contextLimit);
     final outputReserve = (maxTokens * RagConstants.outputReserveRatio).floor();
     final queryTokens = _tokenManager.estimateTokens(query);
     final rawAvailable = maxTokens - outputReserve - queryTokens;
@@ -452,27 +459,56 @@ Instructions:
       'Budget: context=$contextBudget, history=$historyBudget',
     );
 
-    final inferenceModel = await _inferenceModelProvider.getModel();
-    final chat = await inferenceModel.createChat(temperature: 0.1);
+    final controller = StreamController<String>();
+    unawaited(() async {
+      try {
+        final inferenceModel = await _inferenceModelProvider.getModel();
+        await InferenceModelProvider.withSerializedChat(
+          inferenceModel,
+          temperature: 0.1,
+          action: (chat) async {
+            await chat.initSession();
+            final exactPromptTokens = await _countPromptTokens(chat, prompt);
+            LoggingService.debug(
+              'Prompt token count: $exactPromptTokens/$maxTokens',
+            );
+            await chat.addQuery(Message(text: prompt, isUser: true));
 
-    // Initialize the chat session
-    await chat.initSession();
-
-    // Add the prompt as a query
-    await chat.addQuery(Message(text: prompt, isUser: true));
-
-    // Stream tokens as they arrive with inactivity timeout
-    final stream = chat.generateChatResponseAsync().timeout(
-      const Duration(seconds: 30),
-    );
-    await for (final modelResponse in stream) {
-      if (modelResponse is TextResponse) {
-        yield modelResponse.token;
+            final stream = chat.generateChatResponseAsync().timeout(
+              const Duration(seconds: 30),
+            );
+            await for (final modelResponse in stream) {
+              if (modelResponse is TextResponse) {
+                controller.add(modelResponse.token);
+              }
+            }
+          },
+        );
+      } on Object catch (error, stack) {
+        controller.addError(error, stack);
+      } finally {
+        await controller.close();
       }
+    }());
+
+    await for (final token in controller.stream) {
+      yield token;
     }
   }
 
   /// Build context from search results with token budget
+  Future<int> _countPromptTokens(InferenceChat chat, String prompt) async {
+    try {
+      final session = chat.session;
+      return await _tokenManager.countTokens(
+        prompt,
+        exactCounter: session.sizeInTokens,
+      );
+    } on Object catch (_) {
+      return _tokenManager.estimateTokens(prompt);
+    }
+  }
+
   String _buildContextWithBudget(List<SearchResult> results, int tokenBudget) {
     if (results.isEmpty) return 'No relevant context found.';
 

@@ -24,6 +24,7 @@ class ChatMessage {
     required this.timestamp,
     this.sources,
     this.metrics,
+    this.isFailed = false,
   });
 
   /// The text content of the message
@@ -40,6 +41,9 @@ class ChatMessage {
 
   /// Performance metrics for the RAG generation (if AI message)
   final RAGMetrics? metrics;
+
+  /// Whether generation failed for this user message.
+  final bool isFailed;
 }
 
 /// ViewModel for the chat view, handling message sending and document ingestion
@@ -205,6 +209,7 @@ class ChatViewModel extends BaseViewModel {
       final maxHistoryMessages = _ragSettings.maxHistoryMessages;
       final history = messages.reversed
           .skip(2) // Skip placeholder AI message and current user query
+          .where((message) => !message.isFailed)
           .take(maxHistoryMessages)
           .toList()
           .reversed
@@ -260,6 +265,7 @@ class ChatViewModel extends BaseViewModel {
     } on AuthenticationRequiredException {
       // Remove the placeholder message on error
       messages.removeAt(aiMsgIndex);
+      await _markUserMessageFailed(userMsg);
       // Show token input dialog
       await _showTokenDialog();
       _snackbarService.showSnackbar(
@@ -271,6 +277,7 @@ class ChatViewModel extends BaseViewModel {
       if (messages.length > aiMsgIndex) {
         messages.removeAt(aiMsgIndex);
       }
+      await _markUserMessageFailed(userMsg);
       _snackbarService.showSnackbar(
         message: 'Error: $e',
         duration: const Duration(seconds: 3),
@@ -279,6 +286,20 @@ class ChatViewModel extends BaseViewModel {
       _isProcessing = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _markUserMessageFailed(ChatMessage userMessage) async {
+    final index = messages.indexOf(userMessage);
+    if (index != -1) {
+      messages[index] = ChatMessage(
+        content: userMessage.content,
+        isUser: true,
+        timestamp: userMessage.timestamp,
+        isFailed: true,
+      );
+      notifyListeners();
+    }
+    await _chatRepository.markMessageFailed(userMessage);
   }
 
   /// Shows a detailed view of a source document used for context

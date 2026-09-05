@@ -1,5 +1,6 @@
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/inference_model_provider.dart';
+import 'package:offline_sync/services/model_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Service for managing RAG quality settings and user preferences
@@ -36,7 +37,11 @@ class RagSettingsService {
   int get rerankTopK => _rerankTopK;
   int get searchTopK => _searchTopK;
   int get maxHistoryMessages => _maxHistoryMessages;
-  int? get maxTokens => _maxTokens; // null means use model default
+  int? get maxTokens => _maxTokens == null
+      ? null
+      : _clampMaxTokens(_maxTokens!); // null means use model default
+  int get activeInferenceContextLimit =>
+      ModelConfig.activeInferenceContextLimit(_activeInferenceModelId);
   String? get activeInferenceModelId => _activeInferenceModelId;
   String? get activeEmbeddingModelId => _activeEmbeddingModelId;
 
@@ -59,10 +64,13 @@ class RagSettingsService {
       0,
       5,
     );
-    final rawMaxTokens = prefs.getInt(_keyMaxTokens);
-    _maxTokens = rawMaxTokens?.clamp(512, 8192);
     _activeInferenceModelId = prefs.getString(_keyActiveInferenceModel);
     _activeEmbeddingModelId = prefs.getString(_keyActiveEmbeddingModel);
+    final rawMaxTokens = prefs.getInt(_keyMaxTokens);
+    _maxTokens = rawMaxTokens == null ? null : _clampMaxTokens(rawMaxTokens);
+    if (_maxTokens != null && _maxTokens != rawMaxTokens) {
+      await prefs.setInt(_keyMaxTokens, _maxTokens!);
+    }
 
     // Document Management Settings (Issue #17 fix)
     _maxDocumentSizeMB = (prefs.getInt(_keyMaxDocumentSizeMB) ?? 10).clamp(
@@ -121,7 +129,7 @@ class RagSettingsService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_keyMaxTokens); // Remove to use model default
     } else {
-      _maxTokens = value.clamp(512, 8192); // Between 512 and 8192
+      _maxTokens = _clampMaxTokens(value);
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_keyMaxTokens, _maxTokens!);
     }
@@ -134,6 +142,10 @@ class RagSettingsService {
     _activeInferenceModelId = id;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_keyActiveInferenceModel, id);
+    if (_maxTokens != null) {
+      _maxTokens = _clampMaxTokens(_maxTokens!);
+      await prefs.setInt(_keyMaxTokens, _maxTokens!);
+    }
     if (locator.isRegistered<InferenceModelProvider>()) {
       locator<InferenceModelProvider>().clearCache();
     }
@@ -171,5 +183,10 @@ class RagSettingsService {
     _contextualRetrievalEnabled = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_keyContextualRetrieval, value);
+  }
+
+  int _clampMaxTokens(int value) {
+    final upperBound = activeInferenceContextLimit;
+    return value.clamp(512, upperBound);
   }
 }

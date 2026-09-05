@@ -164,6 +164,50 @@ void main() {
       expect(results.first.content, contains('fox'));
     });
 
+    test('FTS5 preserves punctuation and ordinary operator words', () async {
+      vectorStore.insertEmbedding(
+        id: 'punctuation',
+        documentId: 'doc-punctuation',
+        content: "What's the shipping time? Returns, refunds and shipping.",
+        embedding: [1, 0],
+      );
+
+      final results = await vectorStore.hybridSearch(
+        "What's the shipping time?",
+        [0, 1],
+        limit: 1,
+        semanticWeight: 0,
+      );
+
+      expect(results.map((result) => result.id), contains('punctuation'));
+    });
+
+    test('punctuation-only queries still use semantic retrieval', () async {
+      vectorStore.insertEmbedding(
+        id: 'old-semantic-match',
+        documentId: 'old-document',
+        content: 'A semantic match from an older document',
+        embedding: [1, 0],
+      );
+      for (var i = 0; i < 500; i++) {
+        vectorStore.insertEmbedding(
+          id: 'new-$i',
+          documentId: 'new-document',
+          content: 'A newer unrelated chunk $i',
+          embedding: [0, 1],
+        );
+      }
+
+      final results = await vectorStore.hybridSearch(
+        '???',
+        [1, 0],
+        limit: 1,
+        semanticWeight: 1,
+      );
+
+      expect(results.single.id, 'old-semantic-match');
+    });
+
     test(
       'search filters semantic and keyword results by document ids',
       () async {
@@ -369,6 +413,85 @@ void main() {
           expect(rows.single['sql'] as String, contains('UNIQUE'));
         },
       );
+
+      test(
+        'v3 migration assigns legacy vectors to the active embedder',
+        () async {
+          vectorStore.close();
+          SharedPreferences.setMockInitialValues({
+            'active_embedding_model_id': 'gecko-64',
+          });
+
+          final dbFile = File('vectors.db');
+          if (dbFile.existsSync()) dbFile.deleteSync();
+
+          sqlite3.open('vectors.db')
+            ..execute('''
+            CREATE TABLE vectors (
+              id TEXT PRIMARY KEY,
+              document_id TEXT NOT NULL,
+              content TEXT NOT NULL,
+              embedding TEXT NOT NULL,
+              metadata TEXT,
+              created_at INTEGER NOT NULL
+            )
+          ''')
+            ..execute('''
+            CREATE TABLE documents (
+              id TEXT PRIMARY KEY,
+              title TEXT NOT NULL,
+              file_path TEXT NOT NULL,
+              format TEXT NOT NULL,
+              chunk_count INTEGER NOT NULL,
+              total_characters INTEGER NOT NULL,
+              content_hash TEXT NOT NULL,
+              ingested_at INTEGER NOT NULL,
+              last_refreshed INTEGER,
+              status TEXT DEFAULT 'complete',
+              contextual_retrieval INTEGER DEFAULT 0,
+              error_message TEXT
+            )
+          ''')
+            ..execute('''
+            INSERT INTO vectors (
+              id, document_id, content, embedding, metadata, created_at
+            ) VALUES ('legacy', 'doc', 'legacy content', '[1.0, 0.0]', '{}', 1)
+          ''')
+            ..execute('PRAGMA user_version = 2')
+            ..close();
+
+          vectorStore = VectorStore();
+          await vectorStore.initialize();
+
+          final row = vectorStore.db!.select(
+            'SELECT embedding_model_id FROM vectors WHERE id = ?',
+            ['legacy'],
+          ).single;
+          expect(row['embedding_model_id'], 'gecko-64');
+        },
+      );
+
+      test('embedding rows retain explicit encoding and dimension', () {
+        vectorStore.insertEmbedding(
+          id: 'dimension-safe',
+          documentId: 'dimension-doc',
+          content: 'dimension-safe content',
+          embedding: [1, 2, 3],
+          embeddingModelId: 'gecko-64',
+        );
+
+        final row = vectorStore.db!.select(
+          'SELECT embedding_encoding, embedding_dimension FROM vectors '
+          'WHERE id = ?',
+          ['dimension-safe'],
+        ).single;
+        expect(row['embedding_encoding'], 'float32');
+        expect(row['embedding_dimension'], 3);
+        expect(
+          vectorStore.getChunksForDocument('dimension-doc').single.embedding,
+          [1, 2, 3],
+        );
+      });
 
       test('CRUD operations', () async {
         final doc = Document(

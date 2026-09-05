@@ -2,11 +2,34 @@ import 'package:offline_sync/services/rag_constants.dart';
 
 /// Service for managing token estimation and budget calculations
 class RagTokenManager {
+  RagTokenManager({this.tokenCounter});
+
+  /// Optional tokenizer supplied by a live inference session.
+  final Future<int> Function(String text)? tokenCounter;
+
   /// Estimates the number of tokens in a string
-  /// Simplified estimation: roughly 4 characters per token
+  /// Conservative fallback for prompt budgeting when no session tokenizer is
+  /// available. Three Unicode code points per token avoids the old optimistic
+  /// chars/4 estimate for code, CJK, and punctuation-heavy text.
   int estimateTokens(String text) {
     if (text.isEmpty) return 0;
-    return (text.length / 4).ceil();
+    return (text.runes.length / 3).ceil();
+  }
+
+  /// Counts tokens with the active session tokenizer when one is available.
+  Future<int> countTokens(
+    String text, {
+    Future<int> Function(String text)? exactCounter,
+  }) async {
+    final counter = exactCounter ?? tokenCounter;
+    if (counter != null) {
+      try {
+        return await counter(text);
+      } on Object catch (_) {
+        // Fall back to a conservative estimate if the runtime tokenizer fails.
+      }
+    }
+    return estimateTokens(text);
   }
 
   /// Builds a conversation history that fits within the token budget

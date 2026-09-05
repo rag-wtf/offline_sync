@@ -68,6 +68,23 @@ void main() {
       expect(messages.first.isUser, true);
     });
 
+    test(
+      'persists failed messages and can mark an existing user message',
+      () async {
+        final message = ChatMessage(
+          content: 'Retry me',
+          isUser: true,
+          timestamp: DateTime.fromMillisecondsSinceEpoch(1234),
+        );
+
+        await chatRepository.saveMessage(message);
+        await chatRepository.markMessageFailed(message);
+
+        final stored = await chatRepository.loadMessages();
+        expect(stored.single.isFailed, isTrue);
+      },
+    );
+
     test('clearHistory removes all messages', () async {
       await chatRepository.saveMessage(
         ChatMessage(content: 'Msg 1', isUser: true, timestamp: DateTime.now()),

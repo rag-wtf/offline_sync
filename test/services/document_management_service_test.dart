@@ -1,5 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+
+import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -447,51 +450,34 @@ void main() {
       },
     );
 
-    test('refreshDocument reingests file-backed documents '
-        'even when hash is unchanged', () async {
-      final file = File('refresh_same_hash.txt');
-      await file.writeAsString('Refresh content');
+    test(
+      'refreshDocument returns the existing document when hash is unchanged',
+      () async {
+        final file = File('refresh_same_hash.txt');
+        await file.writeAsString('Refresh content');
+        final hash = sha256.convert(utf8.encode('Refresh content')).toString();
 
-      final oldDoc = Document(
-        id: 'old_doc',
-        title: 'refresh_same_hash.txt',
-        filePath: file.path,
-        format: DocumentFormat.plainText,
-        chunkCount: 1,
-        totalCharacters: 15,
-        contentHash: 'placeholder-hash',
-        ingestedAt: DateTime.now(),
-        status: IngestionStatus.complete,
-      );
+        final oldDoc = Document(
+          id: 'old_doc',
+          title: 'refresh_same_hash.txt',
+          filePath: file.path,
+          format: DocumentFormat.plainText,
+          chunkCount: 1,
+          totalCharacters: 15,
+          contentHash: hash,
+          ingestedAt: DateTime.now(),
+          status: IngestionStatus.complete,
+        );
 
-      when(() => mockVectorStore.getDocument('old_doc')).thenReturn(oldDoc);
-      when(() => mockVectorStore.findByHash(any<String>())).thenReturn(oldDoc);
-      when(
-        () => mockParserService.detectFormat(any<String>()),
-      ).thenReturn(DocumentFormat.plainText);
-      when(
-        () => mockEmbeddingService.generateEmbedding(any<String>()),
-      ).thenAnswer((_) async => [0.1, 0.2]);
-      when(
-        () => mockVectorStore.insertDocument(any<Document>()),
-      ).thenReturn(null);
-      when(
-        () => mockVectorStore.updateDocument(any<Document>()),
-      ).thenReturn(null);
-      when(
-        () => mockVectorStore.insertEmbeddingsBatch(any<List<EmbeddingData>>()),
-      ).thenReturn(null);
-      when(() => mockVectorStore.deleteDocument('old_doc')).thenReturn(null);
+        when(() => mockVectorStore.getDocument('old_doc')).thenReturn(oldDoc);
+        final result = await service.refreshDocument('old_doc');
 
-      final result = await service.refreshDocument('old_doc');
+        expect(result, same(oldDoc));
+        verifyNever(() => mockVectorStore.insertDocument(any<Document>()));
+        verifyNever(() => mockVectorStore.deleteDocument(any()));
 
-      expect(result, isNotNull);
-      expect(result!.id, isNot(oldDoc.id));
-      expect(result.status, IngestionStatus.complete);
-      verify(() => mockVectorStore.insertDocument(any<Document>())).called(1);
-      verify(() => mockVectorStore.deleteDocument('old_doc')).called(1);
-
-      await file.delete();
-    });
+        await file.delete();
+      },
+    );
   });
 }

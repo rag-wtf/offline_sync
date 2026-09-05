@@ -1,14 +1,20 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/models/document.dart';
+import 'package:offline_sync/services/logging_service.dart';
+import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/rag_constants.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store_path_stub.dart'
     if (dart.library.io) 'package:offline_sync/services/vector_store_path_native.dart'
     as path_helper;
+import 'package:offline_sync/services/vector_store_persistence_stub.dart'
+    if (dart.library.html) 'package:offline_sync/services/vector_store_persistence_web.dart'
+    as persistence;
 import 'package:sqlite3/common.dart';
 
 // Import platform-specific sqlite3
@@ -66,17 +72,11 @@ class EmbeddingData {
 
 class VectorStore {
   // Pre-compiled Regular Expressions for performance optimization
-  static final _whitespaceRegex = RegExp(r'\s+');
-  static final _sqlWildcardRegex = RegExp('[%_]');
-  static final _specialCharsRegex = RegExp(r'["\*\-\(\)\^\:]');
-  static final _sqlOperatorsRegex = RegExp(
-    r'\b(OR|AND|NOT|NEAR)\b',
-    caseSensitive: false,
-  );
+  static final _ftsWordRegex = RegExp(r'[\p{L}\p{N}_]+', unicode: true);
 
   /// Current on-disk schema version. Bump when the schema changes and add a
   /// matching branch in [_migrate].
-  static const int schemaVersion = 3;
+  static const int schemaVersion = 5;
 
   CommonDatabase? _db;
   bool _hasFts5 = true;
@@ -122,7 +122,9 @@ class VectorStore {
         embedding TEXT NOT NULL,
         metadata TEXT,
         created_at INTEGER NOT NULL,
-        embedding_model_id TEXT
+        embedding_model_id TEXT,
+        embedding_encoding TEXT NOT NULL DEFAULT 'float32',
+        embedding_dimension INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -139,7 +141,8 @@ class VectorStore {
         is_user INTEGER NOT NULL,
         timestamp INTEGER NOT NULL,
         sources TEXT,
-        metrics TEXT
+        metrics TEXT,
+        is_failed INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -224,7 +227,65 @@ class VectorStore {
       try {
         _db!.execute('ALTER TABLE vectors ADD COLUMN embedding_model_id TEXT');
       } on Object catch (_) {}
+      _db!.execute(
+        'UPDATE vectors SET embedding_model_id = ? '
+        'WHERE embedding_model_id IS NULL',
+        [_activeEmbeddingModelId],
+      );
     }
+    if (fromVersion < 4) {
+      try {
+        _db!.execute(
+          'ALTER TABLE vectors ADD COLUMN embedding_encoding TEXT '
+          "NOT NULL DEFAULT 'float32'",
+        );
+      } on Object catch (_) {}
+      try {
+        _db!.execute(
+          'ALTER TABLE vectors ADD COLUMN embedding_dimension INTEGER '
+          'NOT NULL DEFAULT 0',
+        );
+      } on Object catch (_) {}
+
+      final rows = _db!.select('SELECT rowid, embedding FROM vectors');
+      for (final row in rows) {
+        final encoded = row['embedding'] as String;
+        final values = _decodeEmbedding(encoded);
+        _db!.execute(
+          'UPDATE vectors SET embedding_encoding = ?, '
+          'embedding_dimension = ? WHERE rowid = ?',
+          [
+            if (encoded.startsWith('[')) 'json' else 'float32',
+            values.length,
+            row['rowid'],
+          ],
+        );
+      }
+    }
+    if (fromVersion < 5) {
+      try {
+        _db!.execute(
+          'ALTER TABLE chat_messages ADD COLUMN is_failed INTEGER '
+          'NOT NULL DEFAULT 0',
+        );
+      } on Object catch (_) {}
+    }
+
+    // v3 databases may already exist with legacy NULL model identifiers.
+    // Keep those rows in the active embedder's corpus instead of mixing them
+    // into searches implicitly.
+    _db!.execute(
+      'UPDATE vectors SET embedding_model_id = ? '
+      'WHERE embedding_model_id IS NULL',
+      [_activeEmbeddingModelId],
+    );
+  }
+
+  String get _activeEmbeddingModelId {
+    final configured = locator.isRegistered<RagSettingsService>()
+        ? locator<RagSettingsService>().activeEmbeddingModelId
+        : null;
+    return configured ?? EmbeddingModels.gecko64.id;
   }
 
   Future<List<SearchResult>> hybridSearch(
@@ -253,15 +314,12 @@ class VectorStore {
           );
     // coverage:ignore-end
 
-    final keywordCandidates = keywordResults.map((r) => r.id).toList();
-
-    // 2. Compute Semantic Search (using FTS candidate IDs as pre-filter
-    // when available, or bounded scan capped at candidate pool size)
+    // 2. Compute semantic search over the complete eligible embedding space.
+    // Keyword results are blended for ranking only; they never gate recall.
     final semanticResults = await _semanticSearchAsync(
       queryEmbedding,
       limit: limit * 2,
       documentIds: documentIds,
-      candidateIds: keywordCandidates.isNotEmpty ? keywordCandidates : null,
     );
 
     return mergeResults(
@@ -276,63 +334,67 @@ class VectorStore {
     List<double> embedding, {
     required int limit,
     List<String>? documentIds,
-    List<String>? candidateIds,
     String? embeddingModelId,
   }) async {
-    var sql = 'SELECT id, content, embedding, metadata FROM vectors';
-    final params = <Object?>[];
     final conditions = <String>[];
 
-    final activeModelId =
-        embeddingModelId ??
-        (locator.isRegistered<RagSettingsService>()
-            ? locator<RagSettingsService>().activeEmbeddingModelId
-            : null);
-    if (activeModelId != null) {
-      conditions.add('(embedding_model_id = ? OR embedding_model_id IS NULL)');
-      params.add(activeModelId);
+    final activeModelId = embeddingModelId ?? _activeEmbeddingModelId;
+    conditions.add('embedding_model_id = ?');
+
+    const batchSize = 256;
+    var lastRowId = 0;
+    final bestResults = <SearchResult>[];
+
+    while (true) {
+      var sql =
+          'SELECT rowid, id, content, embedding, metadata, '
+          'embedding_encoding, embedding_dimension FROM vectors';
+      final params = <Object?>[activeModelId];
+      final batchConditions = <String>[...conditions, 'rowid > ?'];
+      params.add(lastRowId);
+
+      if (documentIds != null && documentIds.isNotEmpty) {
+        final placeholders = List.filled(documentIds.length, '?').join(', ');
+        batchConditions.add('document_id IN ($placeholders)');
+        params.addAll(documentIds);
+      }
+
+      sql +=
+          ' WHERE ${batchConditions.join(' AND ')} '
+          'ORDER BY rowid ASC LIMIT ?';
+      params.add(batchSize);
+      final rows = _db!.select(sql, params);
+      if (rows.isEmpty) break;
+      lastRowId = rows.last['rowid'] as int;
+
+      final data = rows
+          .map(
+            (row) => {
+              'id': row['id'],
+              'content': row['content'],
+              'embedding': row['embedding'] as String,
+              'encoding': row['embedding_encoding'] as String? ?? 'float32',
+              'dimension': row['embedding_dimension'] as int? ?? 0,
+              'metadata': row['metadata'],
+            },
+          )
+          .toList();
+
+      bestResults.addAll(
+        await compute(_calculateSimilarities, {
+          'queryEmbedding': embedding,
+          'data': data,
+          'limit': limit,
+        }),
+      );
+      final rankedResults = bestResults
+        ..sort((a, b) => b.score.compareTo(a.score));
+      if (rankedResults.length > limit) {
+        rankedResults.removeRange(limit, rankedResults.length);
+      }
     }
 
-    if (candidateIds != null && candidateIds.isNotEmpty) {
-      final placeholders = List.filled(candidateIds.length, '?').join(', ');
-      conditions.add('id IN ($placeholders)');
-      params.addAll(candidateIds);
-    }
-
-    if (documentIds != null && documentIds.isNotEmpty) {
-      final placeholders = List.filled(documentIds.length, '?').join(', ');
-      conditions.add('document_id IN ($placeholders)');
-      params.addAll(documentIds);
-    }
-
-    if (conditions.isNotEmpty) {
-      sql += ' WHERE ${conditions.join(' AND ')}';
-    }
-
-    // Always cap row scan to prevent uncapped full-table scan on large DBs
-    const candidatePoolCap = RagConstants.hybridSearchCandidatePoolSize * 5;
-    final maxScan = max(limit * 2, candidatePoolCap);
-    sql += ' ORDER BY created_at DESC, id ASC LIMIT $maxScan';
-
-    final rows = _db!.select(sql, params);
-
-    // Convert to a format suitable for compute (plain data)
-    final data = rows
-        .map(
-          (row) => {
-            'id': row['id'],
-            'content': row['content'],
-            'embedding': row['embedding'] as String,
-            'metadata': row['metadata'],
-          },
-        )
-        .toList();
-
-    return compute(_calculateSimilarities, {
-      'queryEmbedding': embedding,
-      'data': data,
-      'limit': limit,
-    });
+    return bestResults;
   }
 
   List<SearchResult> _fts5Search(
@@ -341,6 +403,7 @@ class VectorStore {
     List<String>? documentIds,
   }) {
     final sanitized = _sanitizeFtsQuery(query);
+    if (sanitized.isEmpty) return [];
 
     try {
       var sql = '''
@@ -374,7 +437,11 @@ class VectorStore {
             ),
           )
           .toList();
-    } on Exception catch (_) {
+    } on Object catch (error) {
+      LoggingService.warning(
+        'FTS search failed; using keyword fallback: $error',
+        name: 'VectorStore',
+      );
       return _fallbackKeywordSearch(
         query,
         limit: limit,
@@ -388,29 +455,24 @@ class VectorStore {
     required int limit,
     List<String>? documentIds,
   }) {
-    final words = query
-        .toLowerCase()
-        .split(_whitespaceRegex)
-        .where((w) => w.length > 2);
+    LoggingService.warning(
+      'Using LIKE keyword fallback for vector search',
+      name: 'VectorStore',
+    );
+    final words = _ftsWordRegex
+        .allMatches(query.toLowerCase())
+        .map((match) => match.group(0)!)
+        .take(10)
+        .where((word) => word.isNotEmpty)
+        .toList();
     if (words.isEmpty) return [];
 
-    // Sanitize and limit search terms to prevent SQL injection
-    final sanitizedWords = words
-        .take(10) // Limit to 10 search terms max
-        .map(
-          (w) => w.replaceAll(_sqlWildcardRegex, ''),
-        ) // Remove LIKE wildcards
-        .where((w) => w.isNotEmpty)
-        .toList();
-
-    if (sanitizedWords.isEmpty) return [];
-
-    final conditions = sanitizedWords
+    final conditions = words
         .map((w) => "LOWER(content) LIKE '%' || ? || '%'")
         .join(' OR ');
 
     var sql = 'SELECT * FROM vectors WHERE ($conditions)';
-    final params = <Object?>[...sanitizedWords];
+    final params = <Object?>[...words];
 
     if (documentIds != null && documentIds.isNotEmpty) {
       final placeholders = List.filled(documentIds.length, '?').join(', ');
@@ -448,8 +510,9 @@ class VectorStore {
   }) {
     final stmt = _db!.prepare('''
       INSERT OR REPLACE INTO vectors 
-      (id, document_id, content, embedding, metadata, created_at, embedding_model_id) 
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      (id, document_id, content, embedding, metadata, created_at,
+       embedding_model_id, embedding_encoding, embedding_dimension)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''');
     try {
       stmt.execute([
@@ -459,11 +522,14 @@ class VectorStore {
         base64Encode(Float32List.fromList(embedding).buffer.asUint8List()),
         if (metadata != null) jsonEncode(metadata) else null,
         DateTime.now().millisecondsSinceEpoch,
-        embeddingModelId,
+        embeddingModelId ?? _activeEmbeddingModelId,
+        'float32',
+        embedding.length,
       ]);
     } finally {
       stmt.close();
     }
+    _schedulePersistenceFlush();
   }
 
   /// Batch insert embeddings within a single transaction for better performance
@@ -474,8 +540,9 @@ class VectorStore {
     try {
       final stmt = _db!.prepare('''
         INSERT OR REPLACE INTO vectors 
-        (id, document_id, content, embedding, metadata, created_at, embedding_model_id) 
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        (id, document_id, content, embedding, metadata, created_at,
+         embedding_model_id, embedding_encoding, embedding_dimension)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       ''');
       try {
         for (final item in items) {
@@ -488,13 +555,16 @@ class VectorStore {
             ),
             if (item.metadata != null) jsonEncode(item.metadata) else null,
             DateTime.now().millisecondsSinceEpoch,
-            item.embeddingModelId,
+            item.embeddingModelId ?? _activeEmbeddingModelId,
+            'float32',
+            item.embedding.length,
           ]);
         }
       } finally {
         stmt.close();
       }
       _db!.execute('COMMIT');
+      _schedulePersistenceFlush();
     } catch (e) {
       _db!.execute('ROLLBACK');
       rethrow;
@@ -541,6 +611,7 @@ class VectorStore {
     } finally {
       stmt.close();
     }
+    _schedulePersistenceFlush();
   }
 
   void updateDocument(Document doc) {
@@ -584,7 +655,11 @@ class VectorStore {
         id: row['id'] as String,
         documentId: row['document_id'] as String,
         content: row['content'] as String,
-        embedding: _decodeEmbedding(row['embedding'] as String),
+        embedding: _decodeEmbedding(
+          row['embedding'] as String,
+          encoding: row['embedding_encoding'] as String? ?? 'float32',
+          targetDimension: row['embedding_dimension'] as int?,
+        ),
         metadata: row['metadata'] != null
             ? jsonDecode(row['metadata'] as String) as Map<String, dynamic>
             : {},
@@ -603,6 +678,7 @@ class VectorStore {
       _db!.execute('DELETE FROM vectors WHERE document_id = ?', [id]);
 
       _db!.execute('COMMIT');
+      _schedulePersistenceFlush();
     } on Object catch (_) {
       _db!.execute('ROLLBACK');
       rethrow;
@@ -615,6 +691,7 @@ class VectorStore {
       _db!.execute('DELETE FROM vectors WHERE 1=1');
       _db!.execute('DELETE FROM documents WHERE 1=1');
       _db!.execute('COMMIT');
+      _schedulePersistenceFlush();
     } on Object catch (_) {
       _db!.execute('ROLLBACK');
       rethrow;
@@ -624,16 +701,16 @@ class VectorStore {
   /// Optimize database size and performance
   void optimizeDatabase() {
     _db!.execute('VACUUM');
+    _schedulePersistenceFlush();
   }
 
   // -----------------------------------------
 
   String _sanitizeFtsQuery(String query) {
-    return query
-        .replaceAll(_specialCharsRegex, ' ')
-        .replaceAll(_sqlOperatorsRegex, ' ')
-        .replaceAll(_whitespaceRegex, ' ')
-        .trim();
+    return _ftsWordRegex
+        .allMatches(query)
+        .map((match) => '"${match.group(0)!.replaceAll('"', '""')}"')
+        .join(' ');
   }
 
   @visibleForTesting
@@ -677,32 +754,47 @@ class VectorStore {
   }
 
   void close() {
+    // IndexedDB writes are asynchronous; enqueue the flush before closing
+    // the sqlite handle. Native persistence uses a no-op implementation.
+    unawaited(persistence.flushDatabase());
     _db?.close();
     _db = null;
   }
+
+  /// Flushes platform-backed persistence, if the active database needs it.
+  Future<void> flush() => persistence.flushDatabase();
+
+  void _schedulePersistenceFlush() {
+    unawaited(persistence.flushDatabase());
+  }
 }
 
-List<double> _decodeEmbedding(String encodedString, {int? targetDimension}) {
+List<double> _decodeEmbedding(
+  String encodedString, {
+  String? encoding,
+  int? targetDimension,
+}) {
   if (encodedString.startsWith('[')) {
     return (jsonDecode(encodedString) as List)
         .map((e) => (e as num).toDouble())
         .toList();
   }
   final bytes = base64Decode(encodedString);
-  if (targetDimension != null) {
-    if (bytes.lengthInBytes == targetDimension * 4) {
-      return Float32List.view(bytes.buffer).toList();
-    } else if (bytes.lengthInBytes == targetDimension * 8) {
-      return Float64List.view(bytes.buffer).toList();
+  if (encoding == 'float64') {
+    if (targetDimension == null || bytes.lengthInBytes != targetDimension * 8) {
+      return [];
     }
-  }
-  if (bytes.lengthInBytes == 6144) {
     return Float64List.view(bytes.buffer).toList();
+  }
+  if (encoding == 'float32' &&
+      targetDimension != null &&
+      bytes.lengthInBytes == targetDimension * 4) {
+    return Float32List.view(bytes.buffer).toList();
   }
   if (bytes.lengthInBytes % 4 == 0) {
     return Float32List.view(bytes.buffer).toList();
   }
-  return Float64List.view(bytes.buffer).toList();
+  return [];
 }
 
 /// Isolate function for calculating similarities(must be top-level)
@@ -714,9 +806,13 @@ List<SearchResult> _calculateSimilarities(Map<String, dynamic> params) {
   final scored = <SearchResult>[];
   for (final item in data) {
     final storedEmbeddingJson = item['embedding'] as String;
+    final storedDimension = item['dimension'] as int? ?? 0;
     final storedEmbedding = _decodeEmbedding(
       storedEmbeddingJson,
-      targetDimension: queryEmbedding.length,
+      encoding: item['encoding'] as String?,
+      targetDimension: storedDimension > 0
+          ? storedDimension
+          : queryEmbedding.length,
     );
 
     if (storedEmbedding.length != queryEmbedding.length) {

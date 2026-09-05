@@ -57,9 +57,12 @@ class ContextualRetrievalService {
   // For Gemma 2B (High tier): 4096 to 8192 tokens max depending on quantization
   // We'll be conservative.
   int get _modelMaxTokens {
-    // Ideally fetch active model config, but for now use safe default
-    // for on-device context generation
-    return RagConstants.contextualRetrievalModelMaxTokens;
+    final activeModelId = _settingsService.activeInferenceModelId;
+    if (activeModelId == null) {
+      return RagConstants.contextualRetrievalModelMaxTokens;
+    }
+    final model = ModelConfig.activeInferenceModelOrDefault(activeModelId);
+    return model.contextLimit ?? model.maxTokens;
   }
 
   /// Check if the document fits within context window for *one-shot* context
@@ -100,18 +103,21 @@ Make the explanation standalone so the chunk can be understood without the full 
 
     try {
       final model = await getActiveModel();
-      final chat = await model.createChat(temperature: 0.1);
-      await chat.initSession();
-      await chat.addQuery(Message(text: prompt, isUser: true));
-
       final response = StringBuffer();
-      await Future.sync(() async {
-        await for (final token in chat.generateChatResponseAsync()) {
-          if (token is TextResponse) {
-            response.write(token.token);
+      await InferenceModelProvider.withSerializedChat(
+        model,
+        temperature: 0.1,
+        action: (chat) async {
+          await chat.initSession();
+          await chat.addQuery(Message(text: prompt, isUser: true));
+
+          await for (final token in chat.generateChatResponseAsync()) {
+            if (token is TextResponse) {
+              response.write(token.token);
+            }
           }
-        }
-      }).timeout(const Duration(seconds: 20));
+        },
+      ).timeout(const Duration(seconds: 20));
       return response.toString().trim();
     } on Exception catch (e, stack) {
       LoggingService.error(
