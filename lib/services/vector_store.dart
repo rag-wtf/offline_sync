@@ -76,10 +76,11 @@ class VectorStore {
 
   /// Current on-disk schema version. Bump when the schema changes and add a
   /// matching branch in [_migrate].
-  static const int schemaVersion = 5;
+  static const int schemaVersion = 6;
 
   CommonDatabase? _db;
   bool _hasFts5 = true;
+  Future<void> _persistenceLane = Future<void>.value();
 
   /// Expose database for ChatRepository
   CommonDatabase? get db => _db;
@@ -142,7 +143,8 @@ class VectorStore {
         timestamp INTEGER NOT NULL,
         sources TEXT,
         metrics TEXT,
-        is_failed INTEGER NOT NULL DEFAULT 0
+        is_failed INTEGER NOT NULL DEFAULT 0,
+        is_pending INTEGER NOT NULL DEFAULT 0
       )
     ''');
 
@@ -250,13 +252,37 @@ class VectorStore {
       final rows = _db!.select('SELECT rowid, embedding FROM vectors');
       for (final row in rows) {
         final encoded = row['embedding'] as String;
-        final values = _decodeEmbedding(encoded);
+        String encoding;
+        var dimension = 0;
+        if (encoded.startsWith('[')) {
+          try {
+            final decoded = jsonDecode(encoded);
+            if (decoded is! List || decoded.isEmpty) {
+              throw const FormatException('Invalid legacy JSON embedding');
+            }
+            for (final value in decoded) {
+              if (value is! num) {
+                throw const FormatException(
+                  'Legacy JSON embedding contains a non-number',
+                );
+              }
+            }
+            encoding = 'json';
+            dimension = decoded.length;
+          } on Object catch (_) {
+            encoding = 'unknown';
+          }
+        } else {
+          // Legacy base64 rows have no trustworthy encoding metadata. Do
+          // not guess Float32 from a byte length that may be Float64.
+          encoding = 'unknown';
+        }
         _db!.execute(
           'UPDATE vectors SET embedding_encoding = ?, '
           'embedding_dimension = ? WHERE rowid = ?',
           [
-            if (encoded.startsWith('[')) 'json' else 'float32',
-            values.length,
+            encoding,
+            dimension,
             row['rowid'],
           ],
         );
@@ -266,6 +292,14 @@ class VectorStore {
       try {
         _db!.execute(
           'ALTER TABLE chat_messages ADD COLUMN is_failed INTEGER '
+          'NOT NULL DEFAULT 0',
+        );
+      } on Object catch (_) {}
+    }
+    if (fromVersion < 6) {
+      try {
+        _db!.execute(
+          'ALTER TABLE chat_messages ADD COLUMN is_pending INTEGER '
           'NOT NULL DEFAULT 0',
         );
       } on Object catch (_) {}
@@ -373,8 +407,8 @@ class VectorStore {
               'id': row['id'],
               'content': row['content'],
               'embedding': row['embedding'] as String,
-              'encoding': row['embedding_encoding'] as String? ?? 'float32',
-              'dimension': row['embedding_dimension'] as int? ?? 0,
+              'encoding': row['embedding_encoding'] as String?,
+              'dimension': row['embedding_dimension'] as int?,
               'metadata': row['metadata'],
             },
           )
@@ -657,8 +691,8 @@ class VectorStore {
         content: row['content'] as String,
         embedding: _decodeEmbedding(
           row['embedding'] as String,
-          encoding: row['embedding_encoding'] as String? ?? 'float32',
-          targetDimension: row['embedding_dimension'] as int?,
+          encoding: row['embedding_encoding'] as String,
+          dimension: row['embedding_dimension'] as int,
         ),
         metadata: row['metadata'] != null
             ? jsonDecode(row['metadata'] as String) as Map<String, dynamic>
@@ -753,45 +787,51 @@ class VectorStore {
         .toList();
   }
 
-  void close() {
-    // IndexedDB writes are asynchronous; enqueue the flush before closing
-    // the sqlite handle. Native persistence uses a no-op implementation.
-    unawaited(persistence.flushDatabase());
+  Future<void> close() async {
+    // Await all writes queued before shutdown before closing SQLite and its
+    // platform VFS. Native persistence uses a no-op implementation.
+    await flush();
     _db?.close();
     _db = null;
+    await persistence.closeDatabase();
   }
 
   /// Flushes platform-backed persistence, if the active database needs it.
-  Future<void> flush() => persistence.flushDatabase();
+  Future<void> flush() => _persistenceLane;
 
   void _schedulePersistenceFlush() {
-    unawaited(persistence.flushDatabase());
+    final next = _persistenceLane.then<void>(
+      (_) => persistence.flushDatabase(),
+    );
+    _persistenceLane = next.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
   }
 }
 
 List<double> _decodeEmbedding(
   String encodedString, {
-  String? encoding,
-  int? targetDimension,
+  required String encoding,
+  required int dimension,
 }) {
   if (encodedString.startsWith('[')) {
-    return (jsonDecode(encodedString) as List)
+    if (encoding != 'json') return [];
+    final values = (jsonDecode(encodedString) as List)
         .map((e) => (e as num).toDouble())
         .toList();
+    if (values.length != dimension) return [];
+    return values;
   }
+  if (dimension <= 0) return [];
   final bytes = base64Decode(encodedString);
   if (encoding == 'float64') {
-    if (targetDimension == null || bytes.lengthInBytes != targetDimension * 8) {
+    if (bytes.lengthInBytes != dimension * 8) {
       return [];
     }
     return Float64List.view(bytes.buffer).toList();
   }
-  if (encoding == 'float32' &&
-      targetDimension != null &&
-      bytes.lengthInBytes == targetDimension * 4) {
-    return Float32List.view(bytes.buffer).toList();
-  }
-  if (bytes.lengthInBytes % 4 == 0) {
+  if (encoding == 'float32' && bytes.lengthInBytes == dimension * 4) {
     return Float32List.view(bytes.buffer).toList();
   }
   return [];
@@ -806,13 +846,15 @@ List<SearchResult> _calculateSimilarities(Map<String, dynamic> params) {
   final scored = <SearchResult>[];
   for (final item in data) {
     final storedEmbeddingJson = item['embedding'] as String;
-    final storedDimension = item['dimension'] as int? ?? 0;
+    final storedDimension = item['dimension'] as int?;
+    final encoding = item['encoding'] as String?;
+    if (encoding == null || storedDimension == null || storedDimension <= 0) {
+      continue;
+    }
     final storedEmbedding = _decodeEmbedding(
       storedEmbeddingJson,
-      encoding: item['encoding'] as String?,
-      targetDimension: storedDimension > 0
-          ? storedDimension
-          : queryEmbedding.length,
+      encoding: encoding,
+      dimension: storedDimension,
     );
 
     if (storedEmbedding.length != queryEmbedding.length) {

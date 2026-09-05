@@ -104,20 +104,32 @@ Make the explanation standalone so the chunk can be understood without the full 
     try {
       final model = await getActiveModel();
       final response = StringBuffer();
-      await InferenceModelProvider.withSerializedChat(
-        model,
-        temperature: 0.1,
-        action: (chat) async {
-          await chat.initSession();
-          await chat.addQuery(Message(text: prompt, isUser: true));
+      Future<void> generate(InferenceChat chat) async {
+        await chat.initSession();
+        await chat.addQuery(Message(text: prompt, isUser: true));
 
-          await for (final token in chat.generateChatResponseAsync()) {
-            if (token is TextResponse) {
-              response.write(token.token);
-            }
+        await for (final token in chat.generateChatResponseAsync()) {
+          if (token is TextResponse) {
+            response.write(token.token);
           }
-        },
-      ).timeout(const Duration(seconds: 20));
+        }
+      }
+
+      final provider = locator.isRegistered<InferenceModelProvider>()
+          ? locator<InferenceModelProvider>()
+          : null;
+      final generation = provider == null
+          ? InferenceModelProvider.withSerializedChat(
+              model,
+              temperature: 0.1,
+              action: generate,
+            )
+          : provider.runSerializedChat(
+              model,
+              temperature: 0.1,
+              action: generate,
+            );
+      await generation.timeout(const Duration(seconds: 20));
       return response.toString().trim();
     } on Exception catch (e, stack) {
       LoggingService.error(

@@ -2,113 +2,95 @@
 
 ## Scope
 
-Task 3 implementation from the production audit remediation brief, based on
-commit `74103c1`. The scope was limited to retrieval safety and recall,
-embedding metadata/migrations, model context budgeting and lifecycle,
-serialized LLM chat use, refresh/persistence safety, and failed chat-turn
-handling.
+Fix round 1 was performed in the `production-audit-fixes` worktree from
+`804d310`. The work stayed within Task 3 and preserved the already-correct
+H-1, M-6, L-6, and L-19 behavior.
 
-## Findings mapped
+## Findings fixed
 
-- **H-1** — Replaced ad-hoc FTS sanitization with Unicode word extraction and
-  quoted FTS phrases. Empty-token queries skip FTS safely; FTS failures log a
-  warning and use parameterized LIKE fallback. Semantic retrieval is no longer
-  gated by keyword candidates.
-- **M-1** — Centralized all application `InferenceChat` creation through a
-  serialized provider lane. Every chat is closed in `finally`, including when
-  generation fails; contextual retrieval, expansion, reranking, and RAG use
-  the shared lifecycle.
-- **M-6** — Removed the newest-row semantic cap and keyword candidate gate.
-  Semantic search scans the complete eligible corpus in parameterized batches,
-  while keyword results only affect blended ranking.
-- **M-7** — Added model-specific context limits, clamps for persisted and
-  newly selected token settings, conservative Unicode token estimation, and
-  exact session token counting when exposed by the plugin.
-- **L-3** — Added explicit `float32`/dimension metadata for stored embeddings
-  and removed byte-length-based Float64 inference.
-- **L-6** — Refresh now hashes the source before re-ingestion and returns the
-  existing document when unchanged, avoiding a unique-hash conflict/error
-  record.
-- **L-7** — Added web IndexedDB flush plumbing and flushes after vector/chat
-  writes and before database close is scheduled.
-- **L-14** — Failed persisted user turns are marked explicitly and excluded
-  from subsequent generation history, preventing failed prompts from being
-  silently re-fed.
-- **L-17** — Model cache clearing and application pause now release loaded
-  inference models through their close lifecycle.
-- **L-19** — Bumped the vector schema, backfilled legacy NULL embedder IDs to
-  the active embedder, and restricted semantic search to the active embedder
-  corpus.
+- **M-1/L-17:** `InferenceModelProvider` now uses one serialized operation lane
+  for model loads, chat creation/closure, cache invalidation, and model
+  release. Cache generations invalidate in-flight loads; a stale loaded model
+  is closed and never installed. Release awaits a lane barrier, so lifecycle
+  pause/settings changes cannot close a model during an active serialized chat.
+- **M-7:** `RagTokenManager.buildPromptWithinBudget` builds the complete prompt,
+  counts it through a supplied exact tokenizer seam, and iteratively removes
+  history/context until it fits the active model prompt budget. It then
+  truncates the query only as a final fallback. Oversized history entries are
+  skipped rather than forced into the prompt. `RagService` uses this path for
+  both buffered and streaming generation and logs the final count before
+  adding the query.
+- **L-3:** Vector decoding requires explicit encoding and dimension. Migration
+  validates legacy JSON dimensions and marks legacy base64 rows as
+  `unknown`/dimension `0` when the original encoding cannot be proved. Such
+  rows are skipped for semantic decoding instead of being guessed as Float32.
+- **L-7:** Vector persistence flushes are serialized. Chat writes and terminal
+  state updates await the vector-store flush seam. Vector-store shutdown awaits
+  queued flushes before closing SQLite and then closes the web persistence VFS.
+- **L-14:** User turns are inserted as pending with a stable SQLite row ID.
+  Completion clears pending; failures/cancellation clear pending and mark the
+  row failed. Startup reconciliation converts unfinished pending user turns to
+  failed, and failed turns are excluded from generated history.
 
-## Files changed
+## Regression coverage
 
-Production code:
+- Provider serialization, release ordering, and stale-load discard:
+  `test/services/inference_model_provider_test.dart`
+- Exact final prompt budgeting and oversized-newest history handling:
+  `test/services/rag_token_manager_test.dart`
+- Explicit embedding metadata and Float64 legacy quarantine:
+  `test/services/vector_store_test.dart`
+- Pending reconciliation and stable-ID updates, including duplicate turns:
+  `test/services/chat_repository_test.dart`
+- No-completion stream handling and terminal pending state:
+  `test/ui/views/chat/chat_viewmodel_test.dart`
+- Updated lifecycle/chat view fixtures for async close and terminal callbacks:
+  `test/app/main_app_test.dart`, `test/ui/views/chat/chat_view_test.dart`, and
+  `test/helpers/test_helpers.dart`
 
+## Production files changed
+
+- `lib/app/main_app.dart`
+- `lib/bootstrap_web.dart`
+- `lib/services/chat_repository.dart`
+- `lib/services/contextual_retrieval_service.dart`
+- `lib/services/inference_model_provider.dart`
+- `lib/services/query_expansion_service.dart`
+- `lib/services/rag_service.dart`
+- `lib/services/rag_token_manager.dart`
+- `lib/services/reranking_service.dart`
 - `lib/services/vector_store.dart`
 - `lib/services/vector_store_persistence_stub.dart`
 - `lib/services/vector_store_persistence_web.dart`
-- `lib/bootstrap_web.dart`
-- `lib/services/inference_model_provider.dart`
-- `lib/services/model_config.dart`
-- `lib/services/rag_settings_service.dart`
-- `lib/services/rag_token_manager.dart`
-- `lib/services/rag_service.dart`
-- `lib/services/query_expansion_service.dart`
-- `lib/services/reranking_service.dart`
-- `lib/services/contextual_retrieval_service.dart`
-- `lib/services/document_management_service.dart`
-- `lib/services/chat_repository.dart`
 - `lib/ui/views/chat/chat_viewmodel.dart`
-- `lib/app/main_app.dart`
-- `lib/ui/views/settings/settings_view.dart`
-- `lib/ui/views/settings/settings_viewmodel.dart`
-
-Tests:
-
-- `test/services/vector_store_test.dart`
-- `test/services/chat_repository_test.dart`
-- `test/services/document_management_service_test.dart`
-- `test/services/inference_model_provider_test.dart`
-- `test/services/rag_settings_service_test.dart`
-- `test/services/rag_token_manager_test.dart`
-- `test/ui/views/chat/chat_viewmodel_test.dart`
-- `test/app/main_app_test.dart`
-- `test/helpers/test_helpers.dart`
-
-## Commits
-
-- `94fc016` — `fix: remediate production audit task 3 findings`
-- This report is committed separately after recording the implementation hash.
 
 ## Verification
 
-- Focused Task 3 service/UI suites: passed.
-- Full suite: `flutter test --reporter compact` — **437 tests passed**.
+- Focused Task 3 lifecycle, RAG, vector, repository, app, and chat UI suites
+  passed; the authoritative post-hardening full-suite result is recorded below.
+- Full suite: `flutter test --reporter compact` — **445 tests passed**.
 - Static analysis: `flutter analyze` — **No issues found**.
 - Web build: `flutter build web --no-pub -t lib/main_production.dart` —
-  **built successfully**.
+  **built successfully** (`build/web`). The command emitted existing third-party
+  Wasm dry-run incompatibilities and a Cupertino font warning; these did not
+  prevent compilation.
 - `git diff --check` — no whitespace errors.
-- Flutter-generated Linux, macOS, and Windows registrant changes were restored
-  before committing.
+- Flutter-generated Linux, macOS, and Windows registrants were restored after
+  verification and are excluded from the fix-round changes.
 
-## Review notes
+## Review notes and residuals
 
-- Reviewed all direct `InferenceChat` creation sites and routed them through
-  `InferenceModelProvider.withSerializedChat`.
-- Reviewed schema migration ordering from the base schema through versions 3,
-  4, and 5, including legacy NULL embedder IDs and pre-existing chat tables.
-- Confirmed SQL values are parameterized for query terms, document filters,
-  hashes, and migration backfills.
-- Kept refresh, chat persistence, and lifecycle changes local to their existing
-  service boundaries; no unrelated audit task area was changed.
+- All production `InferenceChat` creation sites remain behind the provider
+  serialization seam.
+- H-1 Unicode/FTS fallback behavior, M-6 full semantic corpus scanning,
+  L-6 refresh/hash behavior, and L-19 active embedder backfill/filtering were
+  not changed by this round.
+- Web IndexedDB ordering is compile-checked and routed through the flush/close
+  seam; this environment does not provide a browser-backed persistence test.
+- Native model generation and cancellation depend on the installed
+  `flutter_gemma` runtime and were covered here through mockable lifecycle
+  seams, not a device run.
 
-## Residuals
+## Commit
 
-- The default `flutter build web --no-pub` target is not applicable because the
-  repository has flavor entrypoints rather than `lib/main.dart`; the
-  production entrypoint build was used instead.
-- The successful web build reports existing third-party Wasm dry-run
-  incompatibility warnings and a Cupertino font asset warning. They do not
-  prevent compilation and are outside Task 3 application code.
-- IndexedDB flush behavior is compile-checked through the web build; the test
-  suite does not run a browser-backed persistence integration test.
+This report is included in the fix-round commit for the verified changes.

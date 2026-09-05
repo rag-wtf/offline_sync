@@ -19,3 +19,11 @@ Future<void> initializeSqlite() async {
 Future<void> flushSqlite() async {
   await _fileSystem?.flush();
 }
+
+Future<void> closeSqlite() async {
+  final fileSystem = _fileSystem;
+  _fileSystem = null;
+  if (fileSystem != null) {
+    await fileSystem.close();
+  }
+}

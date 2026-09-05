@@ -54,7 +54,7 @@ class _AppLifecycleRootState extends State<AppLifecycleRoot> {
       onDetach: () {
         widget.onDetached?.call();
         if (locator.isRegistered<VectorStore>()) {
-          locator<VectorStore>().close();
+          unawaited(locator<VectorStore>().close());
         }
       },
     );

@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -63,7 +65,7 @@ void main() {
   });
 
   tearDown(() async {
-    vectorStore.close();
+    await vectorStore.close();
 
     final dbFile = File('vectors.db');
     try {
@@ -343,7 +345,7 @@ void main() {
       test(
         'v2 migration removes duplicate documents and their vectors',
         () async {
-          vectorStore.close();
+          await vectorStore.close();
 
           final dbFile = File('vectors.db');
           if (dbFile.existsSync()) {
@@ -417,7 +419,7 @@ void main() {
       test(
         'v3 migration assigns legacy vectors to the active embedder',
         () async {
-          vectorStore.close();
+          await vectorStore.close();
           SharedPreferences.setMockInitialValues({
             'active_embedding_model_id': 'gecko-64',
           });
@@ -492,6 +494,78 @@ void main() {
           [1, 2, 3],
         );
       });
+
+      test(
+        'v4 migration quarantines base64 embeddings without explicit encoding',
+        () async {
+          await vectorStore.close();
+          final dbFile = File('vectors.db');
+          if (dbFile.existsSync()) dbFile.deleteSync();
+
+          final float64Bytes = Float64List.fromList([
+            1,
+            0,
+          ]).buffer.asUint8List();
+          sqlite3.open('vectors.db')
+            ..execute('''
+            CREATE TABLE vectors (
+              id TEXT PRIMARY KEY,
+              document_id TEXT NOT NULL,
+              content TEXT NOT NULL,
+              embedding TEXT NOT NULL,
+              metadata TEXT,
+              created_at INTEGER NOT NULL,
+              embedding_model_id TEXT
+            )
+          ''')
+            ..execute('''
+            CREATE TABLE documents (
+              id TEXT PRIMARY KEY,
+              title TEXT NOT NULL,
+              file_path TEXT NOT NULL,
+              format TEXT NOT NULL,
+              chunk_count INTEGER NOT NULL,
+              total_characters INTEGER NOT NULL,
+              content_hash TEXT NOT NULL,
+              ingested_at INTEGER NOT NULL,
+              last_refreshed INTEGER,
+              status TEXT DEFAULT 'complete',
+              contextual_retrieval INTEGER DEFAULT 0,
+              error_message TEXT
+            )
+          ''')
+            ..execute(
+              'INSERT INTO vectors '
+              '(id, document_id, content, embedding, metadata, created_at) '
+              'VALUES (?, ?, ?, ?, ?, ?)',
+              [
+                'legacy-float64',
+                'doc',
+                'legacy',
+                base64Encode(float64Bytes),
+                '{}',
+                1,
+              ],
+            )
+            ..execute('PRAGMA user_version = 3')
+            ..close();
+
+          vectorStore = VectorStore();
+          await vectorStore.initialize();
+
+          final row = vectorStore.db!.select(
+            'SELECT embedding_encoding, embedding_dimension FROM vectors '
+            'WHERE id = ?',
+            ['legacy-float64'],
+          ).single;
+          expect(row['embedding_encoding'], 'unknown');
+          expect(row['embedding_dimension'], 0);
+          expect(
+            vectorStore.getChunksForDocument('doc').single.embedding,
+            isEmpty,
+          );
+        },
+      );
 
       test('CRUD operations', () async {
         final doc = Document(

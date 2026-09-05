@@ -28,21 +28,23 @@ Original query: $query
 Variants:''';
 
       final response = StringBuffer();
-      await InferenceModelProvider.withSerializedChat(
-        inferenceModel,
-        temperature: 0.3,
-        action: (chat) async {
-          await chat.initSession();
-          await chat.addQuery(Message(text: prompt, isUser: true));
+      await _inferenceModelProvider
+          .runSerializedChat(
+            inferenceModel,
+            temperature: 0.3,
+            action: (chat) async {
+              await chat.initSession();
+              await chat.addQuery(Message(text: prompt, isUser: true));
 
-          final stream = chat.generateChatResponseAsync();
-          await for (final modelResponse in stream) {
-            if (modelResponse is TextResponse) {
-              response.write(modelResponse.token);
-            }
-          }
-        },
-      ).timeout(const Duration(seconds: 15));
+              final stream = chat.generateChatResponseAsync();
+              await for (final modelResponse in stream) {
+                if (modelResponse is TextResponse) {
+                  response.write(modelResponse.token);
+                }
+              }
+            },
+          )
+          .timeout(const Duration(seconds: 15));
 
       // Parse variants from response
       final variants = response

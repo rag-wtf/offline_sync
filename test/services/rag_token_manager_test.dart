@@ -77,14 +77,39 @@ void main() {
         expect(manager.buildHistoryWithBudget([], 100), isEmpty);
       });
 
-      test('still keeps the newest message when it alone exceeds budget', () {
+      test('drops the newest message when it alone exceeds budget', () {
         final result = manager.buildHistoryWithBudget([
           'old',
           'this newest message is definitely too long',
         ], 1);
 
-        expect(result, contains('this newest message is definitely too long'));
-        expect(result, isNot(contains('old')));
+        expect(
+          result,
+          isNot(contains('this newest message is definitely too long')),
+        );
+        expect(result, contains('old'));
+      });
+
+      test('fits the complete prompt after exact token counting', () async {
+        final prompt = await manager.buildPromptWithinBudget(
+          query: 'question',
+          history: const [
+            'old history that should be removed',
+            'new history',
+          ],
+          context: const [
+            'first context',
+            'second context that should be removed',
+          ],
+          maxTokens: 370,
+          countTokens: (text) async => text.runes.length,
+        );
+
+        expect(prompt.runes.length, lessThanOrEqualTo(370));
+        expect(prompt, isNot(contains('old history')));
+        expect(prompt, isNot(contains('second context')));
+        expect(prompt, isNot(contains('new history')));
+        expect(prompt, contains('question'));
       });
 
       test('caps returned history to the most recent ten messages', () {

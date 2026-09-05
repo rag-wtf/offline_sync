@@ -86,7 +86,7 @@ Relevance score:''';
 
     try {
       final response = StringBuffer();
-      await InferenceModelProvider.withSerializedChat(
+      await _inferenceModelProvider.runSerializedChat(
         inferenceModel,
         temperature: 0.1,
         action: (chat) async {

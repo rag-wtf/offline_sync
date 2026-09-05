@@ -341,51 +341,22 @@ class RagService {
     final modelConfig = ModelConfig.activeInferenceModelOrDefault(
       settings.activeInferenceModelId,
     );
-    // Calculate token budget honoring user maxTokens override
     final contextLimit = modelConfig.contextLimit ?? modelConfig.maxTokens;
     final maxTokens = min(settings.maxTokens ?? contextLimit, contextLimit);
-    final outputReserve = (maxTokens * RagConstants.outputReserveRatio).floor();
-    final queryTokens = _tokenManager.estimateTokens(query);
-    final rawAvailable = maxTokens - outputReserve - queryTokens;
-    if (rawAvailable <= 0) {
-      LoggingService.warning(
-        'Token budget exhausted: maxTokens=$maxTokens, '
-        'reserve=$outputReserve, queryTokens=$queryTokens',
-      );
-    }
-    final availableForPrompt = max(0, rawAvailable);
-
-    // Allocate using defined ratios
-    final contextBudget = (availableForPrompt * RagConstants.contextBudgetRatio)
-        .floor();
-    final historyBudget = (availableForPrompt * RagConstants.historyBudgetRatio)
-        .floor();
-
-    final historySection = _tokenManager.buildHistoryWithBudget(
-      conversationHistory?.take(settings.maxHistoryMessages).toList() ?? [],
-      historyBudget,
-    );
-    final context = _buildContextWithBudget(searchResults, contextBudget);
-
-    final prompt =
-        '''
-${historySection}Context:
-$context
-
-Question: $query
-
-Instructions:
-- Answer the question accurately and concisely based on the context above.
-- If the context does not contain relevant information to answer the question, say "I don't have enough information."
-- Do not append disclaimer phrases or repeat instructions after answering.''';
-
     final response = StringBuffer();
     final inferenceModel = await _inferenceModelProvider.getModel();
-    await InferenceModelProvider.withSerializedChat(
+    await _inferenceModelProvider.runSerializedChat(
       inferenceModel,
       temperature: 0.1,
       action: (chat) async {
         await chat.initSession();
+        final prompt = await _buildPrompt(
+          chat: chat,
+          query: query,
+          searchResults: searchResults,
+          conversationHistory: conversationHistory,
+          maxTokens: maxTokens,
+        );
         final exactPromptTokens = await _countPromptTokens(chat, prompt);
         LoggingService.debug(
           'Prompt token count: $exactPromptTokens/$maxTokens',
@@ -416,58 +387,24 @@ Instructions:
     final modelConfig = ModelConfig.activeInferenceModelOrDefault(
       settings.activeInferenceModelId,
     );
-    // Calculate token budget honoring user maxTokens override
     final contextLimit = modelConfig.contextLimit ?? modelConfig.maxTokens;
     final maxTokens = min(settings.maxTokens ?? contextLimit, contextLimit);
-    final outputReserve = (maxTokens * RagConstants.outputReserveRatio).floor();
-    final queryTokens = _tokenManager.estimateTokens(query);
-    final rawAvailable = maxTokens - outputReserve - queryTokens;
-    if (rawAvailable <= 0) {
-      LoggingService.warning(
-        'Token budget exhausted: maxTokens=$maxTokens, '
-        'reserve=$outputReserve, queryTokens=$queryTokens',
-      );
-    }
-    final availableForPrompt = max(0, rawAvailable);
-
-    // Allocate using defined ratios
-    final contextBudget = (availableForPrompt * RagConstants.contextBudgetRatio)
-        .floor();
-    final historyBudget = (availableForPrompt * RagConstants.historyBudgetRatio)
-        .floor();
-
-    final historySection = _tokenManager.buildHistoryWithBudget(
-      conversationHistory?.take(settings.maxHistoryMessages).toList() ?? [],
-      historyBudget,
-    );
-    final context = _buildContextWithBudget(searchResults, contextBudget);
-
-    final prompt =
-        '''
-${historySection}Context:
-$context
-
-Question: $query
-
-Instructions:
-- Answer the question accurately and concisely based on the context above.
-- If the context does not contain relevant information to answer the question, say "I don't have enough information."
-- Do not append disclaimer phrases or repeat instructions after answering.''';
-
-    LoggingService.debug(
-      'Generated prompt (${prompt.length} chars). '
-      'Budget: context=$contextBudget, history=$historyBudget',
-    );
-
     final controller = StreamController<String>();
     unawaited(() async {
       try {
         final inferenceModel = await _inferenceModelProvider.getModel();
-        await InferenceModelProvider.withSerializedChat(
+        await _inferenceModelProvider.runSerializedChat(
           inferenceModel,
           temperature: 0.1,
           action: (chat) async {
             await chat.initSession();
+            final prompt = await _buildPrompt(
+              chat: chat,
+              query: query,
+              searchResults: searchResults,
+              conversationHistory: conversationHistory,
+              maxTokens: maxTokens,
+            );
             final exactPromptTokens = await _countPromptTokens(chat, prompt);
             LoggingService.debug(
               'Prompt token count: $exactPromptTokens/$maxTokens',
@@ -509,25 +446,26 @@ Instructions:
     }
   }
 
-  String _buildContextWithBudget(List<SearchResult> results, int tokenBudget) {
-    if (results.isEmpty) return 'No relevant context found.';
-
-    // Results already sorted by relevance score
-    final chunks = <String>[];
-    var tokens = 0;
-
-    for (final result in results) {
-      final chunkText = '[Source ${chunks.length + 1}]: ${result.content}';
-      final chunkTokens = _tokenManager.estimateTokens(chunkText);
-
-      if (tokens + chunkTokens <= tokenBudget) {
-        chunks.add(chunkText);
-        tokens += chunkTokens;
-      } else {
-        break; // Skip lower-relevance chunks
-      }
-    }
-
-    return chunks.isEmpty ? 'No relevant context found.' : chunks.join('\n\n');
+  Future<String> _buildPrompt({
+    required InferenceChat chat,
+    required String query,
+    required List<SearchResult> searchResults,
+    required List<String>? conversationHistory,
+    required int maxTokens,
+  }) {
+    final settings = locator<RagSettingsService>();
+    final promptLimit = max(
+      1,
+      maxTokens - (maxTokens * RagConstants.outputReserveRatio).floor(),
+    );
+    return _tokenManager.buildPromptWithinBudget(
+      query: query,
+      history:
+          conversationHistory?.take(settings.maxHistoryMessages).toList() ??
+          const [],
+      context: searchResults.map((result) => result.content).toList(),
+      maxTokens: promptLimit,
+      countTokens: (text) => _countPromptTokens(chat, text),
+    );
   }
 }

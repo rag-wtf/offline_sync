@@ -103,6 +103,12 @@ void main() {
         documentIds: any<List<String>?>(named: 'documentIds'),
       ),
     ).thenAnswer((_) => const Stream.empty());
+    when(
+      () => chatRepository.markMessageFailed(any()),
+    ).thenAnswer((_) async {});
+    when(
+      () => chatRepository.markMessageCompleted(any()),
+    ).thenAnswer((_) async {});
   });
 
   tearDown(() async {

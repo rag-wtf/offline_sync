@@ -75,11 +75,15 @@ class MockInferenceModelProvider extends Mock
 
 class MockInferenceModel extends Mock implements InferenceModel {}
 
+class _FakeInferenceModel extends Fake implements InferenceModel {}
+
 class MockQueryExpansionService extends Mock implements QueryExpansionService {}
 
 class MockRerankingService extends Mock implements RerankingService {}
 
 class MockRagTokenManager extends Mock implements RagTokenManager {}
+
+var _inferenceModelFallbackRegistered = false;
 
 class MockEmbeddingService extends Mock implements EmbeddingService {}
 
@@ -261,6 +265,25 @@ MockRagTokenManager getAndRegisterMockRagTokenManager() {
     }
     return 'Previous conversation:\n${limited.join('\n')}\n\n';
   });
+  when(
+    () => service.buildPromptWithinBudget(
+      query: any(named: 'query'),
+      history: any(named: 'history'),
+      context: any(named: 'context'),
+      maxTokens: any(named: 'maxTokens'),
+      countTokens: any(named: 'countTokens'),
+    ),
+  ).thenAnswer((invocation) {
+    return RagTokenManager().buildPromptWithinBudget(
+      query: invocation.namedArguments[#query]! as String,
+      history: (invocation.namedArguments[#history]! as List).cast<String>(),
+      context: (invocation.namedArguments[#context]! as List).cast<String>(),
+      maxTokens: invocation.namedArguments[#maxTokens]! as int,
+      countTokens:
+          invocation.namedArguments[#countTokens]!
+              as Future<int> Function(String),
+    );
+  });
 
   locator.registerSingleton<RagTokenManager>(service);
   return service;
@@ -268,7 +291,41 @@ MockRagTokenManager getAndRegisterMockRagTokenManager() {
 
 MockInferenceModelProvider getAndRegisterMockInferenceModelProvider() {
   _removeRegistrationIfExists<InferenceModelProvider>();
+  if (!_inferenceModelFallbackRegistered) {
+    registerFallbackValue(_FakeInferenceModel());
+    _inferenceModelFallbackRegistered = true;
+  }
   final service = MockInferenceModelProvider();
+  when(
+    () => service.runSerializedChat<void>(
+      any(),
+      temperature: any(named: 'temperature'),
+      action: any(named: 'action'),
+    ),
+  ).thenAnswer((invocation) {
+    return InferenceModelProvider.withSerializedChat<void>(
+      invocation.positionalArguments.first as InferenceModel,
+      temperature: invocation.namedArguments[#temperature]! as double,
+      action:
+          invocation.namedArguments[#action]!
+              as Future<void> Function(InferenceChat),
+    );
+  });
+  when(
+    () => service.runSerializedChat<Null>(
+      any(),
+      temperature: any(named: 'temperature'),
+      action: any(named: 'action'),
+    ),
+  ).thenAnswer((invocation) {
+    return InferenceModelProvider.withSerializedChat<Null>(
+      invocation.positionalArguments.first as InferenceModel,
+      temperature: invocation.namedArguments[#temperature]! as double,
+      action:
+          invocation.namedArguments[#action]!
+              as Future<Null> Function(InferenceChat),
+    );
+  });
   locator.registerSingleton<InferenceModelProvider>(service);
   return service;
 }

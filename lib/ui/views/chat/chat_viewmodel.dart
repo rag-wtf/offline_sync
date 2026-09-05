@@ -22,10 +22,14 @@ class ChatMessage {
     required this.content,
     required this.isUser,
     required this.timestamp,
+    this.id,
     this.sources,
     this.metrics,
     this.isFailed = false,
+    this.isPending = false,
   });
+
+  int? id;
 
   /// The text content of the message
   final String content;
@@ -44,6 +48,9 @@ class ChatMessage {
 
   /// Whether generation failed for this user message.
   final bool isFailed;
+
+  /// Whether this turn has not yet reached a terminal generation state.
+  final bool isPending;
 }
 
 /// ViewModel for the chat view, handling message sending and document ingestion
@@ -187,9 +194,10 @@ class ChatViewModel extends BaseViewModel {
       content: text,
       isUser: true,
       timestamp: DateTime.now(),
+      isPending: true,
     );
     messages.add(userMsg);
-    await _chatRepository.saveMessage(userMsg); // Persist user message
+    await _chatRepository.saveMessage(userMsg); // Persist pending user turn
     _shouldScroll = true;
     notifyListeners();
 
@@ -204,6 +212,7 @@ class ChatViewModel extends BaseViewModel {
     _shouldScroll = true;
     notifyListeners();
 
+    var generationCompleted = false;
     try {
       // Build history (excluding placeholder AI message & current user query)
       final maxHistoryMessages = _ragSettings.maxHistoryMessages;
@@ -260,12 +269,13 @@ class ChatViewModel extends BaseViewModel {
           }
           // Stream completed, persist the final message
           await _chatRepository.saveMessage(messages[aiMsgIndex]);
+          await _markUserMessageCompleted(userMsg);
+          generationCompleted = true;
         }
       }
     } on AuthenticationRequiredException {
       // Remove the placeholder message on error
       messages.removeAt(aiMsgIndex);
-      await _markUserMessageFailed(userMsg);
       // Show token input dialog
       await _showTokenDialog();
       _snackbarService.showSnackbar(
@@ -277,12 +287,17 @@ class ChatViewModel extends BaseViewModel {
       if (messages.length > aiMsgIndex) {
         messages.removeAt(aiMsgIndex);
       }
-      await _markUserMessageFailed(userMsg);
       _snackbarService.showSnackbar(
         message: 'Error: $e',
         duration: const Duration(seconds: 3),
       );
     } finally {
+      if (!generationCompleted) {
+        if (messages.length > aiMsgIndex) {
+          messages.removeAt(aiMsgIndex);
+        }
+        await _markUserMessageFailed(userMsg);
+      }
       _isProcessing = false;
       notifyListeners();
     }
@@ -295,11 +310,26 @@ class ChatViewModel extends BaseViewModel {
         content: userMessage.content,
         isUser: true,
         timestamp: userMessage.timestamp,
+        id: userMessage.id,
         isFailed: true,
       );
       notifyListeners();
     }
     await _chatRepository.markMessageFailed(userMessage);
+  }
+
+  Future<void> _markUserMessageCompleted(ChatMessage userMessage) async {
+    final index = messages.indexOf(userMessage);
+    if (index != -1) {
+      messages[index] = ChatMessage(
+        content: userMessage.content,
+        isUser: true,
+        timestamp: userMessage.timestamp,
+        id: userMessage.id,
+      );
+      notifyListeners();
+    }
+    await _chatRepository.markMessageCompleted(userMessage);
   }
 
   /// Shows a detailed view of a source document used for context

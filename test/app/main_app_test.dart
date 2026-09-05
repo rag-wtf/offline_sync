@@ -21,7 +21,7 @@ void main() {
     tester,
   ) async {
     final mockVectorStore = MockVectorStore();
-    when(mockVectorStore.close).thenReturn(null);
+    when(mockVectorStore.close).thenAnswer((_) async {});
     locator.registerSingleton<VectorStore>(mockVectorStore);
 
     await tester.pumpWidget(

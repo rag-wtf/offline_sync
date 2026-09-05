@@ -93,6 +93,9 @@ void main() {
       () => chatRepository.markMessageFailed(any()),
     ).thenAnswer((_) async {});
     when(
+      () => chatRepository.markMessageCompleted(any()),
+    ).thenAnswer((_) async {});
+    when(
       () => navigationService.navigateWithTransition<bool?>(
         any(),
         transitionStyle: any(named: 'transitionStyle'),
@@ -455,6 +458,33 @@ void main() {
         duration: any(named: 'duration'),
       ),
     ).called(1);
+  });
+
+  test('sendMessage marks a stream without completion as failed', () async {
+    final savedMessages = <ChatMessage>[];
+    when(() => chatRepository.saveMessage(any())).thenAnswer((
+      invocation,
+    ) async {
+      savedMessages.add(invocation.positionalArguments.first as ChatMessage);
+    });
+    when(
+      () => chatRepository.markMessageFailed(any()),
+    ).thenAnswer((_) async {});
+    when(
+      () => ragService.askWithRAGStream(
+        any(),
+        includeMetrics: any(named: 'includeMetrics'),
+        conversationHistory: any(named: 'conversationHistory'),
+        documentIds: any(named: 'documentIds'),
+      ),
+    ).thenAnswer((_) => const Stream<RAGStreamEvent>.empty());
+
+    final viewModel = ChatViewModel();
+    await viewModel.sendMessage('no completion');
+
+    expect(viewModel.messages.single.isFailed, isTrue);
+    expect(savedMessages.single.isPending, isTrue);
+    verify(() => chatRepository.markMessageFailed(any())).called(1);
   });
 
   test('pickAndIngestFiles returns when picker is cancelled', () async {

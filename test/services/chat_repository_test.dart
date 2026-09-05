@@ -42,7 +42,7 @@ void main() {
     });
 
     tearDown(() async {
-      vectorStore.close();
+      await vectorStore.close();
       await locator.reset();
 
       // Clean up the temporary directory
@@ -68,6 +68,22 @@ void main() {
       expect(messages.first.isUser, true);
     });
 
+    test('loadMessages reconciles pending turns as failed', () async {
+      await chatRepository.saveMessage(
+        ChatMessage(
+          content: 'unfinished',
+          isUser: true,
+          isPending: true,
+          timestamp: DateTime.now(),
+        ),
+      );
+
+      final messages = await chatRepository.loadMessages();
+
+      expect(messages.single.isPending, isFalse);
+      expect(messages.single.isFailed, isTrue);
+    });
+
     test(
       'persists failed messages and can mark an existing user message',
       () async {
@@ -82,6 +98,30 @@ void main() {
 
         final stored = await chatRepository.loadMessages();
         expect(stored.single.isFailed, isTrue);
+      },
+    );
+
+    test(
+      'marks the saved row by stable id when duplicate turns exist',
+      () async {
+        final timestamp = DateTime.fromMillisecondsSinceEpoch(1234);
+        final first = ChatMessage(
+          content: 'duplicate',
+          isUser: true,
+          timestamp: timestamp,
+        );
+        final second = ChatMessage(
+          content: 'duplicate',
+          isUser: true,
+          timestamp: timestamp,
+        );
+
+        await chatRepository.saveMessage(first);
+        await chatRepository.saveMessage(second);
+        await chatRepository.markMessageFailed(first);
+
+        final stored = await chatRepository.loadMessages();
+        expect(stored.map((message) => message.isFailed), [true, false]);
       },
     );
 
@@ -182,7 +222,7 @@ void main() {
     });
 
     test('db throws when vector store has not been initialized', () async {
-      vectorStore.close();
+      await vectorStore.close();
       await locator.reset();
 
       final uninitializedStore = VectorStore();

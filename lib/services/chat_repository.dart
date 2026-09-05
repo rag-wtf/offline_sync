@@ -32,8 +32,8 @@ class ChatRepository {
   Future<void> saveMessage(ChatMessage message) async {
     final stmt = db.prepare('''
       INSERT INTO chat_messages (
-        content, is_user, timestamp, sources, metrics, is_failed
-      ) VALUES (?, ?, ?, ?, ?, ?)
+        content, is_user, timestamp, sources, metrics, is_failed, is_pending
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
     ''');
     try {
       stmt.execute([
@@ -65,7 +65,9 @@ class ChatRepository {
         else
           null,
         if (message.isFailed) 1 else 0,
+        if (message.isPending) 1 else 0,
       ]);
+      message.id = db.lastInsertRowId;
     } finally {
       stmt.close();
     }
@@ -74,6 +76,7 @@ class ChatRepository {
 
   /// Load recent messages (default: last 50)
   Future<List<ChatMessage>> loadMessages({int limit = 50}) async {
+    await _reconcilePendingMessages();
     final results = db.select(
       '''
       SELECT * FROM chat_messages 
@@ -120,12 +123,14 @@ class ChatRepository {
           return ChatMessage(
             content: row['content'] as String,
             isUser: (row['is_user'] as int) == 1,
+            id: row['id'] as int,
             timestamp: DateTime.fromMillisecondsSinceEpoch(
               row['timestamp'] as int,
             ),
             sources: sources,
             metrics: metrics,
             isFailed: (row['is_failed'] as int? ?? 0) == 1,
+            isPending: (row['is_pending'] as int? ?? 0) == 1,
           );
         })
         .toList()
@@ -136,16 +141,25 @@ class ChatRepository {
   /// Marks a previously persisted user message as failed.
   Future<void> markMessageFailed(ChatMessage message) async {
     db.execute(
-      '''
-      UPDATE chat_messages
-      SET is_failed = 1
-      WHERE id = (
-        SELECT id FROM chat_messages
-        WHERE content = ? AND is_user = 1 AND timestamp = ?
-        ORDER BY id DESC LIMIT 1
-      )
-      ''',
-      [message.content, message.timestamp.millisecondsSinceEpoch],
+      'UPDATE chat_messages SET is_failed = 1, is_pending = 0 WHERE id = ?',
+      [message.id],
+    );
+    await _vectorStore.flush();
+  }
+
+  /// Marks a successfully generated user turn as complete.
+  Future<void> markMessageCompleted(ChatMessage message) async {
+    db.execute(
+      'UPDATE chat_messages SET is_pending = 0 WHERE id = ?',
+      [message.id],
+    );
+    await _vectorStore.flush();
+  }
+
+  Future<void> _reconcilePendingMessages() async {
+    db.execute(
+      'UPDATE chat_messages SET is_failed = 1, is_pending = 0 '
+      'WHERE is_user = 1 AND is_pending = 1',
     );
     await _vectorStore.flush();
   }
