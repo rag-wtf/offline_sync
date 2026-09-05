@@ -29,13 +29,17 @@ class InferenceModelProvider {
   /// - The model fails to load
   /// - No active model is available (e.g., still downloading)
   Future<InferenceModel> getModel() {
-    final currentModel = _model;
-    if (currentModel != null) return Future.value(currentModel);
     final inFlight = _inFlightFuture;
     if (inFlight != null) return inFlight;
 
+    // Queue cache hits too: model management uses this same lane while it
+    // releases/deletes an active model.
     final generation = _modelGeneration;
-    final operation = _enqueue(() => _loadModel(generation));
+    final operation = _enqueue(() async {
+      final currentModel = _model;
+      if (currentModel != null) return currentModel;
+      return _loadModel(generation);
+    });
     _inFlightFuture = operation;
     unawaited(
       operation.then<void>(
@@ -108,22 +112,39 @@ class InferenceModelProvider {
   /// Invalidates and releases the cached model, completing after all queued
   /// inference work has finished and the model has been closed.
   Future<void> clearCacheAndWait() {
+    final cachedModel = _invalidateCachedModel();
+    return _enqueue(
+      cachedModel == null ? () async {} : () => _closeModel(cachedModel),
+    );
+  }
+
+  /// Runs an operation on the same lane as model acquisition and release.
+  /// The operation may call [clearCacheAndWaitInManagement] to release this
+  /// provider without enqueuing behind itself.
+  Future<T> runSerializedModelManagement<T>(Future<T> Function() action) {
+    return _enqueue(action);
+  }
+
+  /// Releases the cached model while already inside
+  /// [runSerializedModelManagement].
+  Future<void> clearCacheAndWaitInManagement() {
+    final cachedModel = _invalidateCachedModel();
+    return cachedModel == null
+        ? Future<void>.value()
+        : _closeModel(cachedModel);
+  }
+
+  InferenceModel? _invalidateCachedModel() {
     final cachedModel = _model;
     _model = null;
     _inFlightFuture = null;
     _modelGeneration++;
-    if (cachedModel != null) {
-      return _enqueue(() => _closeModel(cachedModel));
-    }
-    return Future<void>.value();
+    return cachedModel;
   }
 
   /// Releases the loaded model, used when the application is paused.
   Future<void> releaseModel() async {
-    final cachedModel = _model;
-    _model = null;
-    _inFlightFuture = null;
-    _modelGeneration++;
+    final cachedModel = _invalidateCachedModel();
     // Always enqueue a barrier. If a load is in flight, its generation check
     // closes the stale result before this release completes.
     await _enqueue(

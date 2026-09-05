@@ -14,6 +14,7 @@ import 'package:offline_sync/services/document_parser_service.dart';
 import 'package:offline_sync/services/embedding_service.dart';
 import 'package:offline_sync/services/smart_chunker.dart';
 import 'package:offline_sync/services/vector_store.dart';
+import 'package:path/path.dart' as path;
 
 import '../helpers/test_helpers.dart';
 
@@ -40,6 +41,7 @@ void main() {
   late MockEmbeddingService mockEmbeddingService;
   late MockRagSettingsService mockSettingsService;
   late MockContextualRetrievalService mockContextualRetrievalService;
+  late Directory testDirectory;
 
   setUpAll(() {
     registerFallbackValue(
@@ -61,6 +63,14 @@ void main() {
 
   setUp(() async {
     await locator.reset();
+    testDirectory = await Directory.systemTemp.createTemp(
+      'offline_sync_document_management_test_',
+    );
+    addTearDown(() async {
+      if (testDirectory.existsSync()) {
+        await testDirectory.delete(recursive: true);
+      }
+    });
 
     mockVectorStore = MockVectorStore();
     mockParserService = MockDocumentParserService();
@@ -182,7 +192,9 @@ void main() {
     test(
       'addMultipleDocuments reports successes and failures per file',
       () async {
-        final file = File('multiple-success.txt');
+        final file = File(
+          path.join(testDirectory.path, 'multiple-success.txt'),
+        );
         await file.writeAsString('multiple content');
         addTearDown(() async {
           if (file.existsSync()) await file.delete();
@@ -257,7 +269,7 @@ void main() {
     });
 
     test('addDocument success flow', () async {
-      final file = File('test_file.txt');
+      final file = File(path.join(testDirectory.path, 'test_file.txt'));
       await file.writeAsString('Test content');
 
       // Mocks
@@ -295,7 +307,9 @@ void main() {
       expect(result.status, IngestionStatus.complete);
 
       // detectFormat IS called in main isolate
-      verify(() => mockParserService.detectFormat(file.path)).called(1);
+      verify(
+        () => mockParserService.detectFormat(path.basename(file.path)),
+      ).called(1);
 
       // parseDocument and chunk are NOT called on mocks due to isolate usage
       // verify(() => mockParserService.parseDocument(file.path)).called(1);
@@ -317,7 +331,7 @@ void main() {
 
     // ... existing tests ...
     test('addDocument detects duplicates', () async {
-      final file = File('test_dup.txt');
+      final file = File(path.join(testDirectory.path, 'test_dup.txt'));
       await file.writeAsString('Duplicate content');
 
       final existing = Document(
@@ -345,7 +359,7 @@ void main() {
     });
 
     test('cleans in-flight hash when initial insert fails', () async {
-      final file = File('insert_failure.txt');
+      final file = File(path.join(testDirectory.path, 'insert_failure.txt'));
       await file.writeAsString('Insert failure content');
 
       when(
@@ -371,7 +385,7 @@ void main() {
     });
 
     test('addDocument respects size limit', () async {
-      final file = File('large_file.txt');
+      final file = File(path.join(testDirectory.path, 'large_file.txt'));
       // Create a dummy file, but we mock the size check by calling a file
       // that doesn't exist?
       // No, create a real file but set max size small.
@@ -464,7 +478,9 @@ void main() {
 
     test('addDocumentFromPlatformFile uses path-backed size validation '
         'before reading bytes', () async {
-      final file = File('oversized_platform_file.txt');
+      final file = File(
+        path.join(testDirectory.path, 'oversized_platform_file.txt'),
+      );
       await file.writeAsString('oversized content');
 
       when(() => mockSettingsService.maxDocumentSizeMB).thenReturn(0);
@@ -490,7 +506,7 @@ void main() {
     });
 
     test('refreshDocument keeps old document when reingestion fails', () async {
-      final file = File('refresh_failure.txt');
+      final file = File(path.join(testDirectory.path, 'refresh_failure.txt'));
       await file.writeAsString('new content');
 
       final oldDoc = Document(
@@ -532,7 +548,7 @@ void main() {
     test(
       'reindexDocument does not delete old vectors before success',
       () async {
-        final file = File('reindex_failure.txt');
+        final file = File(path.join(testDirectory.path, 'reindex_failure.txt'));
         await file.writeAsString('reindex failure content');
 
         final oldDoc = Document(
@@ -691,7 +707,9 @@ void main() {
     test(
       'refreshDocument returns the existing document when hash is unchanged',
       () async {
-        final file = File('refresh_same_hash.txt');
+        final file = File(
+          path.join(testDirectory.path, 'refresh_same_hash.txt'),
+        );
         await file.writeAsString('Refresh content');
         final hash = sha256.convert(utf8.encode('Refresh content')).toString();
 

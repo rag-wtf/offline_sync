@@ -51,3 +51,17 @@ The seven round-4 code findings are implemented and covered by regression tests,
 ## Changed areas
 
 Round-4 changes cover CI localization generation, zero-diagnostic analyzer hygiene, model-manager identity fallback, serialized model deletion and release, coordinated saved-model refresh, temporary test fixtures, and coverage tests. Earlier Task 4 changes documented in the SDD ledger remain in the base commit.
+
+## Final-round handoff evidence
+
+- Preserved the uncommitted provider/manager lifecycle changes from the prior worker and completed the deletion/load overlap regression test. The test proves a replacement `getModel()` waits for cached-model close and model deletion to finish before loading.
+- Verified every `File(...)` write in `test/services/document_management_service_test.dart` is rooted in the per-test temporary directory; teardown removes that directory recursively.
+- Added meaningful coverage tests for chat ingestion progress, settings initialization/action failures, model deletion failure state, and vector-store no-active-embedder/document-vector behavior.
+- `flutter gen-l10n`: passed.
+- `flutter analyze`: passed after the final test-only cascade lint fix with `No issues found!`.
+- Full `flutter test --coverage`: passed; **4496/4770 = 94.26%**. This remains below the enforced 95% threshold (4532 covered lines required at this denominator), so the coverage gate is explicitly unmet.
+- Focused lifecycle, fixture, vector-store, chat, Settings, and model-management suites: passed.
+- The production web target remains `flutter build web --release --target lib/main_production.dart`; the default target is not applicable because this repository has no `lib/main.dart`.
+- Known Flutter-generated platform registrant churn was restored before commit.
+
+Final-round status: code and regression tests are complete, but the unchanged 95% coverage gate remains a documented limitation at 94.26%.

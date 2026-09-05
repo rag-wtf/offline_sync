@@ -271,4 +271,42 @@ void main() {
     verify(ragService.initialize).called(1);
     verify(() => chatRepository.loadMessages()).called(1);
   });
+
+  testWidgets('renders determinate ingestion progress with document details', (
+    tester,
+  ) async {
+    final progressController = StreamController<IngestionProgress>.broadcast(
+      sync: true,
+    );
+    addTearDown(progressController.close);
+    when(ragService.initialize).thenAnswer((_) async {});
+    when(() => chatRepository.loadMessages()).thenAnswer((_) async => []);
+    when(
+      () => documentService.ingestionProgressStream,
+    ).thenAnswer((_) => progressController.stream);
+    when(() => documentService.getAllDocuments()).thenAnswer((_) async => []);
+
+    final viewModel = ChatViewModel();
+    await viewModel.initialize();
+    await tester.pumpWidget(buildSubject(viewModel));
+
+    progressController.add(
+      const IngestionProgress(
+        documentId: 'doc-1',
+        documentTitle: 'Operations Runbook',
+        stage: 'embedding',
+        currentChunk: 2,
+        totalChunks: 4,
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.text('Ingesting Operations Runbook (embedding)...'),
+      findsOneWidget,
+    );
+    expect(find.text('50%'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+  });
 }

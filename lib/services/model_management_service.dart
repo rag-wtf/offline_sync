@@ -672,7 +672,23 @@ class ModelManagementService {
       _activeDownloads.containsKey(modelId);
 
   /// Switch to a different inference model
-  Future<void> switchInferenceModel(String modelId) async {
+  Future<void> switchInferenceModel(String modelId) {
+    final provider = locator.isRegistered<InferenceModelProvider>()
+        ? locator<InferenceModelProvider>()
+        : null;
+    if (provider == null) return _switchInferenceModel(modelId);
+    return provider.runSerializedModelManagement(
+      () => _switchInferenceModel(
+        modelId,
+        releaseCachedModel: provider.clearCacheAndWaitInManagement,
+      ),
+    );
+  }
+
+  Future<void> _switchInferenceModel(
+    String modelId, {
+    Future<void> Function()? releaseCachedModel,
+  }) async {
     final model = _models.firstWhere((m) => m.id == modelId);
     if (model.status != ModelStatus.downloaded) {
       log('Cannot switch to model $modelId: not downloaded');
@@ -704,8 +720,8 @@ class ModelManagementService {
       Error.throwWithStackTrace(error, StackTrace.current);
     }
     _activeInferenceModelId = modelId;
-    if (locator.isRegistered<InferenceModelProvider>()) {
-      locator<InferenceModelProvider>().clearCache();
+    if (releaseCachedModel != null) {
+      await releaseCachedModel();
     }
     _notify();
   }
@@ -768,12 +784,14 @@ class ModelManagementService {
         ? _activeInferenceModelId == model.id
         : _activeEmbeddingModelId == model.id;
 
-    Future<bool> deletion() async {
+    Future<bool> deletion({
+      Future<void> Function()? releaseCachedModel,
+    }) async {
       try {
         if (wasActive) {
           if (model.type == AppModelType.inference &&
-              locator.isRegistered<InferenceModelProvider>()) {
-            await locator<InferenceModelProvider>().clearCacheAndWait();
+              releaseCachedModel != null) {
+            await releaseCachedModel();
           }
           if (model.type == AppModelType.inference) {
             await _clearPluginActiveInferenceIdentity();
@@ -820,7 +838,15 @@ class ModelManagementService {
     if (model.type == AppModelType.embedding) {
       return _embeddingCoordinator.run(deletion);
     }
-    return deletion();
+    final provider = locator.isRegistered<InferenceModelProvider>()
+        ? locator<InferenceModelProvider>()
+        : null;
+    if (provider == null) return deletion();
+    return provider.runSerializedModelManagement(
+      () => deletion(
+        releaseCachedModel: provider.clearCacheAndWaitInManagement,
+      ),
+    );
   }
 
   Future<bool> _restoreInferenceModel(String? modelId) async {

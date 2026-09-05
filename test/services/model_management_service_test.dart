@@ -8,6 +8,7 @@ import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/embedding_service.dart';
 import 'package:offline_sync/services/exceptions.dart';
+import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
@@ -21,6 +22,8 @@ import '../helpers/test_helpers.dart';
 // API contracts, and error handling rather than deep integration.
 
 class _MockModelFileManager extends Mock implements ModelFileManager {}
+
+class _RaceInferenceModel extends Mock implements InferenceModel {}
 
 void main() {
   group('ModelManagementService Tests -', () {
@@ -349,6 +352,31 @@ void main() {
         },
       );
 
+      test('marks an active model as errored when deletion fails', () async {
+        when(
+          () => locator<RagSettingsService>().setActiveInferenceModelId(
+            any(),
+          ),
+        ).thenAnswer((_) async {});
+        when(
+          locator<RagSettingsService>().clearActiveInferenceModelId,
+        ).thenAnswer((_) async {});
+        final service = ModelManagementService(
+          inferenceModelActivator: (_) async {},
+          clearActiveInferenceIdentity: () async {},
+          modelDeleter: (_) async => throw StateError('delete failed'),
+        );
+        addTearDown(service.dispose);
+        final model = service.models.firstWhere(
+          (candidate) => candidate.type == AppModelType.inference,
+        )..status = ModelStatus.downloaded;
+
+        await service.switchInferenceModel(model.id);
+        expect(await service.deleteModel(model.id), isFalse);
+        expect(model.status, ModelStatus.error);
+        expect(model.errorMessage, contains('Unable to delete'));
+      });
+
       test(
         'waits for an active inference operation to release before deleting',
         () async {
@@ -358,6 +386,7 @@ void main() {
           final release = Completer<void>();
           when(provider.clearCacheAndWait).thenAnswer((_) async {
             clearCalls++;
+            if (clearCalls == 1) return;
             releaseStarted.complete();
             await release.future;
           });
@@ -390,7 +419,78 @@ void main() {
 
           release.complete();
           expect(await deletion, isTrue);
-          expect(clearCalls, 1);
+          expect(clearCalls, 2);
+        },
+      );
+
+      test(
+        'keeps a concurrent inference load behind deletion and file removal',
+        () async {
+          if (locator.isRegistered<InferenceModelProvider>()) {
+            locator.unregister<InferenceModelProvider>();
+          }
+
+          final oldModel = _RaceInferenceModel();
+          final replacementModel = _RaceInferenceModel();
+          final closeStarted = Completer<void>();
+          final closeRelease = Completer<void>();
+          var loadCalls = 0;
+          var deleteStarted = false;
+          var deleteSawClosedModel = false;
+
+          when(oldModel.close).thenAnswer((_) async {
+            closeStarted.complete();
+            await closeRelease.future;
+          });
+          when(replacementModel.close).thenAnswer((_) async {});
+          final provider = InferenceModelProvider(
+            activeModelLoader: ({required maxTokens}) async {
+              loadCalls++;
+              return loadCalls == 1 ? oldModel : replacementModel;
+            },
+          );
+          locator.registerSingleton<InferenceModelProvider>(provider);
+
+          when(
+            () => locator<RagSettingsService>().setActiveInferenceModelId(
+              any(),
+            ),
+          ).thenAnswer((_) async {});
+          when(
+            locator<RagSettingsService>().clearActiveInferenceModelId,
+          ).thenAnswer((_) async {});
+
+          final service = ModelManagementService(
+            inferenceModelActivator: (_) async {},
+            clearActiveInferenceIdentity: () async {},
+            modelDeleter: (_) async {
+              deleteStarted = true;
+              deleteSawClosedModel = closeRelease.isCompleted;
+            },
+          );
+          addTearDown(service.dispose);
+          final model = service.models.firstWhere(
+            (candidate) => candidate.type == AppModelType.inference,
+          )..status = ModelStatus.downloaded;
+
+          await service.switchInferenceModel(model.id);
+          await provider.getModel();
+
+          final deletion = service.deleteModel(model.id);
+          await closeStarted.future;
+
+          final concurrentLoad = provider.getModel();
+          await Future<void>.delayed(Duration.zero);
+          expect(deleteStarted, isFalse);
+          expect(loadCalls, 1);
+
+          closeRelease.complete();
+          expect(await deletion, isTrue);
+          expect(deleteStarted, isTrue);
+          expect(deleteSawClosedModel, isTrue);
+
+          expect(await concurrentLoad, same(replacementModel));
+          expect(loadCalls, 2);
         },
       );
 

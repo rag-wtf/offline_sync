@@ -235,7 +235,9 @@ void main() {
     models[1]
       ..status = ModelStatus.downloading
       ..progress = 0.5;
-    models[2].status = ModelStatus.error;
+    models[2]
+      ..status = ModelStatus.error
+      ..errorMessage = 'Model activation failed';
 
     final viewModel = SettingsViewModel(
       modelService: modelService,
@@ -257,6 +259,7 @@ void main() {
     expect(find.byIcon(Icons.downloading_rounded), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
     expect(find.byIcon(Icons.refresh_rounded), findsOneWidget);
+    expect(find.text('Model activation failed'), findsOneWidget);
     expect(find.byIcon(Icons.download_rounded), findsOneWidget);
 
     await tester.scrollUntilVisible(find.byIcon(Icons.refresh_rounded), 300);
@@ -284,6 +287,7 @@ void main() {
       when(
         () => modelService.downloadedEmbeddingModels,
       ).thenReturn([models[2]]);
+      when(() => ragSettings.maxTokens).thenReturn(null);
 
       final viewModel = SettingsViewModel(
         modelService: modelService,

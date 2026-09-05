@@ -949,6 +949,36 @@ void main() {
       expect(vectorStore.optimizeDatabase, returnsNormally);
     });
 
+    test(
+      'hybridSearch returns no results without an active embedder',
+      () async {
+        final settings = locator<RagSettingsService>();
+        await settings.clearActiveEmbeddingModelId();
+
+        expect(await vectorStore.hybridSearch('query', [1, 0]), isEmpty);
+      },
+    );
+
+    test('deleteVectorsForDocument keeps the document inventory record', () {
+      final document = completeDocument('vectors-only');
+      vectorStore
+        ..insertDocument(document)
+        ..insertEmbedding(
+          id: 'vectors-only-chunk',
+          documentId: document.id,
+          content: 'content',
+          embedding: [1, 0],
+        )
+        ..deleteVectorsForDocument(document.id);
+
+      expect(vectorStore.getDocument(document.id), isNotNull);
+      expect(vectorStore.getChunksForDocument(document.id), isEmpty);
+    });
+
+    test('getDocument returns null for an unknown id', () {
+      expect(vectorStore.getDocument('missing-document'), isNull);
+    });
+
     test('batch insertion rolls back the transaction when a row fails', () {
       vectorStore.db!.execute('''
         CREATE TRIGGER fail_bad_batch_insert
