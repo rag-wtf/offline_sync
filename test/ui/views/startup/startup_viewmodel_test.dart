@@ -757,7 +757,7 @@ void main() {
         await controller.close();
       });
 
-      test('preserves descriptive error message on '
+      test('sanitizes descriptive error message on '
           'AuthenticationRequiredException in stream onError', () async {
         final controller = StreamController<List<ModelInfo>>.broadcast();
         when(
@@ -783,7 +783,15 @@ void main() {
 
         expect(viewModel.needsToken, isTrue);
         expect(viewModel.statusMessage, 'Authentication Required');
-        expect(viewModel.modelError, actionableMessage);
+        expect(
+          viewModel.modelError,
+          contains('Hugging Face refused the download'),
+        );
+        expect(viewModel.modelError, contains('[redacted-url]'));
+        expect(
+          viewModel.modelError,
+          isNot(contains('https://huggingface.co/repo')),
+        );
 
         await controller.close();
       });
@@ -832,7 +840,8 @@ void main() {
           expect(viewModel.needsToken, isTrue);
           expect(viewModel.statusMessage, 'Authentication Required');
           expect(viewModel.modelError, contains('Check all three:'));
-          expect(viewModel.modelError, contains(testInference.repoPage));
+          expect(viewModel.modelError, contains('[redacted-url]'));
+          expect(viewModel.modelError, isNot(contains(testInference.repoPage)));
 
           await controller.close();
         },

@@ -87,6 +87,8 @@ var _inferenceModelFallbackRegistered = false;
 
 class MockEmbeddingService extends Mock implements EmbeddingService {}
 
+class MockEmbeddingModel extends Mock implements EmbeddingModel {}
+
 void registerTestHelpers() {
   _removeRegistrationIfExists<RerankingService>();
   _removeRegistrationIfExists<EmbeddingService>();
@@ -348,6 +350,10 @@ MockRerankingService getAndRegisterMockRerankingService() {
 MockEmbeddingService getAndRegisterMockEmbeddingService() {
   _removeRegistrationIfExists<EmbeddingService>();
   final service = MockEmbeddingService();
+  final model = MockEmbeddingModel();
+  when(() => service.pinActiveModel()).thenAnswer(
+    (_) async => PinnedEmbeddingModel(id: 'gecko-64', model: model),
+  );
   locator.registerSingleton<EmbeddingService>(service);
   return service;
 }

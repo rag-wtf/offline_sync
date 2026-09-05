@@ -44,6 +44,9 @@ import 'package:stacked_services/stacked_services.dart';
       classType: ModelRecommendationService,
     ),
     LazySingleton<DownloadPolicyService>(classType: DownloadPolicyService),
+    LazySingleton<EmbeddingModelCoordinator>(
+      classType: EmbeddingModelCoordinator,
+    ),
     LazySingleton<ModelManagementService>(classType: ModelManagementService),
     LazySingleton<EmbeddingService>(classType: EmbeddingService),
     LazySingleton<InferenceModelProvider>(classType: InferenceModelProvider),

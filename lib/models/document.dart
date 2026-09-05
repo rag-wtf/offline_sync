@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:offline_sync/services/document_parser_service.dart';
 
 enum IngestionStatus { pending, processing, complete, error, cancelled }
@@ -17,9 +20,11 @@ class Document {
     this.contextualRetrievalEnabled = false,
     this.embeddingModelId,
     this.errorMessage,
+    this.sourceBytes,
   });
 
   factory Document.fromJson(Map<String, dynamic> json) {
+    final sourceBytes = json['source_bytes'];
     return Document(
       id: json['id'] as String? ?? '',
       title: json['title'] as String? ?? 'Untitled',
@@ -44,6 +49,13 @@ class Document {
       contextualRetrievalEnabled: (json['contextual_retrieval'] as int?) == 1,
       embeddingModelId: json['embedding_model_id'] as String?,
       errorMessage: json['error_message'] as String?,
+      sourceBytes: sourceBytes is Uint8List
+          ? sourceBytes
+          : sourceBytes is List
+          ? Uint8List.fromList(sourceBytes.cast<int>())
+          : sourceBytes is String
+          ? Uint8List.fromList(base64Decode(sourceBytes))
+          : null,
     );
   }
 
@@ -60,6 +72,7 @@ class Document {
   final bool contextualRetrievalEnabled;
   final String? embeddingModelId;
   final String? errorMessage;
+  final Uint8List? sourceBytes;
 
   Map<String, dynamic> toJson() {
     return {
@@ -76,6 +89,7 @@ class Document {
       'contextual_retrieval': contextualRetrievalEnabled ? 1 : 0,
       'embedding_model_id': embeddingModelId,
       'error_message': errorMessage,
+      if (sourceBytes != null) 'source_bytes': base64Encode(sourceBytes!),
     };
   }
 

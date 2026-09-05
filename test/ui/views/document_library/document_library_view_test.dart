@@ -37,6 +37,7 @@ Document _buildDocument({
     ingestedAt: DateTime(2024, 1, 2),
     status: status,
     errorMessage: errorMessage,
+    embeddingModelId: 'gecko-64',
   );
 }
 
@@ -45,6 +46,18 @@ void main() {
 
   setUpAll(() {
     registerFallbackValue(FakePlatformFile(name: 'fallback.txt'));
+    registerFallbackValue(
+      Document(
+        id: 'fallback',
+        title: 'fallback',
+        filePath: 'fallback.txt',
+        format: DocumentFormat.plainText,
+        chunkCount: 0,
+        totalCharacters: 0,
+        contentHash: 'fallback-hash',
+        ingestedAt: DateTime(2024),
+      ),
+    );
   });
 
   late MockDocumentManagementService documentService;
@@ -75,6 +88,7 @@ void main() {
       ..registerSingleton<DocumentManagementService>(documentService)
       ..registerSingleton<NavigationService>(navigationService)
       ..registerSingleton<DialogService>(dialogService);
+    getAndRegisterMockRagSettingsService();
 
     when(
       () => navigationService.navigateTo<dynamic>(
@@ -102,6 +116,9 @@ void main() {
     when(
       () => documentService.ingestionProgressStream,
     ).thenAnswer((_) => progressController.stream);
+    when(
+      () => documentService.hasSourceForReindex(any<Document>()),
+    ).thenReturn(false);
     when(() => documentService.deleteDocument(any())).thenAnswer((_) async {});
     when(
       () => documentService.addDocumentFromPlatformFile(any()),

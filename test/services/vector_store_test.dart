@@ -21,6 +21,21 @@ class MockPathProviderPlatform extends PathProviderPlatform {
   Future<String?> getApplicationSupportPath() async => '.';
 }
 
+Document completeDocument(String id, {String embeddingModelId = 'gecko-64'}) {
+  return Document(
+    id: id,
+    title: id,
+    filePath: '$id.txt',
+    format: DocumentFormat.plainText,
+    chunkCount: 1,
+    totalCharacters: 100,
+    contentHash: '$id-hash',
+    ingestedAt: DateTime(2024),
+    status: IngestionStatus.complete,
+    embeddingModelId: embeddingModelId,
+  );
+}
+
 void main() {
   // No need for open.overrideFor in sqlite3 v3 - uses automatic build hooks
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -203,6 +218,7 @@ void main() {
       const id = 'test_1';
       const embedding = [0.1, 0.2, 0.3];
 
+      vectorStore.insertDocument(completeDocument('doc_1'));
       vectorStore.insertEmbedding(
         id: id,
         documentId: 'doc_1',
@@ -270,7 +286,73 @@ void main() {
       },
     );
 
+    test('retrieval excludes orphan and incomplete documents', () async {
+      vectorStore
+        ..insertDocument(
+          Document(
+            id: 'complete-doc',
+            title: 'Complete',
+            filePath: 'complete.txt',
+            format: DocumentFormat.plainText,
+            chunkCount: 1,
+            totalCharacters: 5,
+            contentHash: 'complete-hash',
+            ingestedAt: DateTime(2024),
+            status: IngestionStatus.complete,
+            embeddingModelId: 'gecko-64',
+          ),
+        )
+        ..insertDocument(
+          Document(
+            id: 'processing-doc',
+            title: 'Processing',
+            filePath: 'processing.txt',
+            format: DocumentFormat.plainText,
+            chunkCount: 1,
+            totalCharacters: 5,
+            contentHash: 'processing-hash',
+            ingestedAt: DateTime(2024),
+            status: IngestionStatus.processing,
+            embeddingModelId: 'gecko-64',
+          ),
+        )
+        ..insertEmbedding(
+          id: 'complete-vector',
+          documentId: 'complete-doc',
+          content: 'shared retrieval phrase',
+          embedding: [1, 0],
+          embeddingModelId: 'gecko-64',
+        )
+        ..insertEmbedding(
+          id: 'processing-vector',
+          documentId: 'processing-doc',
+          content: 'shared retrieval phrase',
+          embedding: [1, 0],
+          embeddingModelId: 'gecko-64',
+        )
+        ..insertEmbedding(
+          id: 'orphan-vector',
+          documentId: 'missing-doc',
+          content: 'shared retrieval phrase',
+          embedding: [1, 0],
+          embeddingModelId: 'gecko-64',
+        );
+
+      final results = await vectorStore.hybridSearch(
+        'shared retrieval phrase',
+        [1, 0],
+        semanticWeight: 0,
+      );
+
+      expect(results.map((result) => result.id), ['complete-vector']);
+      expect(
+        results.map((result) => result.id),
+        isNot(contains('orphan-vector')),
+      );
+    });
+
     test('FTS5 search fallback works', () async {
+      vectorStore.insertDocument(completeDocument('doc_2'));
       vectorStore.insertEmbedding(
         id: 'fts_1',
         documentId: 'doc_2',
@@ -290,6 +372,7 @@ void main() {
     });
 
     test('FTS5 preserves punctuation and ordinary operator words', () async {
+      vectorStore.insertDocument(completeDocument('doc-punctuation'));
       vectorStore.insertEmbedding(
         id: 'punctuation',
         documentId: 'doc-punctuation',
@@ -308,6 +391,9 @@ void main() {
     });
 
     test('punctuation-only queries still use semantic retrieval', () async {
+      vectorStore
+        ..insertDocument(completeDocument('old-document'))
+        ..insertDocument(completeDocument('new-document'));
       vectorStore.insertEmbedding(
         id: 'old-semantic-match',
         documentId: 'old-document',
@@ -336,6 +422,9 @@ void main() {
     test(
       'search filters semantic and keyword results by document ids',
       () async {
+        vectorStore
+          ..insertDocument(completeDocument('include'))
+          ..insertDocument(completeDocument('exclude'));
         vectorStore
           ..insertEmbedding(
             id: 'included',
@@ -366,6 +455,9 @@ void main() {
     });
 
     test('falls back to LIKE search when FTS query execution fails', () async {
+      vectorStore
+        ..insertDocument(completeDocument('include-doc'))
+        ..insertDocument(completeDocument('exclude-doc'));
       vectorStore
         ..insertEmbedding(
           id: 'fallback-include',
@@ -569,7 +661,7 @@ void main() {
       );
 
       test(
-        'v3 migration assigns legacy vectors to the active embedder',
+        'v3 migration quarantines legacy vectors without an embedder identity',
         () async {
           await vectorStore.close();
           SharedPreferences.setMockInitialValues({
@@ -617,11 +709,13 @@ void main() {
           vectorStore = VectorStore();
           await vectorStore.initialize();
 
-          final row = vectorStore.db!.select(
-            'SELECT embedding_model_id FROM vectors WHERE id = ?',
-            ['legacy'],
-          ).single;
-          expect(row['embedding_model_id'], 'gecko-64');
+          expect(
+            vectorStore.db!.select(
+              'SELECT id FROM vectors WHERE id = ?',
+              ['legacy'],
+            ),
+            isEmpty,
+          );
         },
       );
 
@@ -685,6 +779,13 @@ void main() {
               contextual_retrieval INTEGER DEFAULT 0,
               error_message TEXT
             )
+          ''')
+            ..execute('''
+            INSERT INTO documents (
+              id, title, file_path, format, chunk_count, total_characters,
+              content_hash, ingested_at, status
+            ) VALUES ('doc', 'Doc', '/doc.txt', 'plainText', 1, 6, 'doc-hash', 1,
+              'complete')
           ''')
             ..execute(
               'INSERT INTO vectors '
@@ -760,6 +861,8 @@ void main() {
           totalCharacters: 1000,
           contentHash: 'hash123',
           ingestedAt: DateTime.now(),
+          status: IngestionStatus.complete,
+          embeddingModelId: 'gecko-64',
         );
         vectorStore.updateDocument(updatedDoc);
         expect(vectorStore.getDocument('doc_1')!.title, 'Updated Title');
@@ -918,6 +1021,7 @@ void main() {
     test(
       'semantic search skips rows with mismatched embedding dimension',
       () async {
+        vectorStore.insertDocument(completeDocument('d'));
         vectorStore
           ..insertEmbedding(
             id: 'ok',

@@ -110,9 +110,7 @@ class LoggingService {
 
   static String _safeMessage(String message) {
     if (RegExp(
-      r'\b(query|content|document|prompt|file(?:path|name)?)\b|'
-      r'(?:[A-Za-z]:[\\/]|\\\\|/(?:Users|home)[\\/])',
-      caseSensitive: false,
+      r'(?:[A-Za-z]:[\\/]|\\\\|(?<![A-Za-z0-9:])/)',
     ).hasMatch(message)) {
       return 'Crash recorded';
     }
@@ -130,18 +128,23 @@ class LoggingService {
       '[redacted-credential]',
     );
     safe = safe.replaceAll(
-      RegExp(r'\b(?:hf|sk)-[A-Za-z0-9_-]{8,}\b', caseSensitive: false),
+      RegExp(r'\bhf_[A-Za-z0-9][A-Za-z0-9._-]*\b'),
       '[redacted-token]',
     );
     safe = safe.replaceAll(
       RegExp(r'https?://[^\s)]+', caseSensitive: false),
       '[redacted-url]',
     );
+    safe = safe.replaceAll(
+      RegExp(r'[A-Za-z]:[\\/][^\s\n,;)]*'),
+      '[redacted-path]',
+    );
+    safe = safe.replaceAll(
+      RegExp(r'\\\\[^\s\n,;)]*'),
+      '[redacted-path]',
+    );
     return safe.replaceAll(
-      RegExp(
-        r'(?:[A-Z]:[\\/]|\\\\|/(?:Users|home|private|tmp|var)/)[^\s\n,;)]*',
-        caseSensitive: false,
-      ),
+      RegExp(r'(?<![A-Za-z0-9:])/[^\s\n,;)]*'),
       '[redacted-path]',
     );
   }

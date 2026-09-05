@@ -10,6 +10,7 @@ import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/exceptions.dart';
+import 'package:offline_sync/services/embedding_service.dart';
 import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_checksum.dart';
@@ -132,6 +133,7 @@ class ModelManagementService {
     bool? isWebOverride,
     DeviceCapabilityService? deviceService,
     Future<DeviceCapabilities> Function()? capabilitiesProvider,
+    EmbeddingModelCoordinator? embeddingCoordinator,
   }) : _installedModelPathResolver = installedModelPathResolver,
        _modelInstalledChecker = modelInstalledChecker,
        _inferenceModelActivator = inferenceModelActivator,
@@ -147,7 +149,12 @@ class ModelManagementService {
        _clearActiveEmbeddingIdentity = clearActiveEmbeddingIdentity,
        _isWeb = isWebOverride ?? kIsWeb,
        _deviceService = deviceService,
-       _capabilitiesProvider = capabilitiesProvider;
+       _capabilitiesProvider = capabilitiesProvider,
+       _embeddingCoordinator =
+           embeddingCoordinator ??
+           (locator.isRegistered<EmbeddingModelCoordinator>()
+               ? locator<EmbeddingModelCoordinator>()
+               : EmbeddingModelCoordinator());
   // Pre-compiled Regular Expressions for performance optimization
   static final _pathSeparatorRegex = RegExp(r'[\/\\]'); // coverage:ignore-line
 
@@ -183,6 +190,7 @@ class ModelManagementService {
   final bool _isWeb;
   final DeviceCapabilityService? _deviceService;
   final Future<DeviceCapabilities> Function()? _capabilitiesProvider;
+  final EmbeddingModelCoordinator _embeddingCoordinator;
 
   // Initialize models from ModelConfig
   final List<ModelInfo> _models = ModelConfig.allModels
@@ -577,9 +585,20 @@ class ModelManagementService {
           (m) => m.id == previousActiveId,
         );
         if (model.type == AppModelType.inference) {
-          await _activateInferenceModel(previousModel);
+          if (!await _activateInferenceModel(previousModel)) {
+            throw StateError(
+              'Unable to restore active inference model $previousActiveId',
+            );
+          }
         } else {
-          await _activateEmbeddingModel(previousModel);
+          final restored = await _embeddingCoordinator.run(
+            () => _activateEmbeddingModel(previousModel),
+          );
+          if (!restored) {
+            throw StateError(
+              'Unable to restore active embedding model $previousActiveId',
+            );
+          }
         }
       }
 
@@ -641,6 +660,9 @@ class ModelManagementService {
       )
       .toList();
 
+  bool isDownloadActive(String modelId) =>
+      _activeDownloads.containsKey(modelId);
+
   /// Switch to a different inference model
   Future<void> switchInferenceModel(String modelId) async {
     final model = _models.firstWhere((m) => m.id == modelId);
@@ -663,9 +685,15 @@ class ModelManagementService {
     }
     try {
       await _ragSettings.setActiveInferenceModelId(modelId);
-    } on Object {
-      await _restoreInferenceModel(previousActiveId);
-      rethrow;
+    } on Object catch (error) {
+      final restored = await _restoreInferenceModel(previousActiveId);
+      if (!restored) {
+        throw StateError(
+          'Inference model switch failed and rollback failed: '
+          '$error',
+        );
+      }
+      Error.throwWithStackTrace(error, StackTrace.current);
     }
     _activeInferenceModelId = modelId;
     if (locator.isRegistered<InferenceModelProvider>()) {
@@ -675,35 +703,43 @@ class ModelManagementService {
   }
 
   /// Switch to a different embedding model
-  Future<void> switchEmbeddingModel(String modelId) async {
-    final model = _models.firstWhere((m) => m.id == modelId);
-    if (model.status != ModelStatus.downloaded) {
-      log('Cannot switch to model $modelId: not downloaded');
-      return;
-    }
-    if (model.type != AppModelType.embedding) {
-      // coverage:ignore-start
-      log('Cannot switch to model $modelId: not an embedding model');
-      return;
-      // coverage:ignore-end
-    }
-    log('Switching to embedding model $modelId');
-    final previousActiveId = _activeEmbeddingModelId;
-    if (!await _activateEmbeddingModel(model)) {
-      // coverage:ignore-start
-      _activeEmbeddingModelId = previousActiveId;
+  Future<void> switchEmbeddingModel(String modelId) {
+    return _embeddingCoordinator.run(() async {
+      final model = _models.firstWhere((m) => m.id == modelId);
+      if (model.status != ModelStatus.downloaded) {
+        log('Cannot switch to model $modelId: not downloaded');
+        return;
+      }
+      if (model.type != AppModelType.embedding) {
+        // coverage:ignore-start
+        log('Cannot switch to model $modelId: not an embedding model');
+        return;
+        // coverage:ignore-end
+      }
+      log('Switching to embedding model $modelId');
+      final previousActiveId = _activeEmbeddingModelId;
+      if (!await _activateEmbeddingModel(model)) {
+        // coverage:ignore-start
+        _activeEmbeddingModelId = previousActiveId;
+        _notify();
+        return;
+        // coverage:ignore-end
+      }
+      try {
+        await _ragSettings.setActiveEmbeddingModelId(modelId);
+      } on Object catch (error) {
+        final restored = await _restoreEmbeddingModel(previousActiveId);
+        if (!restored) {
+          throw StateError(
+            'Embedding model switch failed and rollback failed: '
+            '$error',
+          );
+        }
+        Error.throwWithStackTrace(error, StackTrace.current);
+      }
+      _activeEmbeddingModelId = modelId;
       _notify();
-      return;
-      // coverage:ignore-end
-    }
-    try {
-      await _ragSettings.setActiveEmbeddingModelId(modelId);
-    } on Object {
-      await _restoreEmbeddingModel(previousActiveId);
-      rethrow;
-    }
-    _activeEmbeddingModelId = modelId;
-    _notify();
+    });
   }
 
   Future<bool> deleteModel(String modelId) async {
@@ -712,7 +748,8 @@ class ModelManagementService {
     );
     if (matchingModels.isEmpty) return false;
     final model = matchingModels.first;
-    if (model.status == ModelStatus.downloading ||
+    if (_activeDownloads.containsKey(modelId) ||
+        model.status == ModelStatus.downloading ||
         model.status == ModelStatus.notDownloaded) {
       return false;
     }
@@ -777,22 +814,30 @@ class ModelManagementService {
     }
   }
 
-  Future<void> _restoreInferenceModel(String? modelId) async {
+  Future<bool> _restoreInferenceModel(String? modelId) async {
     if (modelId == null) {
-      await _clearActiveInferenceIdentity?.call();
-      return;
+      try {
+        await _clearActiveInferenceIdentity?.call();
+        return true;
+      } on Object {
+        return false;
+      }
     }
     final model = _models.firstWhere((candidate) => candidate.id == modelId);
-    await _activateInferenceModel(model);
+    return _activateInferenceModel(model);
   }
 
-  Future<void> _restoreEmbeddingModel(String? modelId) async {
+  Future<bool> _restoreEmbeddingModel(String? modelId) async {
     if (modelId == null) {
-      await _clearActiveEmbeddingIdentity?.call();
-      return;
+      try {
+        await _clearActiveEmbeddingIdentity?.call();
+        return true;
+      } on Object {
+        return false;
+      }
     }
     final model = _models.firstWhere((candidate) => candidate.id == modelId);
-    await _activateEmbeddingModel(model);
+    return _activateEmbeddingModel(model);
   }
 
   void _notify() {
@@ -1112,23 +1157,7 @@ class ModelManagementService {
   }
 
   String _safeFailureDetails(Object error) {
-    var details = error.toString();
-    details = details.replaceAll(
-      RegExp(
-        r'(authorization|bearer|token)\s*[:=]\s*\S+',
-        caseSensitive: false,
-      ),
-      '[redacted]',
-    );
-    details = details.replaceAll(
-      RegExp(r'https?://[^\s]+'),
-      '[URL redacted]',
-    );
-    details = details.replaceAll(
-      RegExp(r'(?:[A-Za-z]:[\\/]|/(?:Users|home|tmp)[\\/])[^\s]+'),
-      '[path redacted]',
-    );
-    return details;
+    return LoggingService.redact(error.toString());
   }
 
   // coverage:ignore-start

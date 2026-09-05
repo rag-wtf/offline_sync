@@ -19,11 +19,14 @@ class MockDocumentManagementService extends Mock
 
 class MockDialogService extends Mock implements DialogService {}
 
+class FakeDocument extends Fake implements Document {}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() {
     registerFallbackValue(FakePlatformFile(name: 'fallback.txt'));
+    registerFallbackValue(FakeDocument());
   });
 
   late MockDocumentManagementService documentService;
@@ -52,6 +55,9 @@ void main() {
       ..registerSingleton<DialogService>(dialogService);
 
     when(documentService.getAllDocuments).thenAnswer((_) async => []);
+    when(
+      () => documentService.hasSourceForReindex(any()),
+    ).thenReturn(true);
     when(
       () => documentService.ingestionProgressStream,
     ).thenAnswer((_) => progressController.stream);

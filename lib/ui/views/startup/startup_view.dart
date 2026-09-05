@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:offline_sync/l10n/gen/app_localizations.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/ui/utils/download_policy_localizations.dart';
 import 'package:offline_sync/ui/utils/repo_link_copy.dart';
 import 'package:offline_sync/ui/views/startup/startup_viewmodel.dart';
@@ -185,7 +186,9 @@ class StartupView extends StackedView<StartupViewModel> {
     final colorScheme = theme.colorScheme;
     final policyReason = viewModel.downloadPolicyReason;
     final errorMessage = policyReason == null
-        ? viewModel.modelError?.toString() ?? 'Unknown error'
+        ? LoggingService.redact(
+            viewModel.modelError?.toString() ?? 'Unknown error',
+          )
         : localizeDownloadPolicyReason(
             AppLocalizations.of(context),
             policyReason,

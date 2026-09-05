@@ -83,7 +83,7 @@ class VectorStore {
 
   /// Current on-disk schema version. Bump when the schema changes and add a
   /// matching branch in [_migrate].
-  static const int schemaVersion = 7;
+  static const int schemaVersion = 8;
 
   CommonDatabase? _db;
   bool _hasFts5 = true;
@@ -113,6 +113,11 @@ class VectorStore {
       _db!.execute('PRAGMA user_version = $schemaVersion');
     }
 
+    // Remove stale rows before creating/rebuilding the external-content FTS
+    // table. Old databases can contain orphan rows that make FTS5 report a
+    // malformed image while processing delete triggers.
+    _removeOrphanVectors(rebuildFts: false);
+
     // Check FTS5 support
     try {
       _db!.select("SELECT fts5('test')");
@@ -122,6 +127,7 @@ class VectorStore {
       _hasFts5 = false;
     }
     // coverage:ignore-end
+    _removeOrphanVectors();
   }
 
   void _onCreate() {
@@ -178,7 +184,8 @@ class VectorStore {
         status TEXT DEFAULT 'complete',
         contextual_retrieval INTEGER DEFAULT 0,
         embedding_model_id TEXT,
-        error_message TEXT
+        error_message TEXT,
+        source_bytes BLOB
       )
     ''');
   }
@@ -214,6 +221,26 @@ class VectorStore {
     // coverage:ignore-end
   }
 
+  /// Removes vectors left behind by older versions or interrupted imports.
+  /// Retrieval also uses the document join as a runtime guard, but deleting
+  /// these rows prevents stale FTS content from accumulating indefinitely.
+  void _removeOrphanVectors({bool rebuildFts = true}) {
+    _db!.execute(
+      'DELETE FROM vectors WHERE NOT EXISTS '
+      '(SELECT 1 FROM documents WHERE documents.id = vectors.document_id)',
+    );
+    if (rebuildFts && _hasFts5) {
+      try {
+        _db!.execute("INSERT INTO vectors_fts(vectors_fts) VALUES ('rebuild')");
+      } on Object catch (error) {
+        LoggingService.warning(
+          'Unable to rebuild vector search index: ${error.runtimeType}',
+          name: 'VectorStore',
+        );
+      }
+    }
+  }
+
   /// Applies ordered, gated migrations from [fromVersion] to [schemaVersion].
   void _migrate(int fromVersion) {
     // v0 -> v1: baseline. Tables already created by _onCreate().
@@ -240,11 +267,8 @@ class VectorStore {
       try {
         _db!.execute('ALTER TABLE vectors ADD COLUMN embedding_model_id TEXT');
       } on Object catch (_) {}
-      _db!.execute(
-        'UPDATE vectors SET embedding_model_id = ? '
-        'WHERE embedding_model_id IS NULL',
-        [_activeEmbeddingModelId],
-      );
+      // Legacy binary vectors have no trustworthy model identity. Keep them
+      // quarantined until the document is explicitly re-indexed.
     }
     if (fromVersion < 4) {
       try {
@@ -316,18 +340,16 @@ class VectorStore {
       } on Object catch (_) {}
     }
 
-    if (_activeEmbeddingModelId != null) {
-      _db!.execute(
-        'UPDATE vectors SET embedding_model_id = ? '
-        'WHERE embedding_model_id IS NULL',
-        [_activeEmbeddingModelId],
-      );
-    }
     if (fromVersion < 7) {
       try {
         _db!.execute(
           'ALTER TABLE documents ADD COLUMN embedding_model_id TEXT',
         );
+      } on Object catch (_) {}
+    }
+    if (fromVersion < 8) {
+      try {
+        _db!.execute('ALTER TABLE documents ADD COLUMN source_bytes BLOB');
       } on Object catch (_) {}
     }
   }
@@ -345,11 +367,12 @@ class VectorStore {
     int limit = 5,
     double? semanticWeight,
     List<String>? documentIds,
+    String? embeddingModelId,
   }) async {
     // Get semantic weight from settings if not provided
     final settingsService = locator<RagSettingsService>();
     final weight = semanticWeight ?? settingsService.semanticWeight;
-    final activeModelId = _activeEmbeddingModelId;
+    final activeModelId = embeddingModelId ?? _activeEmbeddingModelId;
     if (activeModelId == null) return [];
 
     // 1. Fetch candidates (Keyword Search)
@@ -397,14 +420,15 @@ class VectorStore {
     final documentFilter = documentIds == null || documentIds.isEmpty
         ? ''
         : ' AND v.document_id IN (${List.filled(documentIds.length, '?').join(', ')})';
-    final params = <Object?>[activeModelId, ...?documentIds];
+    final params = <Object?>[activeModelId, activeModelId, ...?documentIds];
     final rows = _readConsistentRows(
       '''SELECT v.rowid, v.id, v.content, v.embedding, v.metadata,
          v.embedding_encoding, v.embedding_dimension
          FROM vectors v
-         LEFT JOIN documents d ON d.id = v.document_id
+         INNER JOIN documents d ON d.id = v.document_id
          WHERE v.embedding_model_id = ?
-           AND (d.id IS NULL OR d.status = 'complete')$documentFilter
+           AND d.embedding_model_id = ?
+           AND d.status = 'complete'$documentFilter
          ORDER BY v.rowid ASC''',
       params,
     );
@@ -441,9 +465,11 @@ class VectorStore {
       SELECT v.*, bm25(vectors_fts) as score
       FROM vectors_fts
       JOIN vectors v ON vectors_fts.rowid = v.rowid
+      INNER JOIN documents d ON d.id = v.document_id
       WHERE vectors_fts MATCH ? AND v.embedding_model_id = ?
+        AND d.embedding_model_id = ? AND d.status = 'complete'
     ''';
-      final params = <Object?>[sanitized, embeddingModelId];
+      final params = <Object?>[sanitized, embeddingModelId, embeddingModelId];
 
       if (documentIds != null && documentIds.isNotEmpty) {
         final placeholders = List.filled(documentIds.length, '?').join(', ');
@@ -506,10 +532,10 @@ class VectorStore {
 
     var sql =
         '''SELECT v.* FROM vectors v
-      LEFT JOIN documents d ON d.id = v.document_id
+      INNER JOIN documents d ON d.id = v.document_id
       WHERE ($conditions) AND v.embedding_model_id = ?
-      AND (d.id IS NULL OR d.status = 'complete')''';
-    final params = <Object?>[...words, embeddingModelId];
+      AND d.embedding_model_id = ? AND d.status = 'complete' ''';
+    final params = <Object?>[...words, embeddingModelId, embeddingModelId];
 
     if (documentIds != null && documentIds.isNotEmpty) {
       final placeholders = List.filled(documentIds.length, '?').join(', ');
@@ -615,8 +641,8 @@ class VectorStore {
       INSERT INTO documents (
         id, title, file_path, format, chunk_count, total_characters, 
         content_hash, ingested_at, last_refreshed, status, 
-        contextual_retrieval, embedding_model_id, error_message
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        contextual_retrieval, embedding_model_id, error_message, source_bytes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         file_path = excluded.file_path,
@@ -629,7 +655,8 @@ class VectorStore {
         status = excluded.status,
         contextual_retrieval = excluded.contextual_retrieval,
         embedding_model_id = excluded.embedding_model_id,
-        error_message = excluded.error_message
+        error_message = excluded.error_message,
+        source_bytes = excluded.source_bytes
     ''');
     try {
       stmt.execute([
@@ -646,6 +673,7 @@ class VectorStore {
         if (doc.contextualRetrievalEnabled) 1 else 0,
         doc.embeddingModelId,
         doc.errorMessage,
+        doc.sourceBytes,
       ]);
     } finally {
       stmt.close();

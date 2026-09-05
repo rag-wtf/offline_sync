@@ -340,6 +340,57 @@ void main() {
     expect(viewModel.crashLogs, isEmpty);
   });
 
+  test('clearChatHistory returns a success result', () async {
+    final viewModel = SettingsViewModel(
+      modelService: modelService,
+      ragSettings: ragSettings,
+      navigationService: navigationService,
+      deviceService: FakeDeviceCapabilityService(
+        const DeviceCapabilities(
+          totalRamMB: 2048,
+          availableStorageMB: 2048,
+          hasGpu: false,
+          platform: 'android',
+        ),
+      ),
+      clearChatHistoryAction: () async {},
+    );
+
+    expect(await viewModel.clearChatHistory(), isTrue);
+  });
+
+  test(
+    'does not notify after an async operation loses the view',
+    () async {
+      final completer = Completer<void>();
+      when(
+        () => ragSettings.setSemanticWeight(any()),
+      ).thenAnswer((_) => completer.future);
+      final viewModel = SettingsViewModel(
+        modelService: modelService,
+        ragSettings: ragSettings,
+        navigationService: navigationService,
+        deviceService: FakeDeviceCapabilityService(
+          const DeviceCapabilities(
+            totalRamMB: 2048,
+            availableStorageMB: 2048,
+            hasGpu: false,
+            platform: 'android',
+          ),
+        ),
+      );
+      var notifications = 0;
+      viewModel.addListener(() => notifications++);
+
+      final pending = viewModel.onSemanticWeightChangeEnd(0.4);
+      viewModel.dispose();
+      completer.complete();
+      await pending;
+
+      expect(notifications, 0);
+    },
+  );
+
   test('reads default dependencies from locator and preserves'
       ' pending values during stale async updates', () async {
     final completer = Completer<void>();

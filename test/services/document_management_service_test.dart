@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
+import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -25,6 +26,8 @@ class MockDocumentParserService extends Mock implements DocumentParserService {}
 class MockSmartChunker extends Mock implements SmartChunker {}
 
 class MockEmbeddingService extends Mock implements EmbeddingService {}
+
+class MockEmbeddingModel extends Mock implements EmbeddingModel {}
 
 class MockContextualRetrievalService extends Mock
     implements ContextualRetrievalService {}
@@ -51,6 +54,7 @@ void main() {
         ingestedAt: DateTime.now(),
       ),
     );
+    registerFallbackValue(MockEmbeddingModel());
     // Register generic definition for EmbeddingData list
     registerFallbackValue(<EmbeddingData>[]);
   });
@@ -64,6 +68,14 @@ void main() {
     mockEmbeddingService = MockEmbeddingService();
     mockSettingsService = getAndRegisterMockRagSettingsService();
     mockContextualRetrievalService = MockContextualRetrievalService();
+
+    final embeddingModel = MockEmbeddingModel();
+    when(() => mockEmbeddingService.pinActiveModel()).thenAnswer(
+      (_) async => PinnedEmbeddingModel(
+        id: 'gecko-64',
+        model: embeddingModel,
+      ),
+    );
 
     locator
       ..registerSingleton<VectorStore>(mockVectorStore)
@@ -123,7 +135,10 @@ void main() {
         () => mockParserService.detectFormat(any<String>()),
       ).thenReturn(DocumentFormat.plainText);
       when(
-        () => mockEmbeddingService.generateEmbedding(any<String>()),
+        () => mockEmbeddingService.generateEmbedding(
+          any<String>(),
+          model: any<EmbeddingModel>(named: 'model'),
+        ),
       ).thenAnswer((_) async => [0.1, 0.2]);
       when(() => mockVectorStore.findByHash(any<String>())).thenReturn(null);
       when(
@@ -177,7 +192,10 @@ void main() {
           () => mockParserService.detectFormat(any<String>()),
         ).thenReturn(DocumentFormat.plainText);
         when(
-          () => mockEmbeddingService.generateEmbedding(any<String>()),
+          () => mockEmbeddingService.generateEmbedding(
+            any<String>(),
+            model: any<EmbeddingModel>(named: 'model'),
+          ),
         ).thenAnswer((_) async => [0.1]);
         when(
           () => mockVectorStore.insertDocument(any<Document>()),
@@ -252,7 +270,10 @@ void main() {
       // isolate.
 
       when(
-        () => mockEmbeddingService.generateEmbedding(any<String>()),
+        () => mockEmbeddingService.generateEmbedding(
+          any<String>(),
+          model: any<EmbeddingModel>(named: 'model'),
+        ),
       ).thenAnswer((_) async => [0.1, 0.2]);
       when(() => mockVectorStore.findByHash(any<String>())).thenReturn(null);
       // Need to verify insert calls
@@ -283,6 +304,7 @@ void main() {
       verify(
         () => mockEmbeddingService.generateEmbedding(
           any<String>(),
+          model: any<EmbeddingModel>(named: 'model'),
         ), // chunk content might vary slightly due to real parser
       ).called(1);
       verify(
@@ -391,7 +413,10 @@ void main() {
 
       var embeddingCalls = 0;
       when(
-        () => mockEmbeddingService.generateEmbedding(any<String>()),
+        () => mockEmbeddingService.generateEmbedding(
+          any<String>(),
+          model: any<EmbeddingModel>(named: 'model'),
+        ),
       ).thenAnswer((_) async {
         embeddingCalls++;
         if (embeddingCalls > 1) throw StateError('embedding failed');
@@ -485,12 +510,18 @@ void main() {
         () => mockParserService.detectFormat(any<String>()),
       ).thenReturn(DocumentFormat.plainText);
       when(
+        () => mockEmbeddingService.generateEmbedding(
+          any<String>(),
+          model: any<EmbeddingModel>(named: 'model'),
+        ),
+      ).thenThrow(StateError('embedding failed'));
+      when(
         () => mockVectorStore.insertDocument(any<Document>()),
       ).thenThrow(Exception('insert failed'));
 
       await expectLater(
         service.refreshDocument('old_doc'),
-        throwsA(isA<Exception>()),
+        throwsA(isA<StateError>()),
       );
 
       verifyNever(() => mockVectorStore.deleteDocument('old_doc'));
@@ -522,7 +553,10 @@ void main() {
           () => mockParserService.detectFormat(any<String>()),
         ).thenReturn(DocumentFormat.plainText);
         when(
-          () => mockEmbeddingService.generateEmbedding(any<String>()),
+          () => mockEmbeddingService.generateEmbedding(
+            any<String>(),
+            model: any<EmbeddingModel>(named: 'model'),
+          ),
         ).thenThrow(StateError('embedding failed'));
         when(
           () => mockVectorStore.deleteVectorsForDocument(any<String>()),
@@ -562,6 +596,97 @@ void main() {
         verifyNever(() => mockVectorStore.deleteDocument(any()));
       },
     );
+
+    test('reindexes a pathless document from durable source bytes', () async {
+      final oldDocument = Document(
+        id: 'bytes-doc',
+        title: 'Bytes Doc',
+        filePath: 'bytes-doc.txt',
+        format: DocumentFormat.plainText,
+        chunkCount: 1,
+        totalCharacters: 4,
+        contentHash: 'old-hash',
+        ingestedAt: DateTime.now(),
+        status: IngestionStatus.complete,
+        embeddingModelId: 'old-model',
+        sourceBytes: Uint8List.fromList('new bytes'.codeUnits),
+      );
+
+      final embeddingModel = MockEmbeddingModel();
+      when(() => mockEmbeddingService.pinActiveModel()).thenAnswer(
+        (_) async =>
+            PinnedEmbeddingModel(id: 'gecko-64', model: embeddingModel),
+      );
+      when(
+        () => mockVectorStore.getDocument('bytes-doc'),
+      ).thenReturn(oldDocument);
+      when(
+        () => mockParserService.detectFormat(any<String>()),
+      ).thenReturn(DocumentFormat.plainText);
+      when(
+        () => mockEmbeddingService.generateEmbedding(
+          any<String>(),
+          model: any<EmbeddingModel>(named: 'model'),
+        ),
+      ).thenAnswer((_) async => [0.1, 0.2]);
+      when(() => mockVectorStore.insertEmbeddingsBatch(any())).thenReturn(null);
+      when(
+        () => mockVectorStore.deleteVectorsForDocument(any()),
+      ).thenReturn(null);
+
+      final result = await service.reindexDocument('bytes-doc');
+
+      expect(result?.id, 'bytes-doc');
+      verify(
+        () => mockVectorStore.replaceDocument(
+          oldDocumentId: 'bytes-doc',
+          stagedDocumentId: any(named: 'stagedDocumentId'),
+          replacement: any(named: 'replacement'),
+        ),
+      ).called(1);
+    });
+
+    test('propagates staged-vector cleanup failures', () async {
+      final oldDocument = Document(
+        id: 'cleanup-doc',
+        title: 'Cleanup Doc',
+        filePath: 'cleanup-doc.txt',
+        format: DocumentFormat.plainText,
+        chunkCount: 1,
+        totalCharacters: 4,
+        contentHash: 'old-hash',
+        ingestedAt: DateTime.now(),
+        status: IngestionStatus.complete,
+        embeddingModelId: 'old-model',
+        sourceBytes: Uint8List.fromList('cleanup bytes'.codeUnits),
+      );
+      when(
+        () => mockVectorStore.getDocument('cleanup-doc'),
+      ).thenReturn(oldDocument);
+      when(
+        () => mockParserService.detectFormat(any<String>()),
+      ).thenReturn(DocumentFormat.plainText);
+      when(
+        () => mockEmbeddingService.generateEmbedding(
+          any<String>(),
+          model: any<EmbeddingModel>(named: 'model'),
+        ),
+      ).thenThrow(StateError('embedding failed'));
+      when(
+        () => mockVectorStore.deleteVectorsForDocument(any()),
+      ).thenThrow(StateError('cleanup failed'));
+
+      await expectLater(
+        service.reindexDocument('cleanup-doc'),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'message',
+            contains('cleanup failed'),
+          ),
+        ),
+      );
+    });
 
     test(
       'refreshDocument returns the existing document when hash is unchanged',

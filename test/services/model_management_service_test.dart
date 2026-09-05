@@ -1105,6 +1105,48 @@ void main() {
         },
       );
 
+      test('surfaces embedding activation rollback failure', () async {
+        var settingsWrites = 0;
+        when(
+          () => locator<RagSettingsService>().setActiveEmbeddingModelId(any()),
+        ).thenAnswer((_) async {
+          settingsWrites++;
+          if (settingsWrites > 1) {
+            throw StateError('settings write failed');
+          }
+        });
+
+        var activationCount = 0;
+        final rollbackService = ModelManagementService(
+          embeddingModelActivator: (_) async {
+            activationCount++;
+            if (activationCount == 3) {
+              throw StateError('rollback activation failed');
+            }
+          },
+        );
+        addTearDown(rollbackService.dispose);
+        final rollbackModels = rollbackService.models
+            .where((model) => model.type == AppModelType.embedding)
+            .take(2)
+            .toList();
+        for (final model in rollbackModels) {
+          model.status = ModelStatus.downloaded;
+        }
+
+        await rollbackService.switchEmbeddingModel(rollbackModels[0].id);
+        await expectLater(
+          rollbackService.switchEmbeddingModel(rollbackModels[1].id),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              contains('rollback'),
+            ),
+          ),
+        );
+      });
+
       test('verifyDeclaredChecksumForTest deletes'
           ' mismatched files and marks error', () async {
         final tempDir = await Directory.systemTemp.createTemp(

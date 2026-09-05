@@ -160,10 +160,10 @@ void main() {
     await tester.pumpWidget(
       buildSubject(viewModel, locale: const Locale('es')),
     );
-
+    await tester.pumpAndSettle();
     expect(
       find.text(
-        'Las descargas están en pausa porque no se pudo determinar el tipo de '
+        'Las descargas están pausadas porque no se pudo determinar el tipo de '
         'conexión.',
       ),
       findsOneWidget,

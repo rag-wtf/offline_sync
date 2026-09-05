@@ -122,6 +122,8 @@
     "embeddingModelTitle": "Embedding Model",
     "crashLogsTitle": "Crash Logs",
     "clearCrashLogs": "Clear Crash Logs",
+    "clearCrashLogsTitle": "Clear crash logs?",
+    "clearCrashLogsDescription": "Delete all locally saved crash diagnostics?",
     "noCrashLogs": "No crash logs recorded",
     "documentLibraryTitle": "Document Library",
     "uploadDocument": "Upload Document",

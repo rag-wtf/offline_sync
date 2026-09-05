@@ -217,7 +217,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Embedding Model'), findsOneWidget);
+      expect(find.text('Active Embedding Model'), findsOneWidget);
       expect(find.text('Embedding A'), findsWidgets);
       expect(find.text('Embedding B'), findsWidgets);
       expect(find.text('ACTIVE'), findsAtLeastNWidgets(2));

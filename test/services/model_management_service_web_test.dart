@@ -22,6 +22,7 @@ void main() {
           modelInstalledChecker: (filename) async =>
               filename == EmbeddingModels.gecko64.fileName,
           installedModelPathResolver: (_) async => pluginPath,
+          embeddingModelActivator: (_) async {},
           fileChecksumVerifier: (_, _) async {
             throw StateError('web plugin paths must not reach File');
           },

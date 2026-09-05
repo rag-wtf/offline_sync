@@ -55,6 +55,23 @@ void main() {
       expect(record, isNot(contains(r'C:\Users\alice\notes.txt')));
     });
 
+    test('redacts all supported credential and path forms', () {
+      const message =
+          'hf_super_secret Bearer abc123 '
+          '/data/user/0/com.example.app/files/model.tflite '
+          r'\\server\share\private.txt '
+          '/opt/offline-sync/vectors.db C:\Users\alice\notes.txt';
+
+      final redacted = LoggingService.redact(message);
+
+      expect(redacted, isNot(contains('hf_super_secret')));
+      expect(redacted, isNot(contains('Bearer abc123')));
+      expect(redacted, isNot(contains('/data/user/0')));
+      expect(redacted, isNot(contains(r'\\server\share\private.txt')));
+      expect(redacted, isNot(contains('/opt/offline-sync/vectors.db')));
+      expect(redacted, isNot(contains(r'C:\Users\alice\notes.txt')));
+    });
+
     test('recordCrash keeps only the newest fifty crash logs', () async {
       SharedPreferences.setMockInitialValues({
         'crash_logs': List.generate(50, (index) => 'existing-$index'),

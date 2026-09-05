@@ -60,6 +60,8 @@
     "embeddingModelTitle": "Modelo de embeddings",
     "crashLogsTitle": "Registros de fallos",
     "clearCrashLogs": "Borrar registros de fallos",
+    "clearCrashLogsTitle": "¿Borrar los registros de fallos?",
+    "clearCrashLogsDescription": "¿Eliminar todos los diagnósticos de fallos guardados localmente?",
     "noCrashLogs": "No hay registros de fallos",
     "documentLibraryTitle": "Biblioteca de documentos",
     "uploadDocument": "Subir documento",

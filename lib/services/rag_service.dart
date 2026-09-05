@@ -79,11 +79,19 @@ class RAGMetrics {
 }
 
 class RagService {
+  RagService({EmbeddingModelCoordinator? embeddingCoordinator})
+    : _embeddingCoordinator =
+          embeddingCoordinator ??
+          (locator.isRegistered<EmbeddingModelCoordinator>()
+              ? locator<EmbeddingModelCoordinator>()
+              : EmbeddingModelCoordinator());
+
   final EmbeddingService _embeddingService = locator<EmbeddingService>();
   final VectorStore _vectorStore = locator<VectorStore>();
   final InferenceModelProvider _inferenceModelProvider =
       locator<InferenceModelProvider>();
   final RagTokenManager _tokenManager = locator<RagTokenManager>();
+  final EmbeddingModelCoordinator _embeddingCoordinator;
 
   bool _isInitialized = false;
 
@@ -125,36 +133,14 @@ class RagService {
       expandedQueryCount = queryVariants.length;
     }
 
-    // 2. Embed Query
-    final queryEmbedding = await _embeddingService.generateEmbedding(query);
+    // 2-3. Pin query embedding and vector search to one embedder identity.
+    var searchResults = await _retrieveWithPinnedEmbedding(
+      query,
+      queryVariants,
+      settings: settings,
+      documentIds: documentIds,
+    );
     final embeddingTime = stopwatch.elapsed;
-
-    // 3. Hybrid Search with expanded queries
-    var searchResults = <SearchResult>[];
-    if (settings.queryExpansionEnabled && queryVariants.length > 1) {
-      final expansionService = locator<QueryExpansionService>();
-      searchResults = await expansionService.searchWithExpandedQueries(
-        query,
-        queryVariants,
-        // coverage:ignore-start
-        limit: settings.rerankingEnabled
-            ? settings.rerankTopK
-            : settings.searchTopK,
-        // coverage:ignore-end
-        documentIds: documentIds,
-      );
-    } else {
-      // coverage:ignore-start
-      searchResults = await _vectorStore.hybridSearch(
-        query,
-        queryEmbedding,
-        limit: settings.rerankingEnabled
-            ? settings.rerankTopK
-            : settings.searchTopK,
-        documentIds: documentIds,
-      );
-      // coverage:ignore-end
-    }
     final searchTime = stopwatch.elapsed - embeddingTime;
 
     // 4. Reranking (if enabled)
@@ -228,36 +214,14 @@ class RagService {
       expandedQueryCount = queryVariants.length;
     }
 
-    // 2. Embed Query
-    final queryEmbedding = await _embeddingService.generateEmbedding(query);
+    // 2-3. Pin query embedding and vector search to one embedder identity.
+    var searchResults = await _retrieveWithPinnedEmbedding(
+      query,
+      queryVariants,
+      settings: settings,
+      documentIds: documentIds,
+    );
     final embeddingTime = stopwatch.elapsed;
-
-    // 3. Hybrid Search with expanded queries
-    var searchResults = <SearchResult>[];
-    if (settings.queryExpansionEnabled && queryVariants.length > 1) {
-      final expansionService = locator<QueryExpansionService>();
-      searchResults = await expansionService.searchWithExpandedQueries(
-        query,
-        queryVariants,
-        // coverage:ignore-start
-        limit: settings.rerankingEnabled
-            ? settings.rerankTopK
-            : settings.searchTopK,
-        // coverage:ignore-end
-        documentIds: documentIds,
-      );
-    } else {
-      // coverage:ignore-start
-      searchResults = await _vectorStore.hybridSearch(
-        query,
-        queryEmbedding,
-        limit: settings.rerankingEnabled
-            ? settings.rerankTopK
-            : settings.searchTopK,
-        documentIds: documentIds,
-      );
-      // coverage:ignore-end
-    }
     final searchTime = stopwatch.elapsed - embeddingTime;
 
     // 4. Reranking (if enabled)
@@ -305,6 +269,41 @@ class RagService {
 
     // 8. Emit completion event
     yield RAGCompleteEvent();
+  }
+
+  Future<List<SearchResult>> _retrieveWithPinnedEmbedding(
+    String query,
+    List<String> queryVariants, {
+    required RagSettingsService settings,
+    List<String>? documentIds,
+  }) {
+    return _embeddingCoordinator.run(() async {
+      final pinned = await _embeddingService.pinActiveModel();
+      final limit = settings.rerankingEnabled
+          ? settings.rerankTopK
+          : settings.searchTopK;
+      if (settings.queryExpansionEnabled && queryVariants.length > 1) {
+        return locator<QueryExpansionService>().searchWithExpandedQueries(
+          query,
+          queryVariants,
+          limit: limit,
+          documentIds: documentIds,
+          pinnedEmbedder: pinned.model,
+          embeddingModelId: pinned.id,
+        );
+      }
+      final queryEmbedding = await _embeddingService.generateEmbedding(
+        query,
+        model: pinned.model,
+      );
+      return _vectorStore.hybridSearch(
+        query,
+        queryEmbedding,
+        limit: limit,
+        documentIds: documentIds,
+        embeddingModelId: pinned.id,
+      );
+    });
   }
 
   /// Deduplicates search results by document/chunk ID and normalized content

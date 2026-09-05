@@ -120,7 +120,7 @@ class StartupViewModel extends BaseViewModel {
         if (e is AuthenticationRequiredException) {
           _needsToken = true;
           _statusMessage = 'Authentication Required';
-          setError(e.message);
+          _setSafeError(e.message);
         } else if (isGatedAccessError(e)) {
           final failedAuthModel = _modelService.models
               .where(_isAuthError)
@@ -129,9 +129,9 @@ class StartupViewModel extends BaseViewModel {
           final description = describeDownloadFailure(e, repoPage: repo);
           _needsToken = true;
           _statusMessage = 'Authentication Required';
-          setError(description);
+          _setSafeError(description);
         } else {
-          setError(e.toString());
+          _setSafeError(e);
         }
       },
     );
@@ -294,7 +294,7 @@ class StartupViewModel extends BaseViewModel {
         'Exception in runStartupLogic: ${e.runtimeType}',
         name: 'StartupViewModel',
       );
-      setError(e.toString());
+      _setSafeError(e);
     }
   }
 
@@ -377,8 +377,14 @@ class StartupViewModel extends BaseViewModel {
     _needsToken = true;
     _statusMessage = 'Authentication Required';
     setError(
-      model.errorMessage ?? 'Missing or invalid Hugging Face Token.',
+      LoggingService.redact(
+        model.errorMessage ?? 'Missing or invalid Hugging Face Token.',
+      ),
     );
+  }
+
+  void _setSafeError(Object error) {
+    setError(LoggingService.redact(error.toString()));
   }
 
   String? get erroredModelRepoPage => _modelService.models
