@@ -139,6 +139,11 @@ Future<void> bootstrap(
       error: error,
       stackTrace: stackTrace,
     );
+    // A failed initialization may have left lazy singletons, platform
+    // services, or partially constructed app dependencies registered. Reset
+    // the locator before exposing Retry so the next attempt rebuilds a clean
+    // dependency graph and disposes any resources created during this one.
+    await _resetLocatorSafely();
     runAppFn(
       _BootstrapFailureApp(
         error: error,
@@ -160,6 +165,21 @@ Future<void> bootstrap(
               configureDownloaderNotificationOverride,
         ),
       ),
+    );
+  }
+}
+
+Future<void> _resetLocatorSafely() async {
+  try {
+    await locator.reset();
+  } on Object catch (error, stackTrace) {
+    // Keep the original startup error visible while recording a cleanup
+    // failure for diagnostics. GetIt has already removed any registrations it
+    // could dispose before reporting the failure.
+    await _recordCrashSafely(
+      'Bootstrap locator cleanup failed',
+      error: error,
+      stackTrace: stackTrace,
     );
   }
 }

@@ -407,7 +407,25 @@ jobs:
             exit 1
           fi
           ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")
-          test "$ID" = "wtf.rag.offline.sync.offline-sync"
+          case "${{ env.FLAVOR }}" in
+            development)
+              EXPECTED_ID="wtf.rag.offline.sync.offline-sync.dev"
+              ;;
+            staging)
+              EXPECTED_ID="wtf.rag.offline.sync.offline-sync.stg"
+              ;;
+            production)
+              EXPECTED_ID="wtf.rag.offline.sync.offline-sync"
+              ;;
+            *)
+              echo "::error::Unsupported macOS flavor: ${{ env.FLAVOR }}"
+              exit 1
+              ;;
+          esac
+          if [ "$ID" != "$EXPECTED_ID" ]; then
+            echo "::error::Unexpected macOS bundle identifier '$ID' for flavor '${{ env.FLAVOR }}'; expected '$EXPECTED_ID'."
+            exit 1
+          fi
           ! grep -R -i -E 'com\.example|com\.offline_sync\.app' "$APP/Contents/Info.plist"
 
       - name: Create DMG

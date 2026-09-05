@@ -287,4 +287,69 @@ void main() {
     expect(find.text('Retry'), findsOneWidget);
     expect(find.text('Show diagnostics'), findsOneWidget);
   });
+
+  testWidgets(
+    'bootstrap resets and disposes locator services before retrying',
+    (tester) async {
+      final previousOnError = FlutterError.onError;
+      final previousPlatformError = PlatformDispatcher.instance.onError;
+      addTearDown(() {
+        FlutterError.onError = previousOnError;
+        PlatformDispatcher.instance.onError = previousPlatformError;
+      });
+      await locator.reset();
+      addTearDown(locator.reset);
+
+      final environmentService = EnvironmentService();
+      var setupLocatorCalls = 0;
+      var setupDialogUiCalls = 0;
+      var builderCalls = 0;
+      var serviceDisposed = false;
+      Widget? renderedApp;
+
+      await bootstrap(
+        () async {
+          builderCalls += 1;
+          return const Directionality(
+            textDirection: TextDirection.ltr,
+            child: Text('retried successfully'),
+          );
+        },
+        flavor: 'production',
+        isWebOverride: true,
+        flutterGemmaInitialize: () async {},
+        initializeSqliteOverride: () async {},
+        setupLocatorOverride: () async {
+          setupLocatorCalls += 1;
+          locator.registerSingleton<EnvironmentService>(
+            environmentService,
+            dispose: (_) => serviceDisposed = true,
+          );
+        },
+        setupDialogUiOverride: () {
+          setupDialogUiCalls += 1;
+          if (setupDialogUiCalls == 1) {
+            throw StateError('dialog setup failed');
+          }
+        },
+        environmentServiceOverride: environmentService,
+        runAppOverride: (app) => renderedApp = app,
+      );
+
+      await tester.pumpWidget(renderedApp!);
+      expect(find.text('Offline Sync could not start'), findsOneWidget);
+
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+
+      FlutterError.onError = previousOnError;
+      PlatformDispatcher.instance.onError = previousPlatformError;
+
+      expect(setupLocatorCalls, 2);
+      expect(setupDialogUiCalls, 2);
+      expect(serviceDisposed, isTrue);
+      expect(builderCalls, 1);
+      expect(renderedApp, isA<Directionality>());
+    },
+  );
 }

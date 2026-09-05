@@ -1,7 +1,7 @@
 # Task 5 implementation report
 
 Date: 2026-09-05
-Worktree: `production-audit-fixes`
+Working tree: `production-audit-fixes`
 Scope: H-4, M-3, M-10, L-8, L-9, L-10, L-11, L-12, L-13
 
 ## Finding-by-finding evidence
@@ -21,8 +21,9 @@ Scope: H-4, M-3, M-10, L-8, L-9, L-10, L-11, L-12, L-13
 ## Commands and results
 
 - `flutter gen-l10n` — PASS.
-- `flutter test test/bootstrap_test.dart test/services/environment_service_test.dart test/services/logging_service_test.dart` — PASS, 21 tests.
+- `flutter test test/bootstrap_test.dart test/services/environment_service_test.dart test/services/logging_service_test.dart` — PASS, 22 tests, including the retry-after-locator-failure regression.
 - `flutter test --coverage --reporter compact` — PASS, 490 tests. Coverage: 4523/4813 instrumented lines (93.97%). This remains below the repository’s existing 95% CI gate; no broad or vacuous exclusions were added. Meaningful coverage follow-up remains a Task 6 carryover recorded by the remediation ledger.
+- `flutter test --reporter compact` — PASS, 491 tests after the review fixes.
 - `flutter analyze` — PASS, `No issues found!`.
 - `npx --yes cspell --no-progress --config .github/cspell.json "**/*.md"` — PASS, 35 files and 0 issues.
 - Python YAML parse of `.github/workflows/main.yaml` and `.github/workflows/release.yaml` — PASS; expected jobs parsed.
@@ -33,10 +34,19 @@ Scope: H-4, M-3, M-10, L-8, L-9, L-10, L-11, L-12, L-13
 - `flutter build apk --debug --flavor development --target lib/main_development.dart` — PASS, `build/app/outputs/flutter-apk/app-development-debug.apk` produced. The local build used Java 25/Gradle 9 and completed successfully; hosted CI uses the workflow’s Java 17 setup.
 - `git diff --check` — PASS.
 
+## Terra review follow-up
+
+The Task 5 Terra review identified two blocking gaps, both fixed in the follow-up commit:
+
+- Bootstrap catches now await `locator.reset()` before rendering the retry screen. GetIt disposes registered services during the reset, and a retry rebuilds the locator successfully. The regression test first reproduced the defect (the second setup call remained at 1 because duplicate registration failed), then passed with two setup calls, confirmed disposal, and reached the app builder.
+- The macOS identity check derives the expected bundle identifier from `${{ env.FLAVOR }}`: `.dev` for development, `.stg` for staging, and the identifier without a suffix for production. It still rejects template identities for every flavor. The shell fragment validation and YAML parse both pass.
+
+Follow-up verification was run after the fixes: `flutter gen-l10n`, the 22 focused tests, the 491-test full suite, `flutter analyze` with `No issues found!`, the flavor-aware release shell/YAML validation, and `git diff --check` all passed. Generated platform registrants were restored before commit.
+
 Generated Flutter registrant churn from `gen-l10n`, web, and Android commands was restored for the seven known registrant files before commit.
 
 ## Environment limitations
 
 - macOS and iOS native builds were not available on this Windows runner; their plist/configuration checks were performed statically.
 - The full suite passes, but the existing 95% coverage gate remains red at 93.97% and is intentionally not weakened in this task.
-- The requested `gpt-5.6-terra` reviewer could not be dispatched in the resumed session because no subagent connector was available; the implementation received local diff, static-config, test, analyze, and build verification.
+- macOS and iOS native builds remain unavailable on this Windows runner; the flavor mapping and bundle identifiers were validated statically and by the workflow shell gate.
