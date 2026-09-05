@@ -17,7 +17,6 @@ class Document {
     this.contextualRetrievalEnabled = false,
     this.embeddingModelId,
     this.errorMessage,
-    this.embeddingModelId,
   });
 
   factory Document.fromJson(Map<String, dynamic> json) {
@@ -45,7 +44,6 @@ class Document {
       contextualRetrievalEnabled: (json['contextual_retrieval'] as int?) == 1,
       embeddingModelId: json['embedding_model_id'] as String?,
       errorMessage: json['error_message'] as String?,
-      embeddingModelId: json['embedding_model_id'] as String?,
     );
   }
 
@@ -62,7 +60,6 @@ class Document {
   final bool contextualRetrievalEnabled;
   final String? embeddingModelId;
   final String? errorMessage;
-  final String? embeddingModelId;
 
   Map<String, dynamic> toJson() {
     return {
@@ -79,7 +76,6 @@ class Document {
       'contextual_retrieval': contextualRetrievalEnabled ? 1 : 0,
       'embedding_model_id': embeddingModelId,
       'error_message': errorMessage,
-      'embedding_model_id': embeddingModelId,
     };
   }
 

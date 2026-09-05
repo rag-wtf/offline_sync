@@ -19,9 +19,6 @@ import 'package:offline_sync/utils/download_failure.dart';
 import 'package:offline_sync/utils/hugging_face.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-void log(String message, {String? name}) =>
-    LoggingService.debug(message, name: name);
-
 enum ModelStatus { notDownloaded, downloading, downloaded, error }
 
 enum ModelDownloadFailureKind { none, authentication, gatedAccess }
@@ -198,7 +195,6 @@ class ModelManagementService {
           type: config.type,
           fileName: config.fileName,
           fileType: config.fileType,
-          fileName: config.fileName,
         ),
       )
       .toList();
@@ -808,68 +804,6 @@ class ModelManagementService {
       if (model.id == id && model.type == type) return model;
     }
     return null;
-  }
-
-  Future<bool> deleteModel(String modelId) async {
-    final matchingModels = _models
-        .where((candidate) => candidate.id == modelId)
-        .toList();
-    if (matchingModels.isEmpty) return false;
-    final model = matchingModels.first;
-    if (model.status != ModelStatus.downloaded) return false;
-
-    final definition = _modelDefinitionsById[model.id];
-    if (definition == null) return false;
-    final wasActive = model.type == AppModelType.inference
-        ? _activeInferenceModelId == model.id
-        : _activeEmbeddingModelId == model.id;
-
-    try {
-      final deleter = _modelDeleter;
-      if (deleter != null) {
-        await deleter(model);
-      } else {
-        final manager = FlutterGemmaPlugin.instance.modelManager;
-        await manager.deleteModel(_buildModelSpec(definition));
-        if (wasActive) {
-          if (model.type == AppModelType.inference) {
-            await manager.clearActiveInferenceIdentity();
-          } else {
-            await manager.clearActiveEmbeddingIdentity();
-          }
-        }
-      }
-
-      if (wasActive) {
-        if (model.type == AppModelType.inference) {
-          _activeInferenceModelId = null;
-          await _ragSettings.clearActiveInferenceModelId();
-          if (locator.isRegistered<InferenceModelProvider>()) {
-            locator<InferenceModelProvider>().clearCache();
-          }
-        } else {
-          _activeEmbeddingModelId = null;
-          await _ragSettings.clearActiveEmbeddingModelId();
-        }
-      }
-      await _clearPersistedVerificationMetadata(model);
-      model
-        ..status = ModelStatus.notDownloaded
-        ..progress = 0.0
-        ..errorMessage = null;
-      _notify();
-      return true;
-    } on Object catch (error) {
-      model
-        ..status = ModelStatus.error
-        ..errorMessage = 'Unable to delete this model. Please try again.';
-      LoggingService.warning(
-        'Model deletion failed: ${error.runtimeType}',
-        name: 'ModelManagementService',
-      );
-      _notify();
-      return false;
-    }
   }
 
   Future<bool> _isCompatible(ModelInfo model) async {
