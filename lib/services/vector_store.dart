@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
@@ -114,6 +113,11 @@ class VectorStore {
       _db!.execute('PRAGMA user_version = $schemaVersion');
     }
 
+    // Remove stale rows before creating/rebuilding the external-content FTS
+    // table. Old databases can contain orphan rows that make FTS5 report a
+    // malformed image while processing delete triggers.
+    _removeOrphanVectors(rebuildFts: false);
+
     // Check FTS5 support
     try {
       _db!.select("SELECT fts5('test')");
@@ -123,6 +127,7 @@ class VectorStore {
       _hasFts5 = false;
     }
     // coverage:ignore-end
+    _removeOrphanVectors();
   }
 
   void _onCreate() {
@@ -216,6 +221,26 @@ class VectorStore {
     // coverage:ignore-end
   }
 
+  /// Removes vectors left behind by older versions or interrupted imports.
+  /// Retrieval also uses the document join as a runtime guard, but deleting
+  /// these rows prevents stale FTS content from accumulating indefinitely.
+  void _removeOrphanVectors({bool rebuildFts = true}) {
+    _db!.execute(
+      'DELETE FROM vectors WHERE NOT EXISTS '
+      '(SELECT 1 FROM documents WHERE documents.id = vectors.document_id)',
+    );
+    if (rebuildFts && _hasFts5) {
+      try {
+        _db!.execute("INSERT INTO vectors_fts(vectors_fts) VALUES ('rebuild')");
+      } on Object catch (error) {
+        LoggingService.warning(
+          'Unable to rebuild vector search index: ${error.runtimeType}',
+          name: 'VectorStore',
+        );
+      }
+    }
+  }
+
   /// Applies ordered, gated migrations from [fromVersion] to [schemaVersion].
   void _migrate(int fromVersion) {
     // v0 -> v1: baseline. Tables already created by _onCreate().
@@ -242,11 +267,8 @@ class VectorStore {
       try {
         _db!.execute('ALTER TABLE vectors ADD COLUMN embedding_model_id TEXT');
       } on Object catch (_) {}
-      _db!.execute(
-        'UPDATE vectors SET embedding_model_id = ? '
-        'WHERE embedding_model_id IS NULL',
-        [_activeEmbeddingModelId],
-      );
+      // Legacy binary vectors have no trustworthy model identity. Keep them
+      // quarantined until the document is explicitly re-indexed.
     }
     if (fromVersion < 4) {
       try {
@@ -330,18 +352,6 @@ class VectorStore {
         _db!.execute('ALTER TABLE documents ADD COLUMN source_bytes BLOB');
       } on Object catch (_) {}
     }
-    if (_activeEmbeddingModelId != null) {
-      _db!.execute(
-        'UPDATE vectors SET embedding_model_id = ? '
-        'WHERE embedding_model_id IS NULL',
-        [_activeEmbeddingModelId],
-      );
-      _db!.execute(
-        'UPDATE documents SET embedding_model_id = ? '
-        'WHERE embedding_model_id IS NULL',
-        [_activeEmbeddingModelId],
-      );
-    }
   }
 
   String? get _activeEmbeddingModelId {
@@ -409,10 +419,12 @@ class VectorStore {
     if (activeModelId == null) return [];
     final documentFilter = documentIds == null || documentIds.isEmpty
         ? ''
-        : ' AND v.document_id IN (${List.filled(documentIds.length, '?').join(', ')})';
+        : ' AND v.document_id IN ('
+              '${List.filled(documentIds.length, '?').join(', ')})';
     final params = <Object?>[activeModelId, activeModelId, ...?documentIds];
     final rows = _readConsistentRows(
-      '''SELECT v.rowid, v.id, v.content, v.embedding, v.metadata,
+      '''
+         SELECT v.rowid, v.id, v.content, v.embedding, v.metadata,
          v.embedding_encoding, v.embedding_dimension
          FROM vectors v
          INNER JOIN documents d ON d.id = v.document_id
@@ -427,7 +439,7 @@ class VectorStore {
           (row) => {
             'id': row['id'],
             'content': row['content'],
-            'embedding': row['embedding'] as String,
+            'embedding': row['embedding']! as String,
             'encoding': row['embedding_encoding'] as String?,
             'dimension': row['embedding_dimension'] as int?,
             'metadata': row['metadata'],
@@ -454,16 +466,12 @@ class VectorStore {
       var sql = '''
       SELECT v.*, bm25(vectors_fts) as score
       FROM vectors_fts
-      INNER JOIN vectors v ON vectors_fts.rowid = v.rowid
+      JOIN vectors v ON vectors_fts.rowid = v.rowid
       INNER JOIN documents d ON d.id = v.document_id
       WHERE vectors_fts MATCH ? AND v.embedding_model_id = ?
         AND d.embedding_model_id = ? AND d.status = 'complete'
     ''';
-      final params = <Object?>[
-        sanitized,
-        embeddingModelId,
-        embeddingModelId,
-      ];
+      final params = <Object?>[sanitized, embeddingModelId, embeddingModelId];
 
       if (documentIds != null && documentIds.isNotEmpty) {
         final placeholders = List.filled(documentIds.length, '?').join(', ');
@@ -525,7 +533,8 @@ class VectorStore {
         .join(' OR ');
 
     var sql =
-        '''SELECT v.* FROM vectors v
+        '''
+      SELECT v.* FROM vectors v
       INNER JOIN documents d ON d.id = v.document_id
       WHERE ($conditions) AND v.embedding_model_id = ?
       AND d.embedding_model_id = ? AND d.status = 'complete' ''';
@@ -533,7 +542,7 @@ class VectorStore {
 
     if (documentIds != null && documentIds.isNotEmpty) {
       final placeholders = List.filled(documentIds.length, '?').join(', ');
-      sql += ' AND v.document_id IN ($placeholders)';
+      sql += ' AND document_id IN ($placeholders)';
       params.addAll(documentIds);
     }
 
@@ -692,7 +701,8 @@ class VectorStore {
       _db!.execute('DELETE FROM documents WHERE id = ?', [oldDocumentId]);
       insertDocument(replacement);
       _db!.execute(
-        r'''UPDATE vectors SET document_id = ?, metadata = json_set(
+        r'''
+UPDATE vectors SET document_id = ?, metadata = json_set(
           json_set(json_set(COALESCE(metadata, '{}'), '$.documentId', ?),
           '$.documentTitle', ?), '$.documentPath', ?)
           WHERE document_id = ?''',
@@ -844,12 +854,6 @@ class VectorStore {
       _db!.execute('ROLLBACK');
       rethrow;
     }
-  }
-
-  /// Optimize database size and performance
-  void optimizeDatabase() {
-    _db!.execute('VACUUM');
-    _schedulePersistenceFlush();
   }
 
   // -----------------------------------------

@@ -15,9 +15,9 @@ import 'package:stacked_shared/stacked_shared.dart';
 import '../services/chat_repository.dart';
 import '../services/contextual_retrieval_service.dart';
 import '../services/device_capability_service.dart';
-import '../services/download_policy_service.dart';
 import '../services/document_management_service.dart';
 import '../services/document_parser_service.dart';
+import '../services/download_policy_service.dart';
 import '../services/embedding_service.dart';
 import '../services/environment_service.dart';
 import '../services/inference_model_provider.dart';
@@ -53,6 +53,7 @@ Future<void> setupLocator({
   locator.registerLazySingleton(() => DeviceCapabilityService());
   locator.registerLazySingleton(() => ModelRecommendationService());
   locator.registerLazySingleton(() => DownloadPolicyService());
+  locator.registerLazySingleton(() => EmbeddingModelCoordinator());
   locator.registerLazySingleton(() => ModelManagementService());
   locator.registerLazySingleton(() => EmbeddingService());
   locator.registerLazySingleton(() => InferenceModelProvider());

@@ -39,7 +39,6 @@ class ChatView extends StackedView<ChatViewModel> {
             children: [
               Icon(Icons.filter_list_rounded, color: colorScheme.primary),
               const SizedBox(width: 12),
-              const SizedBox(width: 12),
               Flexible(
                 child: Text(AppLocalizations.of(context).filterByDocuments),
               ),
@@ -117,14 +116,6 @@ class ChatView extends StackedView<ChatViewModel> {
   Widget builder(BuildContext context, ChatViewModel viewModel, Widget? child) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-
-    // Listen for message changes to scroll
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (viewModel.shouldScroll) {
-        _scrollToBottom(viewModel);
-        viewModel.onScrolled();
-      }
-    });
 
     return Scaffold(
       appBar: AppBar(
@@ -228,10 +219,11 @@ class ChatView extends StackedView<ChatViewModel> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final progress = viewModel.currentIngestionProgress;
+    final l10n = AppLocalizations.of(context);
     final title = progress?.documentTitle.isNotEmpty == true
         ? progress!.documentTitle
-        : 'Document';
-    final stage = progress?.stage ?? 'Processing';
+        : l10n.documentFallback;
+    final stage = _localizedStage(l10n, progress?.stage);
     final percent = (progress != null && progress.totalChunks > 0)
         ? (progress.currentChunk / progress.totalChunks)
         : null;
@@ -265,7 +257,7 @@ class ChatView extends StackedView<ChatViewModel> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Ingesting $title ($stage)...',
+                  l10n.ingestionProgress(title, stage),
                   style: theme.textTheme.labelMedium?.copyWith(
                     color: colorScheme.primary,
                     fontWeight: FontWeight.w600,
@@ -297,6 +289,23 @@ class ChatView extends StackedView<ChatViewModel> {
         ],
       ),
     );
+  }
+
+  String _localizedStage(AppLocalizations l10n, String? stage) {
+    switch (stage) {
+      case 'parsing':
+        return l10n.parsingStage;
+      case 'contextualizing':
+        return l10n.contextualizingStage;
+      case 'embedding':
+        return l10n.embeddingStage;
+      case 'complete':
+        return l10n.completeStage;
+      case 'error':
+        return l10n.failedStage;
+      default:
+        return l10n.processingStage;
+    }
   }
 
   Widget _buildEmptyChat(BuildContext context) {
@@ -348,6 +357,7 @@ class ChatView extends StackedView<ChatViewModel> {
 
   @override
   void onViewModelReady(ChatViewModel viewModel) {
+    viewModel.attachScrollHandler(() => _scrollToBottom(viewModel));
     final callback = onViewModelReadyCallback;
     if (callback != null) {
       callback(viewModel);

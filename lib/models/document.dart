@@ -18,13 +18,13 @@ class Document {
     this.status = IngestionStatus.pending,
     this.lastRefreshed,
     this.contextualRetrievalEnabled = false,
-    this.errorMessage,
     this.embeddingModelId,
+    this.errorMessage,
     this.sourceBytes,
   });
 
   factory Document.fromJson(Map<String, dynamic> json) {
-    final sourceBytes = _readSourceBytes(json['source_bytes']);
+    final sourceBytes = json['source_bytes'];
     return Document(
       id: json['id'] as String? ?? '',
       title: json['title'] as String? ?? 'Untitled',
@@ -47,9 +47,15 @@ class Document {
           ? DateTime.fromMillisecondsSinceEpoch(json['last_refreshed'] as int)
           : null,
       contextualRetrievalEnabled: (json['contextual_retrieval'] as int?) == 1,
-      errorMessage: json['error_message'] as String?,
       embeddingModelId: json['embedding_model_id'] as String?,
-      sourceBytes: sourceBytes,
+      errorMessage: json['error_message'] as String?,
+      sourceBytes: sourceBytes is Uint8List
+          ? sourceBytes
+          : sourceBytes is List
+          ? Uint8List.fromList(sourceBytes.cast<int>())
+          : sourceBytes is String
+          ? Uint8List.fromList(base64Decode(sourceBytes))
+          : null,
     );
   }
 
@@ -64,12 +70,12 @@ class Document {
   final DateTime? lastRefreshed;
   final IngestionStatus status;
   final bool contextualRetrievalEnabled;
-  final String? errorMessage;
   final String? embeddingModelId;
+  final String? errorMessage;
   final Uint8List? sourceBytes;
 
   Map<String, dynamic> toJson() {
-    final json = <String, dynamic>{
+    return {
       'id': id,
       'title': title,
       'file_path': filePath,
@@ -81,13 +87,10 @@ class Document {
       'status': status.name,
       'last_refreshed': lastRefreshed?.millisecondsSinceEpoch,
       'contextual_retrieval': contextualRetrievalEnabled ? 1 : 0,
-      'error_message': errorMessage,
       'embedding_model_id': embeddingModelId,
+      'error_message': errorMessage,
+      if (sourceBytes != null) 'source_bytes': base64Encode(sourceBytes!),
     };
-    if (sourceBytes != null) {
-      json['source_bytes'] = base64Encode(sourceBytes!);
-    }
-    return json;
   }
 
   /// Whether this document's vectors cannot be used by the active embedder.
@@ -97,17 +100,4 @@ class Document {
         activeEmbeddingModelId == null ||
         embeddingModelId != activeEmbeddingModelId;
   }
-}
-
-Uint8List? _readSourceBytes(Object? value) {
-  if (value is Uint8List) return Uint8List.fromList(value);
-  if (value is List<int>) return Uint8List.fromList(value);
-  if (value is String && value.isNotEmpty) {
-    try {
-      return Uint8List.fromList(base64Decode(value));
-    } on FormatException {
-      return null;
-    }
-  }
-  return null;
 }

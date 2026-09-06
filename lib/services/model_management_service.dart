@@ -9,25 +9,34 @@ import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
+import 'package:offline_sync/services/embedding_service.dart';
 import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_checksum.dart';
 import 'package:offline_sync/services/model_config.dart';
-import 'package:offline_sync/services/model_digest_resolver.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/utils/download_failure.dart';
 import 'package:offline_sync/utils/hugging_face.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-void log(String message, {String? name}) =>
-    LoggingService.debug(message, name: name);
 
 enum ModelStatus { notDownloaded, downloading, downloaded, error }
 
 enum ModelDownloadFailureKind { none, authentication, gatedAccess }
 
 enum _InstalledModelPathResolutionKind { resolved, unavailable, readError }
+
+void log(String message, {String? name}) {
+  final safeMessage = LoggingService.redact(message);
+  final isFailure = RegExp(
+    'error|exception|failed|failure',
+    caseSensitive: false,
+  ).hasMatch(safeMessage);
+  LoggingService.debug(
+    isFailure ? 'Model operation failed' : safeMessage,
+    name: name,
+  );
+}
 
 class _InstalledModelPathResolution {
   const _InstalledModelPathResolution.resolved(String path)
@@ -119,12 +128,13 @@ class ModelManagementService {
     fileChecksumVerifier,
     ModelDeleter? modelDeleter,
     Future<SharedPreferences> Function()? sharedPreferencesLoader,
-    Future<String> Function(ModelDefinition definition)? remoteSha256Resolver,
     Future<void> Function()? clearActiveInferenceIdentity,
     Future<void> Function()? clearActiveEmbeddingIdentity,
+    ModelFileManager? modelManager,
     bool? isWebOverride,
     DeviceCapabilityService? deviceService,
     Future<DeviceCapabilities> Function()? capabilitiesProvider,
+    EmbeddingModelCoordinator? embeddingCoordinator,
   }) : _installedModelPathResolver = installedModelPathResolver,
        _modelInstalledChecker = modelInstalledChecker,
        _inferenceModelActivator = inferenceModelActivator,
@@ -136,13 +146,17 @@ class ModelManagementService {
        _fileChecksumVerifier = fileChecksumVerifier,
        _modelDeleter = modelDeleter,
        _sharedPreferencesLoader = sharedPreferencesLoader,
-       _remoteSha256Resolver =
-           remoteSha256Resolver ?? HuggingFaceDigestResolver().resolve,
        _clearActiveInferenceIdentity = clearActiveInferenceIdentity,
        _clearActiveEmbeddingIdentity = clearActiveEmbeddingIdentity,
+       _modelManager = modelManager,
        _isWeb = isWebOverride ?? kIsWeb,
        _deviceService = deviceService,
-       _capabilitiesProvider = capabilitiesProvider;
+       _capabilitiesProvider = capabilitiesProvider,
+       _embeddingCoordinator =
+           embeddingCoordinator ??
+           (locator.isRegistered<EmbeddingModelCoordinator>()
+               ? locator<EmbeddingModelCoordinator>()
+               : EmbeddingModelCoordinator());
   // Pre-compiled Regular Expressions for performance optimization
   static final _pathSeparatorRegex = RegExp(r'[\/\\]'); // coverage:ignore-line
 
@@ -173,13 +187,13 @@ class ModelManagementService {
   _fileChecksumVerifier;
   final ModelDeleter? _modelDeleter;
   final Future<SharedPreferences> Function()? _sharedPreferencesLoader;
-  final Future<String> Function(ModelDefinition definition)
-  _remoteSha256Resolver;
   final Future<void> Function()? _clearActiveInferenceIdentity;
   final Future<void> Function()? _clearActiveEmbeddingIdentity;
+  final ModelFileManager? _modelManager;
   final bool _isWeb;
   final DeviceCapabilityService? _deviceService;
   final Future<DeviceCapabilities> Function()? _capabilitiesProvider;
+  final EmbeddingModelCoordinator _embeddingCoordinator;
 
   // Initialize models from ModelConfig
   final List<ModelInfo> _models = ModelConfig.allModels
@@ -226,10 +240,6 @@ class ModelManagementService {
 
   Future<void> initialize() {
     return _initFuture ??= _startInitialization();
-  }
-
-  Future<void> refresh() {
-    return _startInitialization();
   }
 
   Future<void> _startInitialization() {
@@ -315,14 +325,19 @@ class ModelManagementService {
       }
     }
 
-    if (savedEmbeddingId != null) {
-      final model = _modelForSavedId(savedEmbeddingId, AppModelType.embedding);
-      if (model != null && model.status == ModelStatus.downloaded) {
-        if (await _activateEmbeddingModel(model)) {
-          _activeEmbeddingModelId = model.id;
+    await _embeddingCoordinator.run(() async {
+      if (savedEmbeddingId != null) {
+        final model = _modelForSavedId(
+          savedEmbeddingId,
+          AppModelType.embedding,
+        );
+        if (model != null && model.status == ModelStatus.downloaded) {
+          if (await _activateEmbeddingModel(model)) {
+            _activeEmbeddingModelId = model.id;
+          }
         }
       }
-    }
+    });
 
     LoggingService.debug('initialize() completed, calling _notify()');
     _notify();
@@ -574,9 +589,20 @@ class ModelManagementService {
           (m) => m.id == previousActiveId,
         );
         if (model.type == AppModelType.inference) {
-          await _activateInferenceModel(previousModel);
+          if (!await _activateInferenceModel(previousModel)) {
+            throw StateError(
+              'Unable to restore active inference model $previousActiveId',
+            );
+          }
         } else {
-          await _activateEmbeddingModel(previousModel);
+          final restored = await _embeddingCoordinator.run(
+            () => _activateEmbeddingModel(previousModel),
+          );
+          if (!restored) {
+            throw StateError(
+              'Unable to restore active embedding model $previousActiveId',
+            );
+          }
         }
       }
 
@@ -638,8 +664,27 @@ class ModelManagementService {
       )
       .toList();
 
+  bool isDownloadActive(String modelId) =>
+      _activeDownloads.containsKey(modelId);
+
   /// Switch to a different inference model
-  Future<void> switchInferenceModel(String modelId) async {
+  Future<void> switchInferenceModel(String modelId) {
+    final provider = locator.isRegistered<InferenceModelProvider>()
+        ? locator<InferenceModelProvider>()
+        : null;
+    if (provider == null) return _switchInferenceModel(modelId);
+    return provider.runSerializedModelManagement(
+      () => _switchInferenceModel(
+        modelId,
+        releaseCachedModel: provider.clearCacheAndWaitInManagement,
+      ),
+    );
+  }
+
+  Future<void> _switchInferenceModel(
+    String modelId, {
+    Future<void> Function()? releaseCachedModel,
+  }) async {
     final model = _models.firstWhere((m) => m.id == modelId);
     if (model.status != ModelStatus.downloaded) {
       log('Cannot switch to model $modelId: not downloaded');
@@ -660,45 +705,38 @@ class ModelManagementService {
     }
     try {
       await _ragSettings.setActiveInferenceModelId(modelId);
-    } on Object catch (error, stackTrace) {
-      try {
-        final restored = await _restoreInferenceModel(previousActiveId);
-        if (!restored) {
-          throw StateError('Inference model rollback was not confirmed');
-        }
-      } on Object catch (rollbackError, rollbackStack) {
-        LoggingService.error(
-          'Inference model rollback failed',
-          name: 'ModelManagementService',
-          error: rollbackError,
-          stackTrace: rollbackStack,
+    } on Object catch (error) {
+      final restored = await _restoreInferenceModel(previousActiveId);
+      if (!restored) {
+        throw StateError(
+          'Inference model switch failed and rollback failed: '
+          '$error',
         );
-        Error.throwWithStackTrace(rollbackError, rollbackStack);
       }
-      Error.throwWithStackTrace(error, stackTrace);
+      Error.throwWithStackTrace(error, StackTrace.current);
     }
     _activeInferenceModelId = modelId;
-    if (locator.isRegistered<InferenceModelProvider>()) {
-      locator<InferenceModelProvider>().clearCache();
+    if (releaseCachedModel != null) {
+      await releaseCachedModel();
     }
     _notify();
   }
 
   /// Switch to a different embedding model
-  Future<void> switchEmbeddingModel(String modelId) async {
-    final model = _models.firstWhere((m) => m.id == modelId);
-    if (model.status != ModelStatus.downloaded) {
-      log('Cannot switch to model $modelId: not downloaded');
-      return;
-    }
-    if (model.type != AppModelType.embedding) {
-      // coverage:ignore-start
-      log('Cannot switch to model $modelId: not an embedding model');
-      return;
-      // coverage:ignore-end
-    }
-    log('Switching to embedding model $modelId');
-    await _ragSettings.runEmbeddingModelSwitch(() async {
+  Future<void> switchEmbeddingModel(String modelId) {
+    return _embeddingCoordinator.run(() async {
+      final model = _models.firstWhere((m) => m.id == modelId);
+      if (model.status != ModelStatus.downloaded) {
+        log('Cannot switch to model $modelId: not downloaded');
+        return;
+      }
+      if (model.type != AppModelType.embedding) {
+        // coverage:ignore-start
+        log('Cannot switch to model $modelId: not an embedding model');
+        return;
+        // coverage:ignore-end
+      }
+      log('Switching to embedding model $modelId');
       final previousActiveId = _activeEmbeddingModelId;
       if (!await _activateEmbeddingModel(model)) {
         // coverage:ignore-start
@@ -709,22 +747,15 @@ class ModelManagementService {
       }
       try {
         await _ragSettings.setActiveEmbeddingModelId(modelId);
-      } on Object catch (error, stackTrace) {
-        try {
-          final restored = await _restoreEmbeddingModel(previousActiveId);
-          if (!restored) {
-            throw StateError('Embedding model rollback was not confirmed');
-          }
-        } on Object catch (rollbackError, rollbackStack) {
-          LoggingService.error(
-            'Embedding model rollback failed',
-            name: 'ModelManagementService',
-            error: rollbackError,
-            stackTrace: rollbackStack,
+      } on Object catch (error) {
+        final restored = await _restoreEmbeddingModel(previousActiveId);
+        if (!restored) {
+          throw StateError(
+            'Embedding model switch failed and rollback failed: '
+            '$error',
           );
-          Error.throwWithStackTrace(rollbackError, rollbackStack);
         }
-        Error.throwWithStackTrace(error, stackTrace);
+        Error.throwWithStackTrace(error, StackTrace.current);
       }
       _activeEmbeddingModelId = modelId;
       _notify();
@@ -737,7 +768,8 @@ class ModelManagementService {
     );
     if (matchingModels.isEmpty) return false;
     final model = matchingModels.first;
-    if (model.status == ModelStatus.downloading ||
+    if (_activeDownloads.containsKey(modelId) ||
+        model.status == ModelStatus.downloading ||
         model.status == ModelStatus.notDownloaded) {
       return false;
     }
@@ -747,133 +779,108 @@ class ModelManagementService {
     final wasActive = model.type == AppModelType.inference
         ? _activeInferenceModelId == model.id
         : _activeEmbeddingModelId == model.id;
-    final previousStatus = model.status;
-    final previousProgress = model.progress;
-    final previousFailureKind = model.failureKind;
-    final previousErrorMessage = model.errorMessage;
-    var activeIdentityMayHaveBeenCleared = false;
 
-    try {
-      if (wasActive) {
-        // Clear external identities before deleting the files. If cleanup
-        // fails, the model remains available for activation and retry.
-        activeIdentityMayHaveBeenCleared = true;
-        final manager = FlutterGemmaPlugin.instance.modelManager;
-        if (model.type == AppModelType.inference) {
-          await (_clearActiveInferenceIdentity?.call() ??
-              (_modelDeleter == null
-                  ? manager.clearActiveInferenceIdentity()
-                  : Future<void>.value()));
-          await _ragSettings.clearActiveInferenceModelId();
-        } else {
-          await (_clearActiveEmbeddingIdentity?.call() ??
-              (_modelDeleter == null
-                  ? manager.clearActiveEmbeddingIdentity()
-                  : Future<void>.value()));
-          await _ragSettings.clearActiveEmbeddingModelId();
-        }
-      }
-
-      final deleter = _modelDeleter;
-      if (deleter != null) {
-        await deleter(model);
-      } else {
-        final manager = FlutterGemmaPlugin.instance.modelManager;
-        await manager.deleteModel(_buildModelSpec(definition));
-      }
-
-      if (wasActive) {
-        if (model.type == AppModelType.inference) {
-          _activeInferenceModelId = null;
-          if (locator.isRegistered<InferenceModelProvider>()) {
-            locator<InferenceModelProvider>().clearCache();
+    Future<bool> deletion({
+      Future<void> Function()? releaseCachedModel,
+    }) async {
+      try {
+        if (wasActive) {
+          if (model.type == AppModelType.inference &&
+              releaseCachedModel != null) {
+            await releaseCachedModel();
           }
-        } else {
-          _activeEmbeddingModelId = null;
+          if (model.type == AppModelType.inference) {
+            await _clearPluginActiveInferenceIdentity();
+          } else {
+            await _clearPluginActiveEmbeddingIdentity();
+          }
         }
-      }
-      await _clearPersistedVerificationMetadata(model);
-      model
-        ..status = ModelStatus.notDownloaded
-        ..progress = 0.0
-        ..failureKind = ModelDownloadFailureKind.none
-        ..errorMessage = null;
-      _notify();
-      return true;
-    } on Object catch (_) {
-      if (wasActive && activeIdentityMayHaveBeenCleared) {
-        final restored = await _restoreActiveIdentity(model);
-        if (!restored) {
+
+        final deleter = _modelDeleter;
+        if (deleter != null) {
+          await deleter(model);
+        } else {
+          final manager =
+              _modelManager ?? FlutterGemmaPlugin.instance.modelManager;
+          await manager.deleteModel(_buildModelSpec(definition));
+        }
+
+        if (wasActive) {
           if (model.type == AppModelType.inference) {
             _activeInferenceModelId = null;
+            await _ragSettings.clearActiveInferenceModelId();
           } else {
             _activeEmbeddingModelId = null;
+            await _ragSettings.clearActiveEmbeddingModelId();
           }
-          model
-            ..status = ModelStatus.error
-            ..progress = 0.0
-            ..errorMessage =
-                'Model deletion failed and active identity could not be '
-                'restored';
-          _notify();
-          return false;
         }
+        await _clearPersistedVerificationMetadata(model);
+        model
+          ..status = ModelStatus.notDownloaded
+          ..progress = 0.0
+          ..failureKind = ModelDownloadFailureKind.none
+          ..errorMessage = null;
+        _notify();
+        return true;
+      } on Object catch (_) {
+        model
+          ..status = ModelStatus.error
+          ..errorMessage = 'Unable to delete this model. Please try again.';
+        _notify();
+        return false;
       }
-      model
-        ..status = previousStatus
-        ..progress = previousProgress
-        ..failureKind = previousFailureKind
-        ..errorMessage = previousErrorMessage;
-      _notify();
-      return false;
     }
-  }
 
-  Future<bool> _restoreActiveIdentity(ModelInfo model) async {
-    try {
-      final restored = model.type == AppModelType.inference
-          ? await _activateInferenceModel(model)
-          : await _activateEmbeddingModel(model);
-      if (!restored) return false;
-
-      if (model.type == AppModelType.inference) {
-        await _ragSettings.setActiveInferenceModelId(model.id);
-        _activeInferenceModelId = model.id;
-        if (locator.isRegistered<InferenceModelProvider>()) {
-          locator<InferenceModelProvider>().clearCache();
-        }
-      } else {
-        await _ragSettings.setActiveEmbeddingModelId(model.id);
-        _activeEmbeddingModelId = model.id;
-      }
-      return true;
-    } on Object catch (error) {
-      log(
-        'Unable to restore active model identity for ${model.id}: '
-        '${error.runtimeType}',
-      );
-      return false;
+    if (model.type == AppModelType.embedding) {
+      return _embeddingCoordinator.run(deletion);
     }
+    final provider = locator.isRegistered<InferenceModelProvider>()
+        ? locator<InferenceModelProvider>()
+        : null;
+    if (provider == null) return deletion();
+    return provider.runSerializedModelManagement(
+      () => deletion(
+        releaseCachedModel: provider.clearCacheAndWaitInManagement,
+      ),
+    );
   }
 
   Future<bool> _restoreInferenceModel(String? modelId) async {
     if (modelId == null) {
-      await _clearActiveInferenceIdentity?.call();
-      return true;
+      try {
+        await _clearPluginActiveInferenceIdentity();
+        return true;
+      } on Object {
+        return false;
+      }
     }
-    final model = _modelForSavedId(modelId, AppModelType.inference);
-    if (model == null) return false;
+    final model = _models.firstWhere((candidate) => candidate.id == modelId);
     return _activateInferenceModel(model);
   }
 
   Future<bool> _restoreEmbeddingModel(String? modelId) async {
     if (modelId == null) {
-      await _clearActiveEmbeddingIdentity?.call();
-      return true;
+      try {
+        await _clearPluginActiveEmbeddingIdentity();
+        return true;
+      } on Object {
+        return false;
+      }
     }
-    final model = _modelForSavedId(modelId, AppModelType.embedding);
-    if (model == null) return false;
+    final model = _models.firstWhere((candidate) => candidate.id == modelId);
     return _activateEmbeddingModel(model);
+  }
+
+  Future<void> _clearPluginActiveInferenceIdentity() {
+    return _clearActiveInferenceIdentity?.call() ??
+        (_modelManager ?? FlutterGemmaPlugin.instance.modelManager)
+            .clearActiveInferenceIdentity();
+  }
+
+  Future<void> _clearPluginActiveEmbeddingIdentity() {
+    return _clearActiveEmbeddingIdentity?.call() ??
+        (_modelManager ?? FlutterGemmaPlugin.instance.modelManager)
+            .clearActiveEmbeddingIdentity();
   }
 
   void _notify() {
@@ -944,7 +951,8 @@ class ModelManagementService {
 
   Future<bool> _verifyDeclaredChecksum(ModelInfo model) async {
     final definition = _modelDefinitionsById[model.id];
-    if (definition == null) {
+    final expectedSha256 = definition?.sha256;
+    if (definition == null || expectedSha256 == null) {
       return true;
     }
 
@@ -958,12 +966,6 @@ class ModelManagementService {
       return true;
     }
 
-    // On web, flutter_gemma owns the Cache API/OPFS/blob/network source and
-    // its installed-model check is the integrity boundary. There is no
-    // dart:io path to hash, and getModelFilePaths may legitimately return a
-    // network URL when caching is disabled.
-    if (_isWeb) return true;
-
     final pathResolution = await _resolveInstalledModelPath(definition);
     if (pathResolution.kind == _InstalledModelPathResolutionKind.unavailable) {
       return _recordVerificationUnavailable(model);
@@ -976,8 +978,13 @@ class ModelManagementService {
     }
     final installedModelPath = pathResolution.path!;
 
-    final expectedSha256 = await _resolveExpectedSha256(model, definition);
-    if (expectedSha256 == null) return false;
+    // flutter_gemma owns model blobs and Cache API entries on web. They are
+    // already verified by the plugin; constructing a dart:io File for them
+    // would fail on web and would incorrectly reject a valid download.
+    if (_isWeb) {
+      if (_isWebManagedModelPath(installedModelPath)) return true;
+      return _recordVerificationUnavailable(model);
+    }
 
     final modelFile = _checksumFile(installedModelPath);
     final metadata = await readChecksumFileMetadata(modelFile);
@@ -1031,27 +1038,6 @@ class ModelManagementService {
     return _verifyDeclaredChecksum(model);
   }
 
-  Future<String?> _resolveExpectedSha256(
-    ModelInfo model,
-    ModelDefinition definition,
-  ) async {
-    if (definition.digestSource == ModelDigestSource.declared) {
-      return definition.sha256;
-    }
-
-    try {
-      return await _remoteSha256Resolver(definition);
-    } on Object catch (error) {
-      _recordVerificationUnavailable(
-        model,
-        message:
-            'Unable to retrieve the current checksum for ${model.id}: '
-            '${_safeFailureDetails(error)}',
-      );
-      return null;
-    }
-  }
-
   Future<_InstalledModelPathResolution> _resolveInstalledModelPath(
     ModelDefinition definition,
   ) async {
@@ -1076,6 +1062,9 @@ class ModelManagementService {
       }
 
       for (final installedPath in filePaths.values) {
+        if (_isWeb && _isWebManagedModelPath(installedPath)) {
+          return _InstalledModelPathResolution.resolved(installedPath);
+        }
         if (installedPath.split(_pathSeparatorRegex).last ==
             definition.fileName) {
           return _InstalledModelPathResolution.resolved(installedPath);
@@ -1114,6 +1103,13 @@ class ModelManagementService {
     } on Object catch (error) {
       return ChecksumVerificationResult.readError(error);
     }
+  }
+
+  bool _isWebManagedModelPath(String path) {
+    final normalized = path.toLowerCase();
+    return normalized.startsWith('blob:') ||
+        normalized.startsWith('cache:') ||
+        normalized.startsWith('opfs:');
   }
 
   Future<bool> _hasPersistedVerificationMetadata(
@@ -1178,15 +1174,11 @@ class ModelManagementService {
   static String _verificationMetadataKey(String modelId) =>
       'model_verification_metadata_$modelId';
 
-  bool _recordVerificationUnavailable(
-    ModelInfo model, {
-    String? message,
-  }) {
+  bool _recordVerificationUnavailable(ModelInfo model) {
     model
       ..status = ModelStatus.error
       ..progress = 0.0
       ..errorMessage =
-          message ??
           'Checksum verification unavailable: installed file path not exposed';
     _statusController.addError(
       'Checksum verification unavailable for ${model.id}.',

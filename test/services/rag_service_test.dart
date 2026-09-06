@@ -23,6 +23,7 @@ void main() {
 
     setUpAll(() {
       registerFallbackValue(const Message(text: '', isUser: true));
+      registerFallbackValue(MockEmbeddingModel());
     });
 
     setUp(() {
@@ -90,7 +91,10 @@ void main() {
       when(() => mockSettingsService.rerankingEnabled).thenReturn(false);
       when(() => mockSettingsService.searchTopK).thenReturn(5);
       when(
-        () => mockEmbeddingService.generateEmbedding('stream'),
+        () => mockEmbeddingService.generateEmbedding(
+          'stream',
+          model: any<EmbeddingModel>(named: 'model'),
+        ),
       ).thenAnswer((_) async => [0.1]);
       when(
         () => mockVectorStore.hybridSearch(
@@ -98,6 +102,7 @@ void main() {
           any(),
           limit: any(named: 'limit'),
           documentIds: any(named: 'documentIds'),
+          embeddingModelId: any(named: 'embeddingModelId'),
         ),
       ).thenAnswer((_) async => []);
       when(
@@ -160,7 +165,10 @@ void main() {
         await service.initialize();
 
         when(
-          () => mockEmbeddingService.generateEmbedding(query),
+          () => mockEmbeddingService.generateEmbedding(
+            query,
+            model: any<EmbeddingModel>(named: 'model'),
+          ),
         ).thenAnswer((_) async => embedding);
         when(
           () => mockVectorStore.hybridSearch(
@@ -168,6 +176,7 @@ void main() {
             any(),
             limit: any(named: 'limit'),
             documentIds: any(named: 'documentIds'),
+            embeddingModelId: any(named: 'embeddingModelId'),
           ),
         ).thenAnswer((_) async => []);
         await arrangeGeneration();
@@ -178,7 +187,13 @@ void main() {
         final result = await service.askWithRAG(query);
 
         expect(result.response, 'Mocked response');
-        verify(() => mockVectorStore.hybridSearch(query, embedding)).called(1);
+        verify(
+          () => mockVectorStore.hybridSearch(
+            query,
+            embedding,
+            embeddingModelId: 'gecko-64',
+          ),
+        ).called(1);
       });
 
       test('uses expanded queries when query expansion is enabled', () async {
@@ -190,7 +205,10 @@ void main() {
         await service.initialize();
 
         when(
-          () => mockEmbeddingService.generateEmbedding(query),
+          () => mockEmbeddingService.generateEmbedding(
+            query,
+            model: any<EmbeddingModel>(named: 'model'),
+          ),
         ).thenAnswer((_) async => embedding);
         when(() => mockSettingsService.queryExpansionEnabled).thenReturn(true);
         when(() => mockSettingsService.rerankingEnabled).thenReturn(false);
@@ -204,6 +222,8 @@ void main() {
             expandedQueries,
             limit: any(named: 'limit'),
             documentIds: any(named: 'documentIds'),
+            embeddingModelId: any(named: 'embeddingModelId'),
+            pinnedEmbedder: any<EmbeddingModel>(named: 'pinnedEmbedder'),
           ),
         ).thenAnswer((_) async => []);
         await arrangeGeneration();
@@ -215,6 +235,8 @@ void main() {
             query,
             expandedQueries,
             limit: 3,
+            pinnedEmbedder: any<EmbeddingModel>(named: 'pinnedEmbedder'),
+            embeddingModelId: 'gecko-64',
           ),
         ).called(1);
         verifyNever(() => mockVectorStore.hybridSearch(any(), any()));
@@ -229,7 +251,10 @@ void main() {
         await service.initialize();
 
         when(
-          () => mockEmbeddingService.generateEmbedding(query),
+          () => mockEmbeddingService.generateEmbedding(
+            query,
+            model: any<EmbeddingModel>(named: 'model'),
+          ),
         ).thenAnswer((_) async => embedding);
         when(() => mockSettingsService.queryExpansionEnabled).thenReturn(true);
         when(() => mockSettingsService.rerankingEnabled).thenReturn(false);
@@ -243,6 +268,7 @@ void main() {
             embedding,
             limit: any(named: 'limit'),
             documentIds: any(named: 'documentIds'),
+            embeddingModelId: any(named: 'embeddingModelId'),
           ),
         ).thenAnswer((_) async => []);
         await arrangeGeneration();
@@ -255,6 +281,7 @@ void main() {
             any(),
             limit: any(named: 'limit'),
             documentIds: any(named: 'documentIds'),
+            embeddingModelId: any(named: 'embeddingModelId'),
           ),
         );
         verify(
@@ -263,6 +290,7 @@ void main() {
             embedding,
             limit: 3,
             documentIds: any(named: 'documentIds'),
+            embeddingModelId: 'gecko-64',
           ),
         ).called(1);
         expect(result.metrics?.expandedQueryCount, 1);
@@ -287,7 +315,10 @@ void main() {
         await service.initialize();
 
         when(
-          () => mockEmbeddingService.generateEmbedding(query),
+          () => mockEmbeddingService.generateEmbedding(
+            query,
+            model: any<EmbeddingModel>(named: 'model'),
+          ),
         ).thenAnswer((_) async => embedding);
         when(() => mockSettingsService.rerankingEnabled).thenReturn(true);
         when(() => mockSettingsService.rerankTopK).thenReturn(3);
@@ -298,6 +329,7 @@ void main() {
             embedding,
             limit: any(named: 'limit'),
             documentIds: any(named: 'documentIds'),
+            embeddingModelId: any(named: 'embeddingModelId'),
           ),
         ).thenAnswer((_) async => initialResults);
         when(
@@ -312,7 +344,12 @@ void main() {
         final result = await service.askWithRAG(query);
 
         verify(
-          () => mockVectorStore.hybridSearch(query, embedding, limit: 3),
+          () => mockVectorStore.hybridSearch(
+            query,
+            embedding,
+            limit: 3,
+            embeddingModelId: 'gecko-64',
+          ),
         ).called(1);
         verify(
           () => mockRerankingService.rerank(query, initialResults, topK: 3),
@@ -329,7 +366,10 @@ void main() {
         await service.initialize();
 
         when(
-          () => mockEmbeddingService.generateEmbedding(query),
+          () => mockEmbeddingService.generateEmbedding(
+            query,
+            model: any<EmbeddingModel>(named: 'model'),
+          ),
         ).thenAnswer((_) async => embedding);
         when(() => mockSettingsService.rerankingEnabled).thenReturn(false);
         when(() => mockSettingsService.searchTopK).thenReturn(4);
@@ -339,6 +379,7 @@ void main() {
             embedding,
             limit: any(named: 'limit'),
             documentIds: any(named: 'documentIds'),
+            embeddingModelId: any(named: 'embeddingModelId'),
           ),
         ).thenAnswer((_) async => []);
         await arrangeGeneration();
@@ -351,6 +392,7 @@ void main() {
             embedding,
             limit: 4,
             documentIds: documentIds,
+            embeddingModelId: 'gecko-64',
           ),
         ).called(1);
       });
@@ -366,7 +408,10 @@ void main() {
           await service.initialize();
 
           when(
-            () => mockEmbeddingService.generateEmbedding(query),
+            () => mockEmbeddingService.generateEmbedding(
+              query,
+              model: any<EmbeddingModel>(named: 'model'),
+            ),
           ).thenAnswer((_) async => embedding);
           when(() => mockSettingsService.rerankingEnabled).thenReturn(false);
           when(
@@ -375,6 +420,7 @@ void main() {
               embedding,
               limit: any(named: 'limit'),
               documentIds: any(named: 'documentIds'),
+              embeddingModelId: any(named: 'embeddingModelId'),
             ),
           ).thenAnswer((_) async => []);
           await arrangeGeneration(
@@ -398,7 +444,10 @@ void main() {
         await service.initialize();
 
         when(
-          () => mockEmbeddingService.generateEmbedding(query),
+          () => mockEmbeddingService.generateEmbedding(
+            query,
+            model: any<EmbeddingModel>(named: 'model'),
+          ),
         ).thenAnswer((_) async => embedding);
         when(() => mockSettingsService.rerankingEnabled).thenReturn(false);
         when(
@@ -407,6 +456,7 @@ void main() {
             embedding,
             limit: any(named: 'limit'),
             documentIds: any(named: 'documentIds'),
+            embeddingModelId: any(named: 'embeddingModelId'),
           ),
         ).thenAnswer((_) async => []);
         await arrangeGeneration(
@@ -435,7 +485,10 @@ void main() {
         await service.initialize();
 
         when(
-          () => mockEmbeddingService.generateEmbedding(query),
+          () => mockEmbeddingService.generateEmbedding(
+            query,
+            model: any<EmbeddingModel>(named: 'model'),
+          ),
         ).thenAnswer((_) async => embedding);
 
         when(
@@ -448,6 +501,7 @@ void main() {
             any(),
             limit: any(named: 'limit'),
             documentIds: any(named: 'documentIds'),
+            embeddingModelId: any(named: 'embeddingModelId'),
           ),
         ).thenAnswer((_) async => []);
 
@@ -474,6 +528,7 @@ void main() {
             embedding,
             limit: 7,
             documentIds: any(named: 'documentIds'),
+            embeddingModelId: any(named: 'embeddingModelId'),
           ),
         ).called(1);
       });
@@ -497,7 +552,10 @@ void main() {
         await service.initialize();
 
         when(
-          () => mockEmbeddingService.generateEmbedding(query),
+          () => mockEmbeddingService.generateEmbedding(
+            query,
+            model: any<EmbeddingModel>(named: 'model'),
+          ),
         ).thenAnswer((_) async => embedding);
         when(() => mockSettingsService.queryExpansionEnabled).thenReturn(true);
         when(() => mockSettingsService.rerankingEnabled).thenReturn(true);
@@ -512,6 +570,8 @@ void main() {
             [query, 'Expanded'],
             limit: any(named: 'limit'),
             documentIds: any(named: 'documentIds'),
+            embeddingModelId: any(named: 'embeddingModelId'),
+            pinnedEmbedder: any<EmbeddingModel>(named: 'pinnedEmbedder'),
           ),
         ).thenAnswer((_) async => initialResults);
         when(

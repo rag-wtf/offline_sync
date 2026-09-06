@@ -19,11 +19,14 @@ class MockDocumentManagementService extends Mock
 
 class MockDialogService extends Mock implements DialogService {}
 
+class FakeDocument extends Fake implements Document {}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() {
     registerFallbackValue(FakePlatformFile(name: 'fallback.txt'));
+    registerFallbackValue(FakeDocument());
   });
 
   late MockDocumentManagementService documentService;
@@ -52,6 +55,9 @@ void main() {
       ..registerSingleton<DialogService>(dialogService);
 
     when(documentService.getAllDocuments).thenAnswer((_) async => []);
+    when(
+      () => documentService.hasSourceForReindex(any()),
+    ).thenReturn(true);
     when(
       () => documentService.ingestionProgressStream,
     ).thenAnswer((_) => progressController.stream);
@@ -343,4 +349,38 @@ void main() {
       verify(documentService.getAllDocuments).called(1);
     },
   );
+
+  test('reports unavailable and failed reindex operations', () async {
+    when(
+      () => documentService.hasSourceForReindex(document),
+    ).thenReturn(false);
+    final viewModel = DocumentLibraryViewModel();
+
+    expect(await viewModel.reindexDocument(document), isFalse);
+    verify(
+      () => dialogService.showDialog(
+        title: any(named: 'title'),
+        description: any(named: 'description'),
+      ),
+    ).called(1);
+
+    when(
+      () => documentService.hasSourceForReindex(document),
+    ).thenReturn(true);
+    when(
+      () => documentService.reindexDocument(document.id),
+    ).thenThrow(StateError('reindex failed'));
+    expect(await viewModel.reindexDocument(document), isFalse);
+
+    when(
+      () => documentService.renameDocument(document.id, 'Renamed'),
+    ).thenThrow(StateError('rename failed'));
+    await viewModel.renameDocument(document, 'Renamed');
+    verify(
+      () => dialogService.showDialog(
+        title: any(named: 'title'),
+        description: any(named: 'description'),
+      ),
+    ).called(2);
+  });
 }

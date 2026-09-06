@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:offline_sync/l10n/gen/app_localizations.dart';
+import 'package:offline_sync/l10n/gen/app_localizations_en.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
 import 'package:offline_sync/ui/utils/repo_link_copy.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -30,6 +32,10 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
   bool _isSaving = false;
   String? _errorMessage;
 
+  AppLocalizations get _localizations =>
+      Localizations.of<AppLocalizations>(context, AppLocalizations) ??
+      AppLocalizationsEn();
+
   @override
   void dispose() {
     _tokenController.dispose();
@@ -42,7 +48,7 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
     // Validate token is not empty
     if (token.isEmpty) {
       setState(() {
-        _errorMessage = 'Token cannot be empty';
+        _errorMessage = _localizations.tokenEmptyError;
       });
       return;
     }
@@ -50,8 +56,7 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
     // Validate token format (HuggingFace tokens start with 'hf_')
     if (!token.startsWith('hf_')) {
       setState(() {
-        _errorMessage =
-            'Invalid token format. HuggingFace tokens should start with "hf_"';
+        _errorMessage = _localizations.tokenInvalidError;
       });
       return;
     }
@@ -72,7 +77,7 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
     } on Object catch (e) {
       if (mounted) {
         setState(() {
-          _errorMessage = 'Failed to save token: $e';
+          _errorMessage = _localizations.tokenSaveFailed(e);
           _isSaving = false;
         });
       }
@@ -81,8 +86,9 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = _localizations;
     return AlertDialog(
-      title: const Text('Authentication Required'),
+      title: Text(l10n.authRequiredTitle),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -90,15 +96,15 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
           children: [
             Text(
               widget.modelName != null
-                  ? '${widget.modelName} requires a Hugging Face Access Token.'
-                  : 'The selected model requires a Hugging Face Access Token.',
+                  ? l10n.tokenRequiredForModel(widget.modelName!)
+                  : l10n.tokenRequiredForSelectedModel,
             ),
             if (widget.repoPage case final repoPage?) ...[
               const SizedBox(height: 8),
               Text.rich(
                 TextSpan(
                   style: Theme.of(context).textTheme.bodySmall,
-                  text: 'Sign in and accept the model terms at ',
+                  text: l10n.signInModelTerms,
                   children: [
                     TextSpan(
                       text: repoPage,
@@ -126,9 +132,9 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
                   TextButton.icon(
                     onPressed: () => copyRepoLinkToClipboard(context, repoPage),
                     icon: const Icon(Icons.copy, size: 14),
-                    label: const Text(
-                      'Copy repo link',
-                      style: TextStyle(fontSize: 12),
+                    label: Text(
+                      l10n.copyRepoLinkAction,
+                      style: const TextStyle(fontSize: 12),
                     ),
                   ),
                 ],
@@ -139,8 +145,8 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
               controller: _tokenController,
               obscureText: true,
               decoration: InputDecoration(
-                labelText: 'Hugging Face Access Token',
-                hintText: 'hf_...',
+                labelText: l10n.accessTokenLabel,
+                hintText: l10n.hfTokenInputHint,
                 border: const OutlineInputBorder(),
                 errorText: _errorMessage,
                 errorMaxLines: 2,
@@ -150,7 +156,7 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
             Text.rich(
               TextSpan(
                 style: Theme.of(context).textTheme.bodySmall,
-                text: 'Create a read token at ',
+                text: l10n.createReadToken,
                 children: [
                   TextSpan(
                     text: 'huggingface.co/settings/tokens',
@@ -169,16 +175,15 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
                       },
                     // coverage:ignore-end
                   ),
-                  const TextSpan(
-                    text: ', using the same account that accepted the terms.',
+                  TextSpan(
+                    text: l10n.sameAcceptedAccount,
                   ),
                 ],
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'A fine-grained token also needs "Read access to the contents '
-              'of all public gated repos you can access".',
+              l10n.fineGrainedTokenRequirement,
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
@@ -191,7 +196,7 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
             widget.onCompleted?.call(success: false);
             Navigator.of(context).pop(false);
           },
-          child: const Text('Cancel'),
+          child: Text(l10n.cancelAction),
         ),
         // coverage:ignore-end
         ElevatedButton(
@@ -202,7 +207,7 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : const Text('Save & Continue'),
+              : Text(l10n.saveContinueAction),
         ),
       ],
     );

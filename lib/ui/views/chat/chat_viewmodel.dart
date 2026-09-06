@@ -5,14 +5,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
+import 'package:offline_sync/l10n/gen/app_localizations.dart';
+import 'package:offline_sync/l10n/gen/app_localizations_en.dart';
 import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/chat_repository.dart';
 import 'package:offline_sync/services/document_management_service.dart';
-import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/rag_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
-import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
 import 'package:stacked/stacked.dart';
 import 'package:stacked_services/stacked_services.dart';
 
@@ -64,6 +64,17 @@ class ChatViewModel extends BaseViewModel {
       locator<DocumentManagementService>();
   final RagSettingsService _ragSettings = locator<RagSettingsService>();
 
+  AppLocalizations get _localizations {
+    try {
+      final context = StackedService.navigatorKey?.currentContext;
+      return context == null
+          ? AppLocalizationsEn()
+          : AppLocalizations.of(context);
+    } on Object catch (_) {
+      return AppLocalizationsEn();
+    }
+  }
+
   /// List of messages in the current conversation
   final List<ChatMessage> messages = [];
 
@@ -102,6 +113,26 @@ class ChatViewModel extends BaseViewModel {
 
   /// Whether the chat view should scroll to the bottom
   bool get shouldScroll => _shouldScroll;
+
+  VoidCallback? _scrollHandler;
+
+  /// Connects the view's scroll action to model changes without registering a
+  /// callback from the widget build method.
+  void attachScrollHandler(VoidCallback handler) {
+    if (_scrollHandler != null) removeListener(_scheduleScroll);
+    _scrollHandler = handler;
+    addListener(_scheduleScroll);
+  }
+
+  void _scheduleScroll() {
+    if (!shouldScroll || disposed) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!disposed && shouldScroll) {
+        _scrollHandler?.call();
+        onScrolled();
+      }
+    });
+  }
 
   @visibleForTesting
   static Future<List<PlatformFile>> Function({
@@ -165,7 +196,7 @@ class ChatViewModel extends BaseViewModel {
       });
     } on Object catch (e) {
       _snackbarService.showSnackbar(
-        message: 'Initialization error: $e',
+        message: _localizations.initializationError(e),
         duration: const Duration(seconds: 3),
       );
     } finally {
@@ -273,22 +304,13 @@ class ChatViewModel extends BaseViewModel {
           generationCompleted = true;
         }
       }
-    } on AuthenticationRequiredException {
-      // Remove the placeholder message on error
-      messages.removeAt(aiMsgIndex);
-      // Show token input dialog
-      await _showTokenDialog();
-      _snackbarService.showSnackbar(
-        message: 'Please provide authentication and try again',
-        duration: const Duration(seconds: 3),
-      );
     } on Object catch (e) {
       // Remove the placeholder message on error
       if (messages.length > aiMsgIndex) {
         messages.removeAt(aiMsgIndex);
       }
       _snackbarService.showSnackbar(
-        message: 'Error: $e',
+        message: _localizations.errorGeneric(e),
         duration: const Duration(seconds: 3),
       );
     } finally {
@@ -338,7 +360,7 @@ class ChatViewModel extends BaseViewModel {
         source.documentTitle ??
         (source.metadata['documentTitle'] as String?) ??
         (source.metadata['title'] as String?) ??
-        'Source Detail';
+        _localizations.sourceDetail;
 
     final targetDocId = source.metadata['documentId'] as String?;
 
@@ -389,7 +411,7 @@ class ChatViewModel extends BaseViewModel {
         }
         await _refreshDocuments();
         _snackbarService.showSnackbar(
-          message: 'Ingested ${files.length} document(s)',
+          message: _localizations.successIngestion(files.length),
           duration: const Duration(seconds: 3),
         );
       } else {
@@ -411,39 +433,33 @@ class ChatViewModel extends BaseViewModel {
 
           if (successCount == 0) {
             _snackbarService.showSnackbar(
-              message: 'Failed to ingest $failedCount file(s)',
+              message: _localizations.failedIngestion(failedCount),
               duration: const Duration(seconds: 3),
             );
           } else {
             _snackbarService.showSnackbar(
-              message:
-                  'Ingested $successCount file(s). '
-                  'Failed to ingest $failedCount file(s).',
+              message: _localizations.mixedIngestion(
+                successCount,
+                failedCount,
+              ),
               duration: const Duration(seconds: 3),
             );
           }
         } else {
           _snackbarService.showSnackbar(
-            message:
-                'Successfully ingested '
-                '${ingestionResult.succeeded.length} file(s)',
+            message: _localizations.successIngestion(
+              ingestionResult.succeeded.length,
+            ),
             duration: const Duration(seconds: 3),
           );
         }
       }
     } on Object catch (e) {
       _snackbarService.showSnackbar(
-        message: 'Ingestion error: $e',
+        message: _localizations.ingestionError(e),
         duration: const Duration(seconds: 3),
       );
     }
-  }
-
-  Future<void> _showTokenDialog() async {
-    await _navigationService.navigateWithTransition<bool?>(
-      const TokenInputDialog(),
-      transitionStyle: Transition.fade,
-    );
   }
 
   Future<void> navigateToSettings() async {
@@ -452,6 +468,8 @@ class ChatViewModel extends BaseViewModel {
 
   @override
   void dispose() {
+    removeListener(_scheduleScroll);
+    _scrollHandler = null;
     unawaited(_progressSubscription?.cancel());
     scrollController.dispose();
     super.dispose();

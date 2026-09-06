@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Unified logging service for the application
 class LoggingService {
+  static String flavor = 'development';
   static const Level minimumLevel = kReleaseMode ? Level.warning : Level.debug;
   static final Logger _logger = Logger(
     printer: PrettyPrinter(
@@ -16,6 +17,12 @@ class LoggingService {
   );
   static const _crashLogKey = 'crash_logs';
 
+  // The configuration method makes the bootstrap integration explicit.
+  // ignore: use_setters_to_change_properties
+  static void configureFlavor(String value) {
+    flavor = value;
+  }
+
   static void log(
     String message, {
     String? name,
@@ -25,19 +32,19 @@ class LoggingService {
   }) {
     _logger.log(
       level,
-      _safeMessage(message),
+      _safeMessage(_withFlavor(message)),
       error: _safeError(error),
     );
   }
 
   static void info(String message, {String? name}) =>
-      _logger.i(_safeMessage(message));
+      _logger.i(_safeMessage(_withFlavor(message)));
 
   static void debug(String message, {String? name}) =>
-      _logger.d(_safeMessage(message));
+      _logger.d(_safeMessage(_withFlavor(message)));
 
   static void warning(String message, {String? name}) =>
-      _logger.w(_safeMessage(message));
+      _logger.w(_safeMessage(_withFlavor(message)));
 
   static void error(
     String message, {
@@ -45,7 +52,7 @@ class LoggingService {
     Object? error,
     StackTrace? stackTrace,
   }) => _logger.e(
-    _safeMessage(message),
+    _safeMessage(_withFlavor(message)),
     error: _safeError(error),
   );
 
@@ -54,7 +61,7 @@ class LoggingService {
     Object? error,
     StackTrace? stackTrace,
   }) async {
-    _logger.e(_safeMessage(message), error: _safeError(error));
+    _logger.e(_safeMessage(_withFlavor(message)), error: _safeError(error));
 
     if (kIsWeb) {
       // coverage:ignore-line
@@ -108,11 +115,11 @@ class LoggingService {
 
   static Object? _safeError(Object? error) => error?.runtimeType.toString();
 
+  static String _withFlavor(String message) => '[$flavor] $message';
+
   static String _safeMessage(String message) {
     if (RegExp(
-      r'\b(query|content|document|prompt|file(?:path|name)?)\b|'
-      r'(?:[A-Za-z]:[\\/]|\\\\|/(?:Users|home)[\\/])',
-      caseSensitive: false,
+      r'(?:[A-Za-z]:[\\/]|\\\\|(?<![A-Za-z0-9:])/)',
     ).hasMatch(message)) {
       return 'Crash recorded';
     }
@@ -130,18 +137,23 @@ class LoggingService {
       '[redacted-credential]',
     );
     safe = safe.replaceAll(
-      RegExp(r'\b(?:hf[_-]|sk-)[A-Za-z0-9_-]{8,}\b', caseSensitive: false),
+      RegExp(r'\bhf_[A-Za-z0-9][A-Za-z0-9._-]*\b'),
       '[redacted-token]',
     );
     safe = safe.replaceAll(
       RegExp(r'https?://[^\s)]+', caseSensitive: false),
       '[redacted-url]',
     );
+    safe = safe.replaceAll(
+      RegExp(r'[A-Za-z]:[\\/][^\s\n,;)]*'),
+      '[redacted-path]',
+    );
+    safe = safe.replaceAll(
+      RegExp(r'\\\\[^\s\n,;)]*'),
+      '[redacted-path]',
+    );
     return safe.replaceAll(
-      RegExp(
-        r'(?:[A-Z]:[\\/]|\\\\|/(?:Users|home|private|tmp|var|data|storage|sdcard|mnt|opt|usr|etc|root|workspace)(?:[\\/]|$))[^\s\n,;)]*',
-        caseSensitive: false,
-      ),
+      RegExp(r'(?<![A-Za-z0-9:])/[^\s\n,;)]*'),
       '[redacted-path]',
     );
   }

@@ -188,6 +188,30 @@ void main() {
     expect(find.text('LINUX'), findsOneWidget);
   });
 
+  testWidgets('renders a localized settings action error', (tester) async {
+    when(() => modelService.downloadModel('inference-a')).thenThrow(
+      StateError('download failed'),
+    );
+    final viewModel = SettingsViewModel(
+      modelService: modelService,
+      ragSettings: ragSettings,
+      navigationService: navigationService,
+      deviceService: FakeDeviceCapabilityService(
+        const DeviceCapabilities(
+          totalRamMB: 2048,
+          availableStorageMB: 2048,
+          hasGpu: false,
+          platform: 'android',
+        ),
+      ),
+    );
+
+    await viewModel.downloadModel('inference-a');
+    await pumpView(tester, viewModel: viewModel, callback: (_) {});
+
+    expect(find.text('Some settings could not be saved.'), findsOneWidget);
+  });
+
   testWidgets(
     'renders active embedding models and delegates embedding switch',
     (tester) async {
@@ -217,7 +241,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Embedding Model'), findsOneWidget);
+      expect(find.text('Active Embedding Model'), findsOneWidget);
       expect(find.text('Embedding A'), findsWidgets);
       expect(find.text('Embedding B'), findsWidgets);
       expect(find.text('ACTIVE'), findsAtLeastNWidgets(2));
@@ -235,7 +259,9 @@ void main() {
     models[1]
       ..status = ModelStatus.downloading
       ..progress = 0.5;
-    models[2].status = ModelStatus.error;
+    models[2]
+      ..status = ModelStatus.error
+      ..errorMessage = 'Model activation failed';
 
     final viewModel = SettingsViewModel(
       modelService: modelService,
@@ -257,6 +283,7 @@ void main() {
     expect(find.byIcon(Icons.downloading_rounded), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
     expect(find.byIcon(Icons.refresh_rounded), findsOneWidget);
+    expect(find.text('Model activation failed'), findsOneWidget);
     expect(find.byIcon(Icons.download_rounded), findsOneWidget);
 
     await tester.scrollUntilVisible(find.byIcon(Icons.refresh_rounded), 300);
@@ -284,6 +311,7 @@ void main() {
       when(
         () => modelService.downloadedEmbeddingModels,
       ).thenReturn([models[2]]);
+      when(() => ragSettings.maxTokens).thenReturn(null);
 
       final viewModel = SettingsViewModel(
         modelService: modelService,

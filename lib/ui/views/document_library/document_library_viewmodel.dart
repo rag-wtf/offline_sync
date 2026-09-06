@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/l10n/gen/app_localizations.dart';
+import 'package:offline_sync/l10n/gen/app_localizations_en.dart';
 import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/document_management_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
@@ -46,13 +47,15 @@ class DocumentLibraryViewModel extends BaseViewModel {
       document.needsReindex(_settingsService.activeEmbeddingModelId);
 
   bool canReindex(Document document) =>
-      _documentService.hasSourceForReindex(document) == true;
+      _documentService.hasSourceForReindex(document);
 
   AppLocalizations? get _l10n {
     final context = StackedService.navigatorKey?.currentContext;
     if (context == null) return null;
     return AppLocalizations.of(context); // coverage:ignore-line
   }
+
+  AppLocalizations get _localizations => _l10n ?? AppLocalizationsEn();
 
   @visibleForTesting
   static Future<List<PlatformFile>> Function({
@@ -88,10 +91,10 @@ class DocumentLibraryViewModel extends BaseViewModel {
         await _refreshDocuments();
         if (event.stage == 'error') {
           await _dialogService.showDialog(
-            title: _l10n?.ingestionErrorTitle ?? 'Ingestion Error',
-            description:
-                _l10n?.failedToProcessDocument(event.documentTitle) ??
-                'Failed to process ${event.documentTitle}.',
+            title: _localizations.ingestionErrorTitle,
+            description: _localizations.failedToProcessDocument(
+              event.documentTitle,
+            ),
           );
         }
       } else {
@@ -119,10 +122,11 @@ class DocumentLibraryViewModel extends BaseViewModel {
           await _documentService.addDocumentFromPlatformFile(file);
         } on Object catch (_) {
           await _dialogService.showDialog(
-            title: _l10n?.errorTitle ?? 'Error',
-            description:
-                _l10n?.failedToProcessDocument(file.name) ??
-                'Failed to add ${file.name}.',
+            title: _localizations.errorTitle,
+            description: _localizations.failedToAddDocument(
+              file.name,
+              'unknown error',
+            ),
           );
         }
       }
@@ -133,12 +137,9 @@ class DocumentLibraryViewModel extends BaseViewModel {
 
   Future<bool> deleteDocument(Document doc) async {
     final response = await _dialogService.showConfirmationDialog(
-      title: _l10n?.deleteDocumentTitle ?? 'Delete Document?',
-      description:
-          _l10n?.deleteDocumentDescription(doc.title) ??
-          'Are you sure you want to delete "${doc.title}"? '
-              'This will remove all associated knowledge chunks.',
-      confirmationTitle: _l10n?.deleteAction ?? 'Delete',
+      title: _localizations.deleteDocumentTitle,
+      description: _localizations.deleteDocumentDescription(doc.title),
+      confirmationTitle: _localizations.deleteAction,
     );
 
     final confirmed = response?.confirmed ?? false;
@@ -167,10 +168,8 @@ class DocumentLibraryViewModel extends BaseViewModel {
     try {
       if (!canReindex(document)) {
         await _dialogService.showDialog(
-          title: _l10n?.errorTitle ?? 'Error',
-          description:
-              _l10n?.reindexUnavailable ??
-              'This document has no available source bytes or file to re-index.',
+          title: _localizations.errorTitle,
+          description: _localizations.reindexUnavailable,
         );
         return false;
       }
@@ -179,10 +178,8 @@ class DocumentLibraryViewModel extends BaseViewModel {
       return true;
     } on Object catch (_) {
       await _dialogService.showDialog(
-        title: _l10n?.errorTitle ?? 'Error',
-        description:
-            _l10n?.failedToProcessDocument(document.title) ??
-            'Failed to re-index ${document.title}.',
+        title: _localizations.errorTitle,
+        description: _localizations.failedToProcessDocument(document.title),
       );
       return false;
     } finally {
@@ -196,9 +193,8 @@ class DocumentLibraryViewModel extends BaseViewModel {
       await _refreshDocuments();
     } on Object catch (_) {
       await _dialogService.showDialog(
-        title: _l10n?.errorTitle ?? 'Error',
-        description:
-            _l10n?.renameDocumentError ?? 'Unable to rename this document.',
+        title: _localizations.errorTitle,
+        description: _localizations.renameDocumentError,
       );
     }
   }

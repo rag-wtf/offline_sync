@@ -3,10 +3,13 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
+import 'package:offline_sync/l10n/gen/app_localizations.dart';
+import 'package:offline_sync/l10n/gen/app_localizations_en.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/download_policy_service.dart';
 import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/logging_service.dart';
+import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
@@ -14,6 +17,28 @@ import 'package:offline_sync/ui/setup_dialog_ui.dart';
 import 'package:offline_sync/utils/download_failure.dart';
 import 'package:stacked/stacked.dart';
 import 'package:stacked_services/stacked_services.dart';
+
+enum StartupStatus {
+  downloading,
+  downloadError,
+  finalizing,
+  authenticationRequired,
+  detectingCapabilities,
+  selectingModels,
+  retrying,
+}
+
+void log(String message, {String? name}) {
+  final safeMessage = LoggingService.redact(message);
+  final isFailure = RegExp(
+    'error|exception|failed|failure',
+    caseSensitive: false,
+  ).hasMatch(safeMessage);
+  LoggingService.debug(
+    isFailure ? 'Startup operation failed' : safeMessage,
+    name: name,
+  );
+}
 
 class StartupViewModel extends BaseViewModel {
   StartupViewModel({
@@ -43,10 +68,61 @@ class StartupViewModel extends BaseViewModel {
   final DownloadConsentPrompter? _downloadConsentPrompter;
   final RagSettingsService? _ragSettingsService;
 
+  AppLocalizations get _localizations {
+    try {
+      final context = StackedService.navigatorKey?.currentContext;
+      return context == null
+          ? AppLocalizationsEn()
+          : AppLocalizations.of(context);
+    } on Object catch (_) {
+      return AppLocalizationsEn();
+    }
+  }
+
   StreamSubscription<List<ModelInfo>>? _subscription;
 
   String? _statusMessage;
   String? get statusMessage => _statusMessage;
+  StartupStatus? _status;
+  String? _statusModel;
+  int? _statusProgress;
+
+  String? localizedStatusMessage(
+    AppLocalizations l10n,
+  ) {
+    switch (_status) {
+      case StartupStatus.downloading:
+        return _statusModel == null || _statusProgress == null
+            ? l10n.initializingModels
+            : l10n.downloadingModel(_statusModel!, _statusProgress!);
+      case StartupStatus.downloadError:
+        return l10n.downloadErrorStatus;
+      case StartupStatus.finalizing:
+        return l10n.finalizingInitialization;
+      case StartupStatus.authenticationRequired:
+        return l10n.authenticationRequiredStatus;
+      case StartupStatus.detectingCapabilities:
+        return l10n.detectingCapabilities;
+      case StartupStatus.selectingModels:
+        return l10n.selectingModels;
+      case StartupStatus.retrying:
+        return l10n.retryingStatus;
+      case null:
+        return null;
+    }
+  }
+
+  void _setStatus(
+    StartupStatus status, {
+    String? model,
+    int? progress,
+    String? legacyMessage,
+  }) {
+    _status = status;
+    _statusModel = model;
+    _statusProgress = progress;
+    _statusMessage = legacyMessage;
+  }
 
   bool _needsToken = false;
   bool get needsToken => _needsToken;
@@ -84,7 +160,12 @@ class StartupViewModel extends BaseViewModel {
             '(raw: ${m.progress})',
             name: 'StartupViewModel',
           );
-          _statusMessage = 'Downloading ${m.name}: $progress%';
+          _setStatus(
+            StartupStatus.downloading,
+            model: m.name,
+            progress: (m.progress * 100).round(),
+            legacyMessage: 'Downloading ${m.name}: $progress%',
+          );
           notifyListeners();
         } else {
           final error = models.where((m) => m.status == ModelStatus.error);
@@ -95,11 +176,17 @@ class StartupViewModel extends BaseViewModel {
             if (failedAuthModel != null) {
               _setAuthError(failedAuthModel);
             } else {
-              _statusMessage = 'Error downloading models.';
-              setError('Check internet connection or storage.');
+              _setStatus(
+                StartupStatus.downloadError,
+                legacyMessage: 'Error downloading models.',
+              );
+              setError(_localizations.connectionOrStorageError);
             }
           } else {
-            _statusMessage = 'Finalizing initialization...';
+            _setStatus(
+              StartupStatus.finalizing,
+              legacyMessage: 'Finalizing initialization...',
+            );
             notifyListeners();
           }
         }
@@ -107,8 +194,11 @@ class StartupViewModel extends BaseViewModel {
       onError: (Object e) {
         if (e is AuthenticationRequiredException) {
           _needsToken = true;
-          _statusMessage = 'Authentication Required';
-          setError(e.message);
+          _setStatus(
+            StartupStatus.authenticationRequired,
+            legacyMessage: 'Authentication Required',
+          );
+          _setSafeError(e.message);
         } else if (isGatedAccessError(e)) {
           final failedAuthModel = _modelService.models
               .where(_isAuthError)
@@ -116,17 +206,23 @@ class StartupViewModel extends BaseViewModel {
           final repo = failedAuthModel?.repoPage ?? 'https://huggingface.co';
           final description = describeDownloadFailure(e, repoPage: repo);
           _needsToken = true;
-          _statusMessage = 'Authentication Required';
-          setError(description);
+          _setStatus(
+            StartupStatus.authenticationRequired,
+            legacyMessage: 'Authentication Required',
+          );
+          _setSafeError(description);
         } else {
-          setError(e.toString());
+          _setSafeError(e);
         }
       },
     );
 
     try {
       // 1. Detect device capabilities
-      _statusMessage = 'Detecting device capabilities...';
+      _setStatus(
+        StartupStatus.detectingCapabilities,
+        legacyMessage: 'Detecting device capabilities...',
+      );
       notifyListeners();
       _capabilities = await _deviceService.getCapabilities();
       log('Device capabilities: $_capabilities');
@@ -136,6 +232,9 @@ class StartupViewModel extends BaseViewModel {
         _isUnsupportedDevice = true;
         final message = _recommendationService.getUnsupportedDeviceMessage(
           _capabilities!,
+          intro: _localizations.unsupportedDeviceIntro,
+          ramMessage: _localizations.unsupportedDeviceRam,
+          storageMessage: _localizations.unsupportedDeviceStorage,
         );
         setError(message);
         // For now, continue with smallest models anyway
@@ -143,7 +242,10 @@ class StartupViewModel extends BaseViewModel {
       }
 
       // 3. Get recommended models
-      _statusMessage = 'Selecting optimal models...';
+      _setStatus(
+        StartupStatus.selectingModels,
+        legacyMessage: 'Selecting optimal models...',
+      );
       notifyListeners();
       var recommended = _recommendationService.getRecommendedModels(
         _capabilities!,
@@ -180,13 +282,13 @@ class StartupViewModel extends BaseViewModel {
           'Recommended models not found in model service',
           name: 'StartupViewModel',
         );
-        setError('Recommended models not available.');
+        setError(_localizations.recommendedModelsUnavailable);
         return;
       }
 
       if (inferenceModel.status != ModelStatus.downloaded ||
           embeddingModel.status != ModelStatus.downloaded) {
-        final modelsToDownload = [
+        var modelsToDownload = <ModelDefinition>[
           if (inferenceModel.status != ModelStatus.downloaded)
             recommended.inferenceModel,
           if (embeddingModel.status != ModelStatus.downloaded)
@@ -227,9 +329,15 @@ class StartupViewModel extends BaseViewModel {
                   .where((m) => m.id == recommended.embeddingModel.id)
                   .firstOrNull;
               if (inferenceModel == null || embeddingModel == null) {
-                setError('Recommended models not available.');
+                setError(_localizations.recommendedModelsUnavailable);
                 return;
               }
+              modelsToDownload = [
+                if (inferenceModel.status != ModelStatus.downloaded)
+                  recommended.inferenceModel,
+                if (embeddingModel.status != ModelStatus.downloaded)
+                  recommended.embeddingModel,
+              ];
             }
           }
         }
@@ -274,7 +382,7 @@ class StartupViewModel extends BaseViewModel {
           _setAuthError(failedAuthModel);
           // coverage:ignore-end
         } else if (!hasError) {
-          setError('Failed to download models. Please retry.');
+          setError(_localizations.modelDownloadFailed);
         }
         return;
       }
@@ -288,7 +396,7 @@ class StartupViewModel extends BaseViewModel {
         'Exception in runStartupLogic: ${e.runtimeType}',
         name: 'StartupViewModel',
       );
-      setError(e.toString());
+      _setSafeError(e);
     }
   }
 
@@ -339,7 +447,7 @@ class StartupViewModel extends BaseViewModel {
     setError(null);
     _downloadPolicyReason = null;
     _needsToken = false;
-    _statusMessage = 'Retrying...';
+    _setStatus(StartupStatus.retrying, legacyMessage: 'Retrying...');
     notifyListeners();
 
     _modelService.resetErroredModels();
@@ -369,10 +477,19 @@ class StartupViewModel extends BaseViewModel {
 
   void _setAuthError(ModelInfo model) {
     _needsToken = true;
-    _statusMessage = 'Authentication Required';
-    setError(
-      model.errorMessage ?? 'Missing or invalid Hugging Face Token.',
+    _setStatus(
+      StartupStatus.authenticationRequired,
+      legacyMessage: 'Authentication Required',
     );
+    setError(
+      LoggingService.redact(
+        model.errorMessage ?? _localizations.missingHuggingFaceToken,
+      ),
+    );
+  }
+
+  void _setSafeError(Object error) {
+    setError(LoggingService.redact(error.toString()));
   }
 
   String? get erroredModelRepoPage => _modelService.models

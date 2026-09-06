@@ -87,6 +87,8 @@ var _inferenceModelFallbackRegistered = false;
 
 class MockEmbeddingService extends Mock implements EmbeddingService {}
 
+class MockEmbeddingModel extends Mock implements EmbeddingModel {}
+
 void registerTestHelpers() {
   _removeRegistrationIfExists<RerankingService>();
   _removeRegistrationIfExists<EmbeddingService>();
@@ -339,6 +341,19 @@ MockInferenceModelProvider getAndRegisterMockInferenceModelProvider() {
               as Future<Null> Function(InferenceChat),
     );
   });
+  when(
+    () => service.runSerializedModelManagement<void>(any()),
+  ).thenAnswer((invocation) {
+    return (invocation.positionalArguments.first as Future<void> Function())();
+  });
+  when(
+    () => service.runSerializedModelManagement<bool>(any()),
+  ).thenAnswer((invocation) {
+    return (invocation.positionalArguments.first as Future<bool> Function())();
+  });
+  when(service.clearCacheAndWaitInManagement).thenAnswer(
+    (_) => service.clearCacheAndWait(),
+  );
   locator.registerSingleton<InferenceModelProvider>(service);
   return service;
 }
@@ -360,6 +375,10 @@ MockRerankingService getAndRegisterMockRerankingService() {
 MockEmbeddingService getAndRegisterMockEmbeddingService() {
   _removeRegistrationIfExists<EmbeddingService>();
   final service = MockEmbeddingService();
+  final model = MockEmbeddingModel();
+  when(service.pinActiveModel).thenAnswer(
+    (_) async => PinnedEmbeddingModel(id: 'gecko-64', model: model),
+  );
   locator.registerSingleton<EmbeddingService>(service);
   return service;
 }

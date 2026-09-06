@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/l10n/gen/app_localizations.dart';
+import 'package:offline_sync/l10n/gen/app_localizations_en.dart';
 import 'package:offline_sync/services/auth_token_service.dart';
 import 'package:offline_sync/services/chat_repository.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
@@ -28,7 +29,7 @@ class SettingsViewModel extends BaseViewModel {
     DocumentManagementService? documentService,
     Future<void> Function(String token)? saveTokenAction,
     Future<void> Function()? clearTokenAction,
-    Future<bool> Function()? clearChatHistoryAction,
+    Future<void> Function()? clearChatHistoryAction,
     Future<List<String>> Function()? getCrashLogsAction,
     Future<void> Function()? clearCrashLogsAction,
   }) : _modelService = modelService ?? locator<ModelManagementService>(),
@@ -59,7 +60,7 @@ class SettingsViewModel extends BaseViewModel {
   final DocumentManagementService? _documentService;
   final Future<void> Function(String token)? _saveTokenAction;
   final Future<void> Function()? _clearTokenAction;
-  final Future<bool> Function()? _clearChatHistoryAction;
+  final Future<void> Function()? _clearChatHistoryAction;
   final Future<List<String>> Function()? _getCrashLogsAction;
   final Future<void> Function()? _clearCrashLogsAction;
 
@@ -100,6 +101,8 @@ class SettingsViewModel extends BaseViewModel {
       return null;
     }
   }
+
+  AppLocalizations get _localizations => _l10n ?? AppLocalizationsEn();
 
   List<ModelInfo> get models => _modelService.models;
 
@@ -173,10 +176,12 @@ class SettingsViewModel extends BaseViewModel {
   void setup() {
     _modelStatusSubscription = _modelService.modelStatusStream.listen(
       (_) {
+        if (disposed) return;
         _hasModelStatusError = false;
         notifyListeners();
       },
       onError: (Object _, StackTrace _) {
+        if (disposed) return;
         _hasModelStatusError = true;
         notifyListeners();
       },
@@ -191,11 +196,10 @@ class SettingsViewModel extends BaseViewModel {
   Future<void> _loadDeviceCapabilities() async {
     try {
       _capabilities = await _deviceService.getCapabilities();
+      if (disposed) return;
     } on Object catch (_) {
       if (disposed) return;
-      _actionError =
-          _l10n?.settingsSaveError ??
-          'Unable to load device information. Please try again.';
+      _actionError = _localizations.settingsSaveError;
     }
     if (!disposed) notifyListeners();
   }
@@ -203,11 +207,10 @@ class SettingsViewModel extends BaseViewModel {
   Future<void> _loadTokenState() async {
     try {
       _hasToken = await AuthTokenService.hasToken();
+      if (disposed) return;
     } on Object catch (_) {
       if (disposed) return;
-      _actionError =
-          _l10n?.tokenStatusError ??
-          'Unable to read token status. Please try again.';
+      _actionError = _localizations.tokenStatusError;
     }
     if (!disposed) notifyListeners();
   }
@@ -216,6 +219,7 @@ class SettingsViewModel extends BaseViewModel {
     try {
       await _modelService.initialize();
     } on Object catch (_) {
+      if (disposed) return;
       _hasModelStatusError = true;
       if (!disposed) notifyListeners();
     }
@@ -228,55 +232,49 @@ class SettingsViewModel extends BaseViewModel {
   }
 
   Future<void> downloadModel(String id) async {
+    if (disposed) return;
     _actionError = null;
     try {
       await _modelService.downloadModel(id);
-      if (disposed) return;
     } on Object catch (_) {
       if (disposed) return;
-      _actionError =
-          _l10n?.settingsSaveError ??
-          'Unable to download this model. Please try again.';
+      _actionError = _localizations.settingsSaveError;
       notifyListeners();
     }
   }
 
   Future<bool> deleteModel(String id) async {
+    if (disposed) return false;
     _actionError = null;
     final model = _modelService.models.where((candidate) => candidate.id == id);
     if (model.isEmpty) return false;
     if (_dialogService != null) {
       final response = await _dialogService.showConfirmationDialog(
-        title: _l10n?.deleteModelTitle ?? 'Delete model?',
-        description:
-            _l10n?.deleteModelDescription(model.first.name) ??
-            'Remove ${model.first.name} and its local files?',
-        confirmationTitle: _l10n?.deleteModelAction ?? 'Delete',
+        title: _localizations.deleteModelTitle,
+        description: _localizations.deleteModelDescription(model.first.name),
+        confirmationTitle: _localizations.deleteModelAction,
       );
       if (disposed) return false;
       if (response?.confirmed != true) return false;
     }
     try {
       final deleted = await _modelService.deleteModel(id);
-      if (disposed) return deleted;
+      if (disposed) return false;
       if (!deleted) {
-        _actionError =
-            _l10n?.modelDeleteError ??
-            'Unable to delete this model. Please try again.';
+        _actionError = _localizations.modelDeleteError;
       }
       notifyListeners();
       return deleted;
     } on Object catch (_) {
       if (disposed) return false;
-      _actionError =
-          _l10n?.modelDeleteError ??
-          'Unable to delete this model. Please try again.';
+      _actionError = _localizations.modelDeleteError;
       notifyListeners();
       return false;
     }
   }
 
   Future<bool> saveToken(String token) async {
+    if (disposed) return false;
     _actionError = null;
     try {
       await (_saveTokenAction ?? AuthTokenService.saveToken)(token);
@@ -286,15 +284,14 @@ class SettingsViewModel extends BaseViewModel {
       return true;
     } on Object catch (_) {
       if (disposed) return false;
-      _actionError =
-          _l10n?.tokenSaveError ??
-          'Unable to save the token. Please try again.';
+      _actionError = _localizations.tokenSaveError;
       notifyListeners();
       return false;
     }
   }
 
   Future<void> clearToken() async {
+    if (disposed) return;
     _actionError = null;
     try {
       await (_clearTokenAction ?? AuthTokenService.clearToken)();
@@ -302,87 +299,77 @@ class SettingsViewModel extends BaseViewModel {
       _hasToken = false;
     } on Object catch (_) {
       if (disposed) return;
-      _actionError =
-          _l10n?.tokenClearError ??
-          'Unable to clear the token. Please try again.';
+      _actionError = _localizations.tokenClearError;
     }
-    _notifyIfMounted();
+    _notifyIfAlive();
   }
 
   Future<bool> clearChatHistory() async {
+    if (disposed) return false;
     _actionError = null;
     if (_dialogService != null) {
       final response = await _dialogService.showConfirmationDialog(
-        title: _l10n?.clearChatHistoryTitle ?? 'Clear chat history?',
-        description:
-            _l10n?.clearChatHistoryDescription ??
-            'Delete all locally saved conversations?',
-        confirmationTitle: _l10n?.clearAction ?? 'Clear',
+        title: _localizations.clearChatHistoryTitle,
+        description: _localizations.clearChatHistoryDescription,
+        confirmationTitle: _localizations.clearAction,
       );
-      if (disposed || response?.confirmed != true) return false;
+      if (disposed) return false;
+      if (response?.confirmed != true) return false;
     }
     try {
-      final clearAction =
-          _clearChatHistoryAction ??
-          () async {
-            await locator<ChatRepository>().clearHistory();
-            return true;
-          };
-      final cleared = await clearAction();
-      if (disposed) return cleared;
-      if (!cleared) return false;
+      await (_clearChatHistoryAction ??
+          locator<ChatRepository>().clearHistory)();
+      if (disposed) return false;
     } on Object catch (_) {
       if (disposed) return false;
-      _actionError =
-          _l10n?.chatHistoryClearError ??
-          'Unable to clear chat history. Please try again.';
+      _actionError = _localizations.chatHistoryClearError;
+      _notifyIfAlive();
+      return false;
     }
-    notifyListeners();
-    return _actionError == null;
+    _notifyIfAlive();
+    return true;
   }
 
   Future<void> loadCrashLogs() async {
+    if (disposed) return;
     _isLoadingCrashLogs = true;
     _actionError = null;
-    if (!disposed) notifyListeners();
+    _notifyIfAlive();
     try {
-      _crashLogs = await (_getCrashLogsAction ?? LoggingService.getCrashLogs)();
+      final logs = await (_getCrashLogsAction ?? LoggingService.getCrashLogs)();
       if (disposed) return;
+      _crashLogs = logs;
     } on Object catch (_) {
       if (disposed) return;
-      _actionError =
-          _l10n?.crashLogsLoadError ??
-          'Unable to load crash logs. Please try again.';
+      _actionError = _localizations.crashLogsLoadError;
     } finally {
-      _isLoadingCrashLogs = false;
-      if (!disposed) notifyListeners();
+      if (!disposed) {
+        _isLoadingCrashLogs = false;
+        _notifyIfAlive();
+      }
     }
   }
 
-  Future<bool> clearCrashLogs() async {
+  Future<void> clearCrashLogs() async {
+    if (disposed) return;
     _actionError = null;
     if (_dialogService != null) {
       final response = await _dialogService.showConfirmationDialog(
-        title: _l10n?.clearCrashLogsTitle ?? 'Clear crash logs?',
-        description:
-            _l10n?.clearCrashLogsDescription ??
-            'Delete all locally saved crash diagnostics?',
-        confirmationTitle: _l10n?.clearAction ?? 'Clear',
+        title: _localizations.clearCrashLogsTitle,
+        description: _localizations.clearCrashLogsDescription,
+        confirmationTitle: _localizations.clearAction,
       );
-      if (disposed || response?.confirmed != true) return false;
+      if (disposed || response?.confirmed != true) return;
     }
     try {
       await (_clearCrashLogsAction ?? LoggingService.clearCrashLogs)();
-      if (disposed) return true;
+      if (disposed) return;
       _crashLogs = [];
     } on Object catch (_) {
-      if (disposed) return false;
-      _actionError =
-          _l10n?.crashLogsClearError ??
-          'Unable to clear crash logs. Please try again.';
+      if (disposed) return;
+      _actionError = _localizations.crashLogsClearError;
     }
-    notifyListeners();
-    return _actionError == null;
+    _notifyIfAlive();
   }
 
   Future<void> enterToken() async {
@@ -398,41 +385,39 @@ class SettingsViewModel extends BaseViewModel {
       await _loadTokenState();
     } on Object catch (_) {
       if (disposed) return;
-      _actionError =
-          _l10n?.tokenSaveError ??
-          'Unable to open token editor. Please try again.';
+      _actionError = _localizations.tokenSaveError;
       notifyListeners();
     }
   }
 
   Future<void> exportCrashLogs() async {
+    if (disposed) return;
     _actionError = null;
     try {
       await Clipboard.setData(ClipboardData(text: _crashLogs.join('\n')));
-      if (disposed) return;
     } on Object catch (_) {
-      _actionError =
-          _l10n?.diagnosticsExportError ??
-          'Unable to copy diagnostics. Please try again.';
+      if (disposed) return;
+      _actionError = _localizations.diagnosticsExportError;
       notifyListeners();
     }
   }
 
   // Model switching methods
   Future<void> switchInferenceModel(String modelId) async {
+    if (disposed) return;
     _actionError = null;
     try {
       await _modelService.switchInferenceModel(modelId);
       if (disposed) return;
     } on Object catch (_) {
-      _actionError =
-          _l10n?.settingsSaveError ??
-          'Unable to save settings. Please try again.';
+      if (disposed) return;
+      _actionError = _localizations.settingsSaveError;
     }
-    notifyListeners();
+    _notifyIfAlive();
   }
 
   Future<void> switchEmbeddingModel(String modelId) async {
+    if (disposed) return;
     _actionError = null;
     final documentService = _documentService;
     if (documentService != null &&
@@ -447,20 +432,17 @@ class SettingsViewModel extends BaseViewModel {
             .length;
         if (count > 0 && _dialogService != null) {
           final response = await _dialogService.showConfirmationDialog(
-            title: _l10n?.embeddingSwitchTitle ?? 'Change embedding model?',
-            description:
-                _l10n?.embeddingSwitchDescription(count) ??
-                '$count document(s) will need to be re-indexed.',
-            confirmationTitle: _l10n?.continueAction ?? 'Continue',
-            cancelTitle: _l10n?.cancelAction ?? 'Cancel',
+            title: _localizations.embeddingSwitchTitle,
+            description: _localizations.embeddingSwitchDescription(count),
+            confirmationTitle: _localizations.continueAction,
+            cancelTitle: _localizations.cancelAction,
           );
-          if (disposed || !(response?.confirmed ?? false)) return;
+          if (disposed) return;
+          if (!(response?.confirmed ?? false)) return;
         }
       } on Object catch (_) {
         if (disposed) return;
-        _actionError =
-            _l10n?.embeddingStatusCheckError ??
-            'Unable to check document index status.';
+        _actionError = _localizations.embeddingStatusCheckError;
         notifyListeners();
         return;
       }
@@ -470,37 +452,38 @@ class SettingsViewModel extends BaseViewModel {
       if (disposed) return;
     } on Object catch (_) {
       if (disposed) return;
-      _actionError =
-          _l10n?.settingsSaveError ??
-          'Unable to save settings. Please try again.';
+      _actionError = _localizations.settingsSaveError;
     }
-    notifyListeners();
+    _notifyIfAlive();
   }
 
   // RAG Settings methods
   // Positional bool required by SwitchListTile.onChanged callback signature
   // ignore: avoid_positional_boolean_parameters
   Future<void> toggleQueryExpansion(bool value) async {
+    if (disposed) return;
     await _persist(
       () => _ragSettings.setQueryExpansionEnabled(value: value),
     );
-    _notifyIfMounted();
+    _notifyIfAlive();
   }
 
   // Positional bool required by SwitchListTile.onChanged callback signature
   // ignore: avoid_positional_boolean_parameters
   Future<void> toggleReranking(bool value) async {
+    if (disposed) return;
     await _persist(() => _ragSettings.setRerankingEnabled(value: value));
-    _notifyIfMounted();
+    _notifyIfAlive();
   }
 
   // Positional bool required by SwitchListTile.onChanged callback signature
   // ignore: avoid_positional_boolean_parameters
   Future<void> toggleContextualRetrieval(bool value) async {
+    if (disposed) return;
     await _persist(
       () => _ragSettings.setContextualRetrievalEnabled(value: value),
     );
-    _notifyIfMounted();
+    _notifyIfAlive();
   }
 
   void onChunkOverlapChanged(double value) {
@@ -510,13 +493,14 @@ class SettingsViewModel extends BaseViewModel {
   }
 
   Future<void> onChunkOverlapChangeEnd(double value) async {
+    if (disposed) return;
     final dragToken = _chunkOverlapDragToken;
     await _persist(() => _ragSettings.setChunkOverlapPercent(value / 100));
     if (disposed) return;
     if (_chunkOverlapDragToken == dragToken) {
       _pendingChunkOverlap = null;
     }
-    _notifyIfMounted();
+    _notifyIfAlive();
   }
 
   void onSemanticWeightChanged(double value) {
@@ -526,13 +510,14 @@ class SettingsViewModel extends BaseViewModel {
   }
 
   Future<void> onSemanticWeightChangeEnd(double value) async {
+    if (disposed) return;
     final dragToken = _semanticWeightDragToken;
     await _persist(() => _ragSettings.setSemanticWeight(value));
     if (disposed) return;
     if (_semanticWeightDragToken == dragToken) {
       _pendingSemanticWeight = null;
     }
-    _notifyIfMounted();
+    _notifyIfAlive();
   }
 
   void onRerankTopKChanged(double value) {
@@ -542,13 +527,14 @@ class SettingsViewModel extends BaseViewModel {
   }
 
   Future<void> onRerankTopKChangeEnd(double value) async {
+    if (disposed) return;
     final dragToken = _rerankTopKDragToken;
     await _persist(() => _ragSettings.setRerankTopK(value.round()));
     if (disposed) return;
     if (_rerankTopKDragToken == dragToken) {
       _pendingRerankTopK = null;
     }
-    _notifyIfMounted();
+    _notifyIfAlive();
   }
 
   void onSearchTopKChanged(double value) {
@@ -558,13 +544,14 @@ class SettingsViewModel extends BaseViewModel {
   }
 
   Future<void> onSearchTopKChangeEnd(double value) async {
+    if (disposed) return;
     final dragToken = _searchTopKDragToken;
     await _persist(() => _ragSettings.setSearchTopK(value.round()));
     if (disposed) return;
     if (_searchTopKDragToken == dragToken) {
       _pendingSearchTopK = null;
     }
-    _notifyIfMounted();
+    _notifyIfAlive();
   }
 
   void onMaxHistoryMessagesChanged(double value) {
@@ -574,13 +561,14 @@ class SettingsViewModel extends BaseViewModel {
   }
 
   Future<void> onMaxHistoryMessagesChangeEnd(double value) async {
+    if (disposed) return;
     final dragToken = _maxHistoryMessagesDragToken;
     await _persist(() => _ragSettings.setMaxHistoryMessages(value.round()));
     if (disposed) return;
     if (_maxHistoryMessagesDragToken == dragToken) {
       _pendingMaxHistoryMessages = null;
     }
-    _notifyIfMounted();
+    _notifyIfAlive();
   }
 
   void onMaxTokensChanged(double value) {
@@ -590,6 +578,7 @@ class SettingsViewModel extends BaseViewModel {
   }
 
   Future<void> onMaxTokensChangeEnd(double value) async {
+    if (disposed) return;
     final dragToken = _maxTokensDragToken;
     final intValue = value.round();
     // If it matches model default, clear the override
@@ -602,12 +591,13 @@ class SettingsViewModel extends BaseViewModel {
     if (_maxTokensDragToken == dragToken) {
       _pendingMaxTokens = null;
     }
-    _notifyIfMounted();
+    _notifyIfAlive();
   }
 
   Future<void> setMaxDocumentSizeMB(double value) async {
+    if (disposed) return;
     await _persist(() => _ragSettings.setMaxDocumentSizeMB(value.round()));
-    _notifyIfMounted();
+    _notifyIfAlive();
   }
 
   void onMaxDocumentSizeChanged(double value) {
@@ -617,34 +607,35 @@ class SettingsViewModel extends BaseViewModel {
   }
 
   Future<void> onMaxDocumentSizeChangeEnd(double value) async {
+    if (disposed) return;
     final dragToken = _maxDocumentSizeDragToken;
     await setMaxDocumentSizeMB(value);
     if (disposed) return;
     if (_maxDocumentSizeDragToken == dragToken) {
       _pendingMaxDocumentSize = null;
     }
-    _notifyIfMounted();
+    _notifyIfAlive();
   }
 
   Future<void> _persist(Future<void> Function() action) async {
+    if (disposed) return;
     try {
       await action();
       if (disposed) return;
       _actionError = null;
     } on Object catch (_) {
       if (disposed) return;
-      _actionError =
-          _l10n?.settingsSaveError ??
-          'Unable to save settings. Please try again.';
+      _actionError = _localizations.settingsSaveError;
     }
-    _notifyIfMounted();
-  }
-
-  void _notifyIfMounted() {
-    if (!disposed) notifyListeners();
+    _notifyIfAlive();
   }
 
   Future<void> navigateToDocumentLibrary() async {
+    if (disposed) return;
     await _navigationService.navigateTo<dynamic>(Routes.documentLibraryView);
+  }
+
+  void _notifyIfAlive() {
+    if (!disposed) notifyListeners();
   }
 }

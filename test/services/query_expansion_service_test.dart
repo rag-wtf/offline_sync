@@ -88,6 +88,7 @@ void main() {
             any(),
             limit: any(named: 'limit'),
             documentIds: any(named: 'documentIds'),
+            embeddingModelId: any(named: 'embeddingModelId'),
           ),
         ).thenAnswer(
           (_) async => [
@@ -100,10 +101,18 @@ void main() {
         expect(results.length, 1);
         expect(results[0].id, '1');
         verify(
-          () => mockVectorStore.hybridSearch('v1', embedding, limit: 20),
+          () => mockVectorStore.hybridSearch(
+            'v1',
+            embedding,
+            limit: 20,
+          ),
         ).called(1);
         verify(
-          () => mockVectorStore.hybridSearch('v2', embedding, limit: 20),
+          () => mockVectorStore.hybridSearch(
+            'v2',
+            embedding,
+            limit: 20,
+          ),
         ).called(1);
       });
     });

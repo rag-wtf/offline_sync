@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/services/environment_service.dart';
+import 'package:offline_sync/services/logging_service.dart';
 
 void main() {
   group('EnvironmentServiceTest -', () {
@@ -28,6 +29,12 @@ void main() {
       expect(service.isDevelopment, isFalse);
       expect(service.isStaging, isFalse);
       expect(service.isProduction, isTrue);
+    });
+
+    test('setting a flavor configures the logging context', () {
+      service.flavor = 'production';
+
+      expect(LoggingService.flavor, 'production');
     });
   });
 }

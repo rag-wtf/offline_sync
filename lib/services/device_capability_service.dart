@@ -1,10 +1,22 @@
-import 'dart:developer';
 import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:disk_usage/disk_usage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:offline_sync/services/logging_service.dart';
 import 'package:system_info2/system_info2.dart';
+
+void log(String message, {String? name}) {
+  final safeMessage = LoggingService.redact(message);
+  final isFailure = RegExp(
+    'error|exception|failed|failure',
+    caseSensitive: false,
+  ).hasMatch(safeMessage);
+  LoggingService.debug(
+    isFailure ? 'Device capability operation failed' : safeMessage,
+    name: name,
+  );
+}
 
 /// Device capabilities for model selection
 class DeviceCapabilities {

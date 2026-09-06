@@ -79,11 +79,19 @@ class RAGMetrics {
 }
 
 class RagService {
+  RagService({EmbeddingModelCoordinator? embeddingCoordinator})
+    : _embeddingCoordinator =
+          embeddingCoordinator ??
+          (locator.isRegistered<EmbeddingModelCoordinator>()
+              ? locator<EmbeddingModelCoordinator>()
+              : EmbeddingModelCoordinator());
+
   final EmbeddingService _embeddingService = locator<EmbeddingService>();
   final VectorStore _vectorStore = locator<VectorStore>();
   final InferenceModelProvider _inferenceModelProvider =
       locator<InferenceModelProvider>();
   final RagTokenManager _tokenManager = locator<RagTokenManager>();
+  final EmbeddingModelCoordinator _embeddingCoordinator;
 
   bool _isInitialized = false;
 
@@ -106,106 +114,26 @@ class RagService {
     List<String>? conversationHistory,
     List<String>? documentIds,
   }) async {
-    if (!_isInitialized) throw Exception('RAG Service not initialized');
-
-    LoggingService.info('Performing RAG query');
-    final settings = locator<RagSettingsService>();
-    final stopwatch = Stopwatch()..start();
-
-    // 1. Query Expansion (if enabled)
-    Duration? queryExpansionTime;
-    int? expandedQueryCount;
-    var queryVariants = <String>[query];
-
-    if (settings.queryExpansionEnabled) {
-      final expansionService = locator<QueryExpansionService>();
-      final expansionStart = stopwatch.elapsed;
-      queryVariants = await expansionService.expandQuery(query);
-      queryExpansionTime = stopwatch.elapsed - expansionStart;
-      expandedQueryCount = queryVariants.length;
-    }
-
-    // 2-3. Pin query embedding and vector search to one embedder identity.
-    final embeddingModelId = settings.activeEmbeddingModelId;
-    if (embeddingModelId == null) {
-      throw StateError('No active embedding model is available');
-    }
-    final embeddingStart = stopwatch.elapsed;
-    late Duration embeddingTime;
-    late Duration searchTime;
-    late List<SearchResult> searchResults;
-    await settings.runWithEmbeddingModel(embeddingModelId, () async {
-      final queryEmbedding = await _embeddingService.generateEmbedding(query);
-      embeddingTime = stopwatch.elapsed - embeddingStart;
-      final searchStart = stopwatch.elapsed;
-      if (settings.queryExpansionEnabled && queryVariants.length > 1) {
-        final expansionService = locator<QueryExpansionService>();
-        searchResults = await expansionService.searchWithExpandedQueries(
-          query,
-          queryVariants,
-          limit: settings.rerankingEnabled
-              ? settings.rerankTopK
-              : settings.searchTopK,
-          documentIds: documentIds,
-          embeddingModelId: embeddingModelId,
-        );
-      } else {
-        searchResults = await _vectorStore.hybridSearch(
-          query,
-          queryEmbedding,
-          limit: settings.rerankingEnabled
-              ? settings.rerankTopK
-              : settings.searchTopK,
-          documentIds: documentIds,
-          embeddingModelId: embeddingModelId,
-        );
-      }
-      searchTime = stopwatch.elapsed - searchStart;
-    });
-
-    // 4. Reranking (if enabled)
-    Duration? rerankingTime;
-    if (settings.rerankingEnabled && searchResults.isNotEmpty) {
-      final rerankService = locator<RerankingService>();
-      final rerankStart = stopwatch.elapsed;
-      searchResults = await rerankService.rerank(
-        query,
-        searchResults,
-        topK: settings.rerankTopK,
-      );
-      rerankingTime = stopwatch.elapsed - rerankStart;
-      // Take top searchTopK for generation
-      searchResults = searchResults.take(settings.searchTopK).toList();
-    }
-
-    // Deduplicate search results
-    searchResults = deduplicateResults(searchResults);
-
-    // 5. Generate Response with conversation history and token budget mgmt
-    final response = await _generate(
+    final response = StringBuffer();
+    var sources = <SearchResult>[];
+    RAGMetrics? metrics;
+    await for (final event in askWithRAGStream(
       query,
-      searchResults,
+      includeMetrics: includeMetrics,
       conversationHistory: conversationHistory,
-    );
-    final generationTime = stopwatch.elapsed - searchTime - embeddingTime;
-
-    final duration = stopwatch.elapsed;
-    LoggingService.info('RAG query completed in ${duration.inMilliseconds}ms');
-
+      documentIds: documentIds,
+    )) {
+      if (event is RAGMetadataEvent) {
+        sources = event.sources;
+        metrics = event.metrics;
+      } else if (event is RAGTokenEvent) {
+        response.write(event.token);
+      }
+    }
     return RAGResult(
-      response: response,
-      sources: searchResults,
-      metrics: includeMetrics
-          ? RAGMetrics(
-              embeddingTime: embeddingTime,
-              searchTime: searchTime,
-              generationTime: generationTime,
-              chunksRetrieved: searchResults.length,
-              queryExpansionTime: queryExpansionTime,
-              rerankingTime: rerankingTime,
-              expandedQueryCount: expandedQueryCount,
-            )
-          : null,
+      response: cleanResponse(response.toString()),
+      sources: sources,
+      metrics: metrics,
     );
   }
 
@@ -235,42 +163,14 @@ class RagService {
     }
 
     // 2-3. Pin query embedding and vector search to one embedder identity.
-    final embeddingModelId = settings.activeEmbeddingModelId;
-    if (embeddingModelId == null) {
-      throw StateError('No active embedding model is available');
-    }
-    final embeddingStart = stopwatch.elapsed;
-    late Duration embeddingTime;
-    late Duration searchTime;
-    late List<SearchResult> searchResults;
-    await settings.runWithEmbeddingModel(embeddingModelId, () async {
-      final queryEmbedding = await _embeddingService.generateEmbedding(query);
-      embeddingTime = stopwatch.elapsed - embeddingStart;
-      final searchStart = stopwatch.elapsed;
-      if (settings.queryExpansionEnabled && queryVariants.length > 1) {
-        final expansionService = locator<QueryExpansionService>();
-        searchResults = await expansionService.searchWithExpandedQueries(
-          query,
-          queryVariants,
-          limit: settings.rerankingEnabled
-              ? settings.rerankTopK
-              : settings.searchTopK,
-          documentIds: documentIds,
-          embeddingModelId: embeddingModelId,
-        );
-      } else {
-        searchResults = await _vectorStore.hybridSearch(
-          query,
-          queryEmbedding,
-          limit: settings.rerankingEnabled
-              ? settings.rerankTopK
-              : settings.searchTopK,
-          documentIds: documentIds,
-          embeddingModelId: embeddingModelId,
-        );
-      }
-      searchTime = stopwatch.elapsed - searchStart;
-    });
+    var searchResults = await _retrieveWithPinnedEmbedding(
+      query,
+      queryVariants,
+      settings: settings,
+      documentIds: documentIds,
+    );
+    final embeddingTime = stopwatch.elapsed;
+    final searchTime = stopwatch.elapsed - embeddingTime;
 
     // 4. Reranking (if enabled)
     Duration? rerankingTime;
@@ -319,6 +219,41 @@ class RagService {
     yield RAGCompleteEvent();
   }
 
+  Future<List<SearchResult>> _retrieveWithPinnedEmbedding(
+    String query,
+    List<String> queryVariants, {
+    required RagSettingsService settings,
+    List<String>? documentIds,
+  }) {
+    return _embeddingCoordinator.run(() async {
+      final pinned = await _embeddingService.pinActiveModel();
+      final limit = settings.rerankingEnabled
+          ? settings.rerankTopK
+          : settings.searchTopK;
+      if (settings.queryExpansionEnabled && queryVariants.length > 1) {
+        return locator<QueryExpansionService>().searchWithExpandedQueries(
+          query,
+          queryVariants,
+          limit: limit,
+          documentIds: documentIds,
+          pinnedEmbedder: pinned.model,
+          embeddingModelId: pinned.id,
+        );
+      }
+      final queryEmbedding = await _embeddingService.generateEmbedding(
+        query,
+        model: pinned.model,
+      );
+      return _vectorStore.hybridSearch(
+        query,
+        queryEmbedding,
+        limit: limit,
+        documentIds: documentIds,
+        embeddingModelId: pinned.id,
+      );
+    });
+  }
+
   /// Deduplicates search results by document/chunk ID and normalized content
   static List<SearchResult> deduplicateResults(List<SearchResult> results) {
     final seen = <String>{};
@@ -342,51 +277,6 @@ class RagService {
       cleaned = cleaned.substring(0, match.start).trim();
     }
     return cleaned;
-  }
-
-  Future<String> _generate(
-    String query,
-    List<SearchResult> searchResults, {
-    List<String>? conversationHistory,
-  }) async {
-    final settings = locator<RagSettingsService>();
-    final modelConfig = ModelConfig.activeInferenceModelOrDefault(
-      settings.activeInferenceModelId,
-    );
-    final contextLimit = modelConfig.contextLimit ?? modelConfig.maxTokens;
-    final maxTokens = min(settings.maxTokens ?? contextLimit, contextLimit);
-    final response = StringBuffer();
-    final inferenceModel = await _inferenceModelProvider.getModel();
-    await _inferenceModelProvider.runSerializedChat(
-      inferenceModel,
-      temperature: 0.1,
-      action: (chat) async {
-        await chat.initSession();
-        final prompt = await _buildPrompt(
-          chat: chat,
-          query: query,
-          searchResults: searchResults,
-          conversationHistory: conversationHistory,
-          maxTokens: maxTokens,
-        );
-        final exactPromptTokens = await _countPromptTokens(chat, prompt);
-        LoggingService.debug(
-          'Prompt token count: $exactPromptTokens/$maxTokens',
-        );
-        await chat.addQuery(Message(text: prompt, isUser: true));
-
-        final stream = chat.generateChatResponseAsync().timeout(
-          const Duration(seconds: 30),
-        );
-        await for (final modelResponse in stream) {
-          if (modelResponse is TextResponse) {
-            response.write(modelResponse.token);
-          }
-        }
-      },
-    );
-
-    return cleanResponse(response.toString());
   }
 
   /// Stream tokens from the model as they're generated

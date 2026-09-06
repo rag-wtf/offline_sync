@@ -76,13 +76,17 @@ Variants:''';
     int limit = 10,
     double? semanticWeight,
     List<String>? documentIds,
+    EmbeddingModel? pinnedEmbedder,
     String? embeddingModelId,
   }) async {
     final variantResultsList = <List<SearchResult>>[];
 
     // Search with each variant
     for (final variant in queryVariants) {
-      final embedding = await _embeddingService.generateEmbedding(variant);
+      final embedding = await _embeddingService.generateEmbedding(
+        variant,
+        model: pinnedEmbedder,
+      );
       final results = await _vectorStore.hybridSearch(
         variant,
         embedding,

@@ -9,46 +9,53 @@ import 'package:offline_sync/services/document_parser_service.dart';
 import 'package:offline_sync/services/rag_constants.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
+import 'package:path/path.dart' as path;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 class MockPathProviderPlatform extends PathProviderPlatform {
-  @override
-  Future<String?> getApplicationDocumentsPath() async => '.';
+  MockPathProviderPlatform(this.rootPath);
+
+  final String rootPath;
 
   @override
-  Future<String?> getApplicationSupportPath() async => '.';
+  Future<String?> getApplicationDocumentsPath() async => rootPath;
+
+  @override
+  Future<String?> getApplicationSupportPath() async => rootPath;
+}
+
+Document completeDocument(String id, {String embeddingModelId = 'gecko-64'}) {
+  return Document(
+    id: id,
+    title: id,
+    filePath: '$id.txt',
+    format: DocumentFormat.plainText,
+    chunkCount: 1,
+    totalCharacters: 100,
+    contentHash: '$id-hash',
+    ingestedAt: DateTime(2024),
+    status: IngestionStatus.complete,
+    embeddingModelId: embeddingModelId,
+  );
 }
 
 void main() {
   // No need for open.overrideFor in sqlite3 v3 - uses automatic build hooks
   TestWidgetsFlutterBinding.ensureInitialized();
   late VectorStore vectorStore;
-
-  void insertSearchableDocument(
-    String id, {
-    String embeddingModelId = 'gecko-64',
-    IngestionStatus status = IngestionStatus.complete,
-  }) {
-    vectorStore.insertDocument(
-      Document(
-        id: id,
-        title: id,
-        filePath: '$id.txt',
-        format: DocumentFormat.plainText,
-        chunkCount: 1,
-        totalCharacters: 1,
-        contentHash: '$id-hash',
-        ingestedAt: DateTime(2024),
-        status: status,
-        embeddingModelId: embeddingModelId,
-      ),
-    );
-  }
+  late Directory testDirectory;
+  late String testDbPath;
 
   setUp(() async {
-    PathProviderPlatform.instance = MockPathProviderPlatform();
+    testDirectory = await Directory.systemTemp.createTemp(
+      'offline_sync_vector_store_test_',
+    );
+    testDbPath = path.join(testDirectory.path, 'vectors.db');
+    PathProviderPlatform.instance = MockPathProviderPlatform(
+      testDirectory.path,
+    );
 
     // Mock SharedPreferences for RagSettingsService
     SharedPreferences.setMockInitialValues({
@@ -64,13 +71,13 @@ void main() {
     final ragSettings = locator<RagSettingsService>();
     await ragSettings.initialize();
 
-    final dbFile = File('vectors.db');
+    final dbFile = File(testDbPath);
     if (dbFile.existsSync()) {
       try {
         dbFile.deleteSync();
       } on Object catch (_) {
         try {
-          sqlite3.open('vectors.db')
+          sqlite3.open(testDbPath)
             ..execute('DROP TABLE IF EXISTS vectors')
             ..execute('DROP TABLE IF EXISTS documents')
             ..execute('DROP TABLE IF EXISTS vectors_fts')
@@ -90,7 +97,7 @@ void main() {
   tearDown(() async {
     await vectorStore.close();
 
-    final dbFile = File('vectors.db');
+    final dbFile = File(testDbPath);
     try {
       if (dbFile.existsSync()) {
         dbFile.deleteSync();
@@ -98,9 +105,20 @@ void main() {
     } on Object catch (_) {}
 
     await locator.reset();
+    if (testDirectory.existsSync()) {
+      await testDirectory.delete(recursive: true);
+    }
   });
 
   group('VectorStore Tests', () {
+    test('stores the database in the per-test temporary directory', () {
+      expect(path.isWithin(testDirectory.path, testDbPath), isTrue);
+      expect(
+        File(path.join(Directory.current.path, 'vectors.db')).existsSync(),
+        isFalse,
+      );
+    });
+
     test('SearchResult exposes typed source metadata', () {
       final result = SearchResult(
         id: 'chunk',
@@ -223,14 +241,15 @@ void main() {
     test('insert and retrieve semantic embedding', () async {
       const id = 'test_1';
       const embedding = [0.1, 0.2, 0.3];
-      insertSearchableDocument('doc_1');
 
-      vectorStore.insertEmbedding(
-        id: id,
-        documentId: 'doc_1',
-        content: 'This is a test content',
-        embedding: embedding,
-      );
+      vectorStore
+        ..insertDocument(completeDocument('doc_1'))
+        ..insertEmbedding(
+          id: id,
+          documentId: 'doc_1',
+          content: 'This is a test content',
+          embedding: embedding,
+        );
 
       final results = await vectorStore.hybridSearch(
         'test',
@@ -292,14 +311,80 @@ void main() {
       },
     );
 
-    test('FTS5 search fallback works', () async {
-      insertSearchableDocument('doc_2');
-      vectorStore.insertEmbedding(
-        id: 'fts_1',
-        documentId: 'doc_2',
-        content: 'The quick brown fox jumps over the lazy dog',
-        embedding: [0.0, 0.0, 0.0],
+    test('retrieval excludes orphan and incomplete documents', () async {
+      vectorStore
+        ..insertDocument(
+          Document(
+            id: 'complete-doc',
+            title: 'Complete',
+            filePath: 'complete.txt',
+            format: DocumentFormat.plainText,
+            chunkCount: 1,
+            totalCharacters: 5,
+            contentHash: 'complete-hash',
+            ingestedAt: DateTime(2024),
+            status: IngestionStatus.complete,
+            embeddingModelId: 'gecko-64',
+          ),
+        )
+        ..insertDocument(
+          Document(
+            id: 'processing-doc',
+            title: 'Processing',
+            filePath: 'processing.txt',
+            format: DocumentFormat.plainText,
+            chunkCount: 1,
+            totalCharacters: 5,
+            contentHash: 'processing-hash',
+            ingestedAt: DateTime(2024),
+            status: IngestionStatus.processing,
+            embeddingModelId: 'gecko-64',
+          ),
+        )
+        ..insertEmbedding(
+          id: 'complete-vector',
+          documentId: 'complete-doc',
+          content: 'shared retrieval phrase',
+          embedding: [1, 0],
+          embeddingModelId: 'gecko-64',
+        )
+        ..insertEmbedding(
+          id: 'processing-vector',
+          documentId: 'processing-doc',
+          content: 'shared retrieval phrase',
+          embedding: [1, 0],
+          embeddingModelId: 'gecko-64',
+        )
+        ..insertEmbedding(
+          id: 'orphan-vector',
+          documentId: 'missing-doc',
+          content: 'shared retrieval phrase',
+          embedding: [1, 0],
+          embeddingModelId: 'gecko-64',
+        );
+
+      final results = await vectorStore.hybridSearch(
+        'shared retrieval phrase',
+        [1, 0],
+        semanticWeight: 0,
       );
+
+      expect(results.map((result) => result.id), ['complete-vector']);
+      expect(
+        results.map((result) => result.id),
+        isNot(contains('orphan-vector')),
+      );
+    });
+
+    test('FTS5 search fallback works', () async {
+      vectorStore
+        ..insertDocument(completeDocument('doc_2'))
+        ..insertEmbedding(
+          id: 'fts_1',
+          documentId: 'doc_2',
+          content: 'The quick brown fox jumps over the lazy dog',
+          embedding: [0.0, 0.0, 0.0],
+        );
 
       final results = await vectorStore.hybridSearch(
         'fox jumps',
@@ -313,13 +398,14 @@ void main() {
     });
 
     test('FTS5 preserves punctuation and ordinary operator words', () async {
-      insertSearchableDocument('doc-punctuation');
-      vectorStore.insertEmbedding(
-        id: 'punctuation',
-        documentId: 'doc-punctuation',
-        content: "What's the shipping time? Returns, refunds and shipping.",
-        embedding: [1, 0],
-      );
+      vectorStore
+        ..insertDocument(completeDocument('doc-punctuation'))
+        ..insertEmbedding(
+          id: 'punctuation',
+          documentId: 'doc-punctuation',
+          content: "What's the shipping time? Returns, refunds and shipping.",
+          embedding: [1, 0],
+        );
 
       final results = await vectorStore.hybridSearch(
         "What's the shipping time?",
@@ -332,14 +418,15 @@ void main() {
     });
 
     test('punctuation-only queries still use semantic retrieval', () async {
-      insertSearchableDocument('old-document');
-      insertSearchableDocument('new-document');
-      vectorStore.insertEmbedding(
-        id: 'old-semantic-match',
-        documentId: 'old-document',
-        content: 'A semantic match from an older document',
-        embedding: [1, 0],
-      );
+      vectorStore
+        ..insertDocument(completeDocument('old-document'))
+        ..insertDocument(completeDocument('new-document'))
+        ..insertEmbedding(
+          id: 'old-semantic-match',
+          documentId: 'old-document',
+          content: 'A semantic match from an older document',
+          embedding: [1, 0],
+        );
       for (var i = 0; i < 500; i++) {
         vectorStore.insertEmbedding(
           id: 'new-$i',
@@ -362,9 +449,9 @@ void main() {
     test(
       'search filters semantic and keyword results by document ids',
       () async {
-        insertSearchableDocument('include');
-        insertSearchableDocument('exclude');
         vectorStore
+          ..insertDocument(completeDocument('include'))
+          ..insertDocument(completeDocument('exclude'))
           ..insertEmbedding(
             id: 'included',
             documentId: 'include',
@@ -394,9 +481,9 @@ void main() {
     });
 
     test('falls back to LIKE search when FTS query execution fails', () async {
-      insertSearchableDocument('include-doc');
-      insertSearchableDocument('exclude-doc');
       vectorStore
+        ..insertDocument(completeDocument('include-doc'))
+        ..insertDocument(completeDocument('exclude-doc'))
         ..insertEmbedding(
           id: 'fallback-include',
           documentId: 'include-doc',
@@ -495,17 +582,46 @@ void main() {
         expect(hasUnique, isTrue);
       });
 
+      test('renaming updates the inventory and source metadata atomically', () {
+        final document = Document(
+          id: 'rename-doc',
+          title: 'Old title',
+          filePath: '/tmp/rename.txt',
+          format: DocumentFormat.plainText,
+          chunkCount: 1,
+          totalCharacters: 5,
+          contentHash: 'rename-hash',
+          ingestedAt: DateTime.now(),
+        );
+        vectorStore
+          ..insertDocument(document)
+          ..insertEmbedding(
+            id: 'rename-chunk',
+            documentId: document.id,
+            content: 'hello',
+            embedding: [1, 0],
+            metadata: const {'documentTitle': 'Old title', 'seq': 0},
+          )
+          ..renameDocument(document.id, 'New title');
+
+        expect(vectorStore.getDocument(document.id)!.title, 'New title');
+        expect(
+          vectorStore.getChunksForDocument(document.id).single.metadata,
+          containsPair('documentTitle', 'New title'),
+        );
+      });
+
       test(
         'v2 migration removes duplicate documents and their vectors',
         () async {
           await vectorStore.close();
 
-          final dbFile = File('vectors.db');
+          final dbFile = File(testDbPath);
           if (dbFile.existsSync()) {
             dbFile.deleteSync();
           }
 
-          sqlite3.open('vectors.db')
+          sqlite3.open(testDbPath)
             ..execute('''
             CREATE TABLE vectors (
               id TEXT PRIMARY KEY,
@@ -570,17 +686,17 @@ void main() {
       );
 
       test(
-        'v3 migration assigns legacy vectors to the active embedder',
+        'v3 migration quarantines legacy vectors without an embedder identity',
         () async {
           await vectorStore.close();
           SharedPreferences.setMockInitialValues({
             'active_embedding_model_id': 'gecko-64',
           });
 
-          final dbFile = File('vectors.db');
+          final dbFile = File(testDbPath);
           if (dbFile.existsSync()) dbFile.deleteSync();
 
-          sqlite3.open('vectors.db')
+          sqlite3.open(testDbPath)
             ..execute('''
             CREATE TABLE vectors (
               id TEXT PRIMARY KEY,
@@ -608,13 +724,6 @@ void main() {
             )
           ''')
             ..execute('''
-            INSERT INTO documents (
-              id, title, file_path, format, chunk_count, total_characters,
-              content_hash, ingested_at, status
-            ) VALUES ('doc', 'Legacy', 'legacy.txt', 'plainText', 1, 14,
-              'legacy-hash', 1, 'complete')
-          ''')
-            ..execute('''
             INSERT INTO vectors (
               id, document_id, content, embedding, metadata, created_at
             ) VALUES ('legacy', 'doc', 'legacy content', '[1.0, 0.0]', '{}', 1)
@@ -625,16 +734,13 @@ void main() {
           vectorStore = VectorStore();
           await vectorStore.initialize();
 
-          final row = vectorStore.db!.select(
-            'SELECT embedding_model_id FROM vectors WHERE id = ?',
-            ['legacy'],
-          ).single;
-          expect(row['embedding_model_id'], 'gecko-64');
-          final documentRow = vectorStore.db!.select(
-            'SELECT embedding_model_id FROM documents WHERE id = ?',
-            ['doc'],
-          ).single;
-          expect(documentRow['embedding_model_id'], 'gecko-64');
+          expect(
+            vectorStore.db!.select(
+              'SELECT id FROM vectors WHERE id = ?',
+              ['legacy'],
+            ),
+            isEmpty,
+          );
         },
       );
 
@@ -664,14 +770,14 @@ void main() {
         'v4 migration quarantines base64 embeddings without explicit encoding',
         () async {
           await vectorStore.close();
-          final dbFile = File('vectors.db');
+          final dbFile = File(testDbPath);
           if (dbFile.existsSync()) dbFile.deleteSync();
 
           final float64Bytes = Float64List.fromList([
             1,
             0,
           ]).buffer.asUint8List();
-          sqlite3.open('vectors.db')
+          sqlite3.open(testDbPath)
             ..execute('''
             CREATE TABLE vectors (
               id TEXT PRIMARY KEY,
@@ -698,6 +804,13 @@ void main() {
               contextual_retrieval INTEGER DEFAULT 0,
               error_message TEXT
             )
+          ''')
+            ..execute('''
+            INSERT INTO documents (
+              id, title, file_path, format, chunk_count, total_characters,
+              content_hash, ingested_at, status
+            ) VALUES ('doc', 'Doc', '/doc.txt', 'plainText', 1, 6, 'doc-hash', 1,
+              'complete')
           ''')
             ..execute(
               'INSERT INTO vectors '
@@ -854,10 +967,35 @@ void main() {
           <String, dynamic>{},
         );
       });
-    });
 
-    test('optimizeDatabase completes successfully', () {
-      expect(vectorStore.optimizeDatabase, returnsNormally);
+      test('replaces a document while adopting staged vectors', () {
+        final oldDocument = completeDocument('replace-me');
+        final stagedDocument = completeDocument('staged-document');
+        final replacement = completeDocument('replace-me');
+        vectorStore
+          ..insertDocument(oldDocument)
+          ..insertDocument(stagedDocument)
+          ..insertEmbedding(
+            id: 'staged-vector',
+            documentId: stagedDocument.id,
+            content: 'replacement content',
+            embedding: [1, 0],
+            embeddingModelId: 'gecko-64',
+          )
+          ..replaceDocument(
+            oldDocumentId: oldDocument.id,
+            stagedDocumentId: stagedDocument.id,
+            replacement: replacement,
+          );
+
+        expect(vectorStore.getDocument(oldDocument.id), isNotNull);
+        expect(vectorStore.getDocument(stagedDocument.id), isNotNull);
+        expect(
+          vectorStore.getChunksForDocument(oldDocument.id).single.content,
+          'replacement content',
+        );
+        expect(vectorStore.getChunksForDocument(stagedDocument.id), isEmpty);
+      });
     });
 
     test(
@@ -866,26 +1004,12 @@ void main() {
         final settings = locator<RagSettingsService>();
         await settings.clearActiveEmbeddingModelId();
 
-        expect(
-          await vectorStore.hybridSearch('query', [1, 0]),
-          isEmpty,
-        );
+        expect(await vectorStore.hybridSearch('query', [1, 0]), isEmpty);
       },
     );
 
     test('deleteVectorsForDocument keeps the document inventory record', () {
-      final document = Document(
-        id: 'vectors-only',
-        title: 'Vectors only',
-        filePath: 'vectors-only.txt',
-        format: DocumentFormat.plainText,
-        chunkCount: 1,
-        totalCharacters: 7,
-        contentHash: 'vectors-only-hash',
-        ingestedAt: DateTime(2024),
-        status: IngestionStatus.complete,
-        embeddingModelId: 'gecko-64',
-      );
+      final document = completeDocument('vectors-only');
       vectorStore
         ..insertDocument(document)
         ..insertEmbedding(
@@ -977,8 +1101,8 @@ void main() {
     test(
       'semantic search skips rows with mismatched embedding dimension',
       () async {
-        insertSearchableDocument('d');
         vectorStore
+          ..insertDocument(completeDocument('d'))
           ..insertEmbedding(
             id: 'ok',
             documentId: 'd',

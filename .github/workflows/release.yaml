@@ -5,6 +5,8 @@ concurrency:
   cancel-in-progress: true
 
 on:
+  schedule:
+    - cron: "17 3 * * 1"
   workflow_dispatch:
     inputs:
       platform:
@@ -55,19 +57,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: "stable"
           cache: true
       - name: Install dependencies
         run: flutter pub get
+      - name: Generate localization
+        run: flutter gen-l10n
+      - name: Validate localization keys
+        run: dart run tool/check_arb_unused.dart
       - name: Analyze
         run: flutter analyze
       - name: Test
         run: flutter test
+      - name: Reject template identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          if rg -n -i 'com\.example|com\.offline_sync\.app' \
+            android ios macos linux windows web; then
+            echo "::error::Template application identity remains in a release input."
+            exit 1
+          fi
 
   build-android:
     needs: verify
@@ -77,10 +92,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: "temurin"
           java-version: "17"
@@ -93,12 +108,12 @@ jobs:
       # does not work — the `env` context never sees the runner's ambient
       # environment, so the condition would be empty on hosted runners too.
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
         with:
           packages: "platform-tools build-tools;36.0.0 platforms;android-36"
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: "stable"
@@ -128,6 +143,28 @@ jobs:
           ANDROID_KEYSTORE_ALIAS: ${{ secrets.ANDROID_KEYSTORE_ALIAS }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD }}
+
+      - name: Verify Android application identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=$(find build/app/outputs/flutter-apk \( -name "*-release.apk" -o -name "*-debug.apk" \) -print -quit)
+          if [ -z "$APK" ]; then
+            echo "::error::No APK found for identity verification."
+            exit 1
+          fi
+          SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          AAPT=$(find "$SDK/build-tools" -name aapt -print -quit)
+          if [ -z "$AAPT" ]; then
+            echo "::error::No aapt found under $SDK/build-tools."
+            exit 1
+          fi
+          BADGING=$($AAPT dump badging "$APK")
+          echo "$BADGING" | grep -F "package: name='wtf.rag.offline.sync.offline_sync" >/dev/null
+          if echo "$BADGING" | grep -Eiq "com\.example|com\.offline_sync\.app"; then
+            echo "::error::Template Android identity found in built APK."
+            exit 1
+          fi
 
       - name: Verify APK signature
         if: ${{ github.event.inputs.build_type == 'release' }}
@@ -168,7 +205,7 @@ jobs:
           ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD }}
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: android-${{ env.FLAVOR }}-apk-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/app/outputs/flutter-apk/*.apk
@@ -176,7 +213,7 @@ jobs:
 
       - name: Upload App Bundle artifact
         if: ${{ github.event.inputs.build_type == 'release' }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: android-${{ env.FLAVOR }}-aab-release${{ env.VERSION_SUFFIX }}
           path: build/app/outputs/bundle/${{ env.FLAVOR }}Release/*.aab
@@ -188,10 +225,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: "stable"
@@ -215,7 +252,7 @@ jobs:
           zip -r ../ipa/offline_sync-${{ github.event.inputs.build_type }}-UNSIGNED.ipa Payload
 
       - name: Upload iOS artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ios-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}-UNSIGNED-inspection-only${{ env.VERSION_SUFFIX }}
           path: build/ios/ipa/*.ipa
@@ -227,7 +264,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install Linux dependencies
         run: |
@@ -235,7 +272,7 @@ jobs:
           sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libsqlite3-dev libsecret-1-dev
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: "stable"
@@ -248,7 +285,7 @@ jobs:
         run: flutter build linux --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
 
       - name: Setup Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: "temurin"
           java-version: "21"
@@ -259,8 +296,12 @@ jobs:
           sudo apt-get install -y libfuse2 file
 
           # Download linuxdeploy and plugin
-          wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          wget https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
+          curl --fail --location --retry 3 --output linuxdeploy-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage
+          curl --fail --location --retry 3 --output linuxdeploy-plugin-appimage-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-appimage-x86_64.AppImage
+          echo "c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d  linuxdeploy-x86_64.AppImage" | sha256sum --check --strict
+          echo "992d502a248e14ab185448ddf6f6e7d25558cb84d4623c354c3af350c25fccb3  linuxdeploy-plugin-appimage-x86_64.AppImage" | sha256sum --check --strict
           chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-appimage-x86_64.AppImage
 
           # Find libjvm.so and set LD_LIBRARY_PATH
@@ -329,7 +370,7 @@ jobs:
           done
 
       - name: Upload Linux artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: linux-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: |
@@ -343,10 +384,10 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: "stable"
@@ -358,6 +399,37 @@ jobs:
       - name: Build macOS
         run: flutter build macos --${{ github.event.inputs.build_type }} --flavor ${{ env.FLAVOR }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
 
+      - name: Verify macOS application identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP=$(find "build/macos/Build/Products" -name '*.app' -print -quit)
+          if [ -z "$APP" ]; then
+            echo "::error::No macOS application bundle found for identity verification."
+            exit 1
+          fi
+          ID=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")
+          case "${{ env.FLAVOR }}" in
+            development)
+              EXPECTED_ID="wtf.rag.offline.sync.offline-sync.dev"
+              ;;
+            staging)
+              EXPECTED_ID="wtf.rag.offline.sync.offline-sync.stg"
+              ;;
+            production)
+              EXPECTED_ID="wtf.rag.offline.sync.offline-sync"
+              ;;
+            *)
+              echo "::error::Unsupported macOS flavor: ${{ env.FLAVOR }}"
+              exit 1
+              ;;
+          esac
+          if [ "$ID" != "$EXPECTED_ID" ]; then
+            echo "::error::Unexpected macOS bundle identifier '$ID' for flavor '${{ env.FLAVOR }}'; expected '$EXPECTED_ID'."
+            exit 1
+          fi
+          ! grep -R -i -E 'com\.example|com\.offline_sync\.app' "$APP/Contents/Info.plist"
+
       - name: Create DMG
         run: |
           cd build/macos/Build/Products/${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}-${{ env.FLAVOR }}
@@ -365,7 +437,7 @@ jobs:
           hdiutil create -volname "Offline Sync" -srcfolder "Offline Sync.app" -ov -format UDZO "../../../../offline_sync-macos-${{ github.event.inputs.build_type }}.dmg"
 
       - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: macos-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/offline_sync-macos-${{ github.event.inputs.build_type }}.dmg
@@ -377,10 +449,10 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: "stable"
@@ -397,7 +469,7 @@ jobs:
           Compress-Archive -Path "build\windows\x64\runner\${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}\*" -DestinationPath "build\offline_sync-windows-${{ github.event.inputs.build_type }}.zip"
 
       - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/offline_sync-windows-${{ github.event.inputs.build_type }}.zip
@@ -416,10 +488,10 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: "stable"
@@ -433,21 +505,21 @@ jobs:
 
       - name: Setup Pages
         if: ${{ github.event.inputs.platform == 'web' }}
-        uses: actions/configure-pages@v4
+        uses: actions/configure-pages@1f0c5cde4bc74cd7e1254d0cb4de8d49e9068c7d # v4
 
       - name: Upload Pages artifact
         if: ${{ github.event.inputs.platform == 'web' }}
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: build/web
 
       - name: Deploy to GitHub Pages
         if: ${{ github.event.inputs.platform == 'web' }}
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
 
       - name: Upload Web build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: web-${{ env.FLAVOR }}-${{ github.event.inputs.build_type }}${{ env.VERSION_SUFFIX }}
           path: build/web

@@ -9,6 +9,7 @@ import 'package:offline_sync/l10n/gen/app_localizations.dart';
 import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/document_management_service.dart';
 import 'package:offline_sync/services/document_parser_service.dart';
+import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/ui/views/document_library/document_library_view.dart';
 import 'package:stacked_services/stacked_services.dart';
 
@@ -37,6 +38,7 @@ Document _buildDocument({
     ingestedAt: DateTime(2024, 1, 2),
     status: status,
     errorMessage: errorMessage,
+    embeddingModelId: 'gecko-64',
   );
 }
 
@@ -45,6 +47,18 @@ void main() {
 
   setUpAll(() {
     registerFallbackValue(FakePlatformFile(name: 'fallback.txt'));
+    registerFallbackValue(
+      Document(
+        id: 'fallback',
+        title: 'fallback',
+        filePath: 'fallback.txt',
+        format: DocumentFormat.plainText,
+        chunkCount: 0,
+        totalCharacters: 0,
+        contentHash: 'fallback-hash',
+        ingestedAt: DateTime(2024),
+      ),
+    );
   });
 
   late MockDocumentManagementService documentService;
@@ -75,6 +89,7 @@ void main() {
       ..registerSingleton<DocumentManagementService>(documentService)
       ..registerSingleton<NavigationService>(navigationService)
       ..registerSingleton<DialogService>(dialogService);
+    getAndRegisterMockRagSettingsService();
 
     when(
       () => navigationService.navigateTo<dynamic>(
@@ -102,6 +117,9 @@ void main() {
     when(
       () => documentService.ingestionProgressStream,
     ).thenAnswer((_) => progressController.stream);
+    when(
+      () => documentService.hasSourceForReindex(any<Document>()),
+    ).thenReturn(false);
     when(() => documentService.deleteDocument(any())).thenAnswer((_) async {});
     when(
       () => documentService.addDocumentFromPlatformFile(any()),
@@ -360,6 +378,40 @@ void main() {
 
     await tester.pump(const Duration(seconds: 2));
     await tester.pump();
+  });
+
+  testWidgets('renders the reindex action and unavailable guidance', (
+    tester,
+  ) async {
+    final settings = locator<RagSettingsService>();
+    when(() => settings.activeEmbeddingModelId).thenReturn('different-model');
+    final reindexable = _buildDocument(
+      id: 'reindexable',
+      title: 'Reindexable',
+      format: DocumentFormat.pdf,
+      status: IngestionStatus.complete,
+    );
+    when(
+      () => documentService.hasSourceForReindex(any<Document>()),
+    ).thenReturn(true);
+    when(
+      () => documentService.getAllDocuments(),
+    ).thenAnswer((_) async => [reindexable]);
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: DocumentLibraryView(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    const reindexNotice =
+        'This document uses a different embedding model and must be '
+        're-indexed before it is searchable.';
+    expect(find.text(reindexNotice), findsOneWidget);
+    expect(find.text('Re-index document'), findsOneWidget);
   });
 
   testWidgets('uses the custom onViewModelReady callback when provided', (
