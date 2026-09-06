@@ -23,7 +23,6 @@
     "settingsTooltip": "Ajustes",
     "initializationError": "Error de inicialización: {error}",
     "@initializationError": {"placeholders": {"error": {"type": "Object"}}},
-    "authRequired": "Proporciona autenticación e inténtalo de nuevo",
     "errorGeneric": "Error: {error}",
     "@errorGeneric": {"placeholders": {"error": {"type": "Object"}}},
     "failedIngestion": "No se pudieron ingerir {count} archivo(s)",

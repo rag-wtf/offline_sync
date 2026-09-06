@@ -29,5 +29,8 @@ Task 5: fix round 1/5 (Terra found bootstrap retry re-registration and flavor-in
 Task 5: fix round 2/5 (retry reset and flavor-aware identity gate addressed; commit b2d8d04)
 Task 5: fix round 3/5 (L-8 PWA title mismatch addressed in follow-up)
 Task 5: complete (commits f0a16b9..a273524, Terra review READY)
-Task 6: pending
+Task 6: implementation complete (commit 9aaf6a9; coverage 4660/4918 = 94.754%, awaiting Terra review and carry-over coverage fix)
+Task 6: fix round 1/5 (Terra found 13-line coverage shortfall and unreachable AuthenticationRequiredException catch in active chat flow; commit 9aaf6a9)
 Task 6: implementation complete; addressed L-1, L-2, L-15, L-18, and added meaningful coverage tests. Full suite passed 495/495; exact LCOV is 4660/4918 (94.754%), below the unchanged 95% CI gate by 13 covered lines. Report: `task-6-report.md`.
+Task 6: fix round 2/5 (removed the unreachable streamed-RAG authentication catch and fabricated tests; added meaningful model/chat/settings coverage; commit 165a150)
+Task 6: complete (commits 9aaf6a9..165a150; local verification clean: 496 tests, LCOV 4668/4911 = 95.052%, analyzer/ARB/cspell/config/web/Android/diff checks passed; Terra re-review connector unavailable for this resumed pass)

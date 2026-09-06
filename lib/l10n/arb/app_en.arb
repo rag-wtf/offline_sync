@@ -49,7 +49,6 @@
             }
         }
     },
-    "authRequired": "Please provide authentication and try again",
     "errorGeneric": "Error: {error}",
     "@errorGeneric": {
         "placeholders": {

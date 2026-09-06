@@ -95,6 +95,13 @@ void main() {
         // Before initialization or model download
         expect(service.activeEmbeddingModel, isNull);
       });
+
+      test(
+        'reports inactive downloads for models that are not downloading',
+        () {
+          expect(service.isDownloadActive(service.models.first.id), isFalse);
+        },
+      );
     });
 
     group('Downloaded models filtering -', () {

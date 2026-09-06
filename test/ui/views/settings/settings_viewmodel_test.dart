@@ -649,4 +649,61 @@ void main() {
     expect(viewModel.actionError, isNotNull);
     verifyNever(() => modelService.switchEmbeddingModel('embedding-b'));
   });
+
+  test(
+    'does not switch embedding model when reindex confirmation is declined',
+    () async {
+      final dialogService = getAndRegisterMockDialogService();
+      final documentService = MockDocumentManagementService();
+      final document = Document(
+        id: 'document-1',
+        title: 'Document',
+        filePath: '/tmp/document.txt',
+        format: DocumentFormat.plainText,
+        chunkCount: 1,
+        totalCharacters: 10,
+        contentHash: 'hash',
+        ingestedAt: DateTime(2024),
+        embeddingModelId: 'embedding-a',
+        status: IngestionStatus.complete,
+      );
+      when(documentService.getAllDocuments).thenAnswer((_) async => [document]);
+      when(
+        () => dialogService.showConfirmationDialog(
+          title: any(named: 'title'),
+          description: any(named: 'description'),
+          confirmationTitle: any(named: 'confirmationTitle'),
+          cancelTitle: any(named: 'cancelTitle'),
+        ),
+      ).thenAnswer((_) async => DialogResponse());
+
+      final viewModel = SettingsViewModel(
+        modelService: modelService,
+        ragSettings: ragSettings,
+        navigationService: navigationService,
+        deviceService: FakeDeviceCapabilityService(
+          const DeviceCapabilities(
+            totalRamMB: 2048,
+            availableStorageMB: 2048,
+            hasGpu: false,
+            platform: 'android',
+          ),
+        ),
+        dialogService: dialogService,
+        documentService: documentService,
+      );
+
+      await viewModel.switchEmbeddingModel('embedding-b');
+
+      verify(
+        () => dialogService.showConfirmationDialog(
+          title: any(named: 'title'),
+          description: any(named: 'description'),
+          confirmationTitle: any(named: 'confirmationTitle'),
+          cancelTitle: any(named: 'cancelTitle'),
+        ),
+      ).called(1);
+      verifyNever(() => modelService.switchEmbeddingModel('embedding-b'));
+    },
+  );
 }

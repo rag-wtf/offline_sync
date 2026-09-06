@@ -10,11 +10,9 @@ import 'package:offline_sync/l10n/gen/app_localizations_en.dart';
 import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/chat_repository.dart';
 import 'package:offline_sync/services/document_management_service.dart';
-import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/rag_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
-import 'package:offline_sync/ui/dialogs/token_input_dialog.dart';
 import 'package:stacked/stacked.dart';
 import 'package:stacked_services/stacked_services.dart';
 
@@ -306,15 +304,6 @@ class ChatViewModel extends BaseViewModel {
           generationCompleted = true;
         }
       }
-    } on AuthenticationRequiredException {
-      // Remove the placeholder message on error
-      messages.removeAt(aiMsgIndex);
-      // Show token input dialog
-      await _showTokenDialog();
-      _snackbarService.showSnackbar(
-        message: _localizations.authRequired,
-        duration: const Duration(seconds: 3),
-      );
     } on Object catch (e) {
       // Remove the placeholder message on error
       if (messages.length > aiMsgIndex) {
@@ -471,13 +460,6 @@ class ChatViewModel extends BaseViewModel {
         duration: const Duration(seconds: 3),
       );
     }
-  }
-
-  Future<void> _showTokenDialog() async {
-    await _navigationService.navigateWithTransition<bool?>(
-      const TokenInputDialog(),
-      transitionStyle: Transition.fade,
-    );
   }
 
   Future<void> navigateToSettings() async {

@@ -11,7 +11,6 @@ import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/chat_repository.dart';
 import 'package:offline_sync/services/document_management_service.dart';
 import 'package:offline_sync/services/document_parser_service.dart';
-import 'package:offline_sync/services/exceptions.dart';
 import 'package:offline_sync/services/rag_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
@@ -220,6 +219,63 @@ void main() {
     ).called(1);
   });
 
+  test(
+    'showSourceDetail falls back to metadata and groups related chunks',
+    () async {
+      final viewModel = ChatViewModel();
+      final matchingSource = SearchResult(
+        id: 'src-2',
+        content: 'First related chunk',
+        score: 0.8,
+        metadata: {'title': 'Fallback title', 'documentId': 'doc-1'},
+      );
+      final duplicateSource = SearchResult(
+        id: 'src-3',
+        content: 'First related chunk',
+        score: 0.7,
+        metadata: {'documentId': 'doc-1'},
+      );
+      final source = SearchResult(
+        id: 'src-1',
+        content: 'Fallback content',
+        score: 0.9,
+        metadata: {'title': 'Fallback title', 'documentId': 'doc-1'},
+      );
+      viewModel.messages.add(
+        ChatMessage(
+          content: 'answer',
+          isUser: false,
+          timestamp: DateTime(2024),
+          sources: [matchingSource, duplicateSource],
+        ),
+      );
+
+      await viewModel.showSourceDetail(source);
+
+      verify(
+        () => dialogService.showDialog(
+          title: 'Fallback title',
+          description: 'First related chunk',
+        ),
+      ).called(1);
+
+      await viewModel.showSourceDetail(
+        SearchResult(
+          id: 'src-4',
+          content: 'Untitled content',
+          score: 0.5,
+          metadata: const {},
+        ),
+      );
+      verify(
+        () => dialogService.showDialog(
+          title: 'Source Detail',
+          description: 'Untitled content',
+        ),
+      ).called(1);
+    },
+  );
+
   test('initialize keeps only completed documents and'
       ' enables scroll for history', () async {
     final progressController = StreamController<IngestionProgress>.broadcast();
@@ -391,46 +447,6 @@ void main() {
             ).captured.single
             as List<String>;
     expect(documentIds, ['doc-7']);
-  });
-
-  test('sendMessage prompts for auth when'
-      ' generation requires authentication', () async {
-    when(() => chatRepository.saveMessage(any())).thenAnswer((_) async {});
-    when(
-      () => chatRepository.markMessageFailed(any()),
-    ).thenAnswer((_) async {});
-    when(
-      () => ragService.askWithRAGStream(
-        any(),
-        includeMetrics: any(named: 'includeMetrics'),
-        conversationHistory: any(named: 'conversationHistory'),
-        documentIds: any(named: 'documentIds'),
-      ),
-    ).thenAnswer(
-      (_) => Stream<RAGStreamEvent>.error(
-        AuthenticationRequiredException('token missing'),
-      ),
-    );
-
-    final viewModel = ChatViewModel();
-    await viewModel.sendMessage('needs auth');
-
-    expect(viewModel.messages, hasLength(1));
-    expect(viewModel.messages.single.content, 'needs auth');
-    verify(
-      () => navigationService.navigateWithTransition<bool?>(
-        any(),
-        transitionStyle: Transition.fade,
-      ),
-    ).called(1);
-    verify(
-      () => snackbarService.showSnackbar(
-        message: 'Please provide authentication and try again',
-        duration: any(named: 'duration'),
-      ),
-    ).called(1);
-    expect(viewModel.messages.single.isFailed, isTrue);
-    verify(() => chatRepository.markMessageFailed(any())).called(1);
   });
 
   test('sendMessage removes placeholder and shows generic error', () async {
@@ -636,39 +652,6 @@ void main() {
         preventDuplicates: any(named: 'preventDuplicates'),
         parameters: any(named: 'parameters'),
         transition: any(named: 'transition'),
-      ),
-    ).called(1);
-  });
-
-  test('sendMessage prompts for authentication'
-      ' when the stream requires it', () async {
-    when(() => chatRepository.saveMessage(any())).thenAnswer((_) async {});
-    when(
-      () => ragService.askWithRAGStream(
-        any(),
-        includeMetrics: any(named: 'includeMetrics'),
-        conversationHistory: any(named: 'conversationHistory'),
-        documentIds: any(named: 'documentIds'),
-      ),
-    ).thenAnswer(
-      (_) => Stream<RAGStreamEvent>.error(AuthenticationRequiredException()),
-    );
-
-    final viewModel = ChatViewModel();
-    await viewModel.sendMessage('needs auth');
-
-    expect(viewModel.messages, hasLength(1));
-    expect(viewModel.messages.single.content, 'needs auth');
-    verify(
-      () => navigationService.navigateWithTransition<bool?>(
-        any(),
-        transitionStyle: Transition.fade,
-      ),
-    ).called(1);
-    verify(
-      () => snackbarService.showSnackbar(
-        message: 'Please provide authentication and try again',
-        duration: any(named: 'duration'),
       ),
     ).called(1);
   });
