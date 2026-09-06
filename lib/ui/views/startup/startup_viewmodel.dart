@@ -186,8 +186,14 @@ class StartupViewModel extends BaseViewModel {
 
       if (inferenceModel.status != ModelStatus.downloaded ||
           embeddingModel.status != ModelStatus.downloaded) {
+        final modelsToDownload = [
+          if (inferenceModel.status != ModelStatus.downloaded)
+            recommended.inferenceModel,
+          if (embeddingModel.status != ModelStatus.downloaded)
+            recommended.embeddingModel,
+        ];
         final policy = await _downloadPolicyService.evaluate(
-          [recommended.inferenceModel, recommended.embeddingModel],
+          modelsToDownload,
           _capabilities!,
         );
         if (!policy.allowed) {
@@ -197,7 +203,7 @@ class StartupViewModel extends BaseViewModel {
         if (policy.requiresConsent) {
           final consent = await _requestDownloadConsent(
             DownloadConsentRequest(
-              selected: recommended,
+              modelsToDownload: modelsToDownload,
               smallerCompatible: _recommendationService
                   .getSmallerCompatibleModels(_capabilities!, recommended),
               reason: policy.reason,

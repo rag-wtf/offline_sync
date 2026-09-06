@@ -631,6 +631,47 @@ void main() {
       );
 
       test(
+        'checks storage only for models that still need downloading',
+        () async {
+          DownloadConsentRequest? consentRequest;
+          embeddingModel.status = ModelStatus.notDownloaded;
+          deviceService = FakeDeviceCapabilityService(
+            const DeviceCapabilities(
+              totalRamMB: 4096,
+              availableStorageMB: 150,
+              hasGpu: false,
+              platform: 'android',
+            ),
+          );
+          final viewModel = StartupViewModel(
+            navigationService: mockNavigationService,
+            modelService: mockModelService,
+            deviceService: deviceService,
+            recommendationService: recommendationService,
+            ragSettingsService: ragSettings,
+            downloadPolicyService: DownloadPolicyService(
+              connectivityProvider: () async => DownloadConnectivity.unmetered,
+            ),
+            downloadConsentPrompter: (request) async {
+              consentRequest = request;
+              return const DownloadConsentResult(approved: false);
+            },
+          );
+
+          await viewModel.runStartupLogic();
+
+          expect(
+            viewModel.downloadPolicyReason,
+            DownloadPolicyReason.consentDenied,
+          );
+          expect(consentRequest?.selectedModels, [
+            EmbeddingModels.gecko64,
+          ]);
+          verifyNever(() => mockModelService.downloadModel(any()));
+        },
+      );
+
+      test(
         'downloads and navigates after first-run consent is accepted',
         () async {
           inferenceModel.status = ModelStatus.notDownloaded;

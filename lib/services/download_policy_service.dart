@@ -38,19 +38,16 @@ class DownloadPolicyDecision {
 
 class DownloadConsentRequest {
   const DownloadConsentRequest({
-    required this.selected,
+    required this.modelsToDownload,
     required this.smallerCompatible,
     required this.reason,
   });
 
-  final RecommendedModels selected;
+  final List<ModelDefinition> modelsToDownload;
   final RecommendedModels? smallerCompatible;
   final DownloadPolicyReason reason;
 
-  List<ModelDefinition> get selectedModels => [
-    selected.inferenceModel,
-    selected.embeddingModel,
-  ];
+  List<ModelDefinition> get selectedModels => modelsToDownload;
 }
 
 class DownloadConsentResult {

@@ -14,6 +14,7 @@ import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/model_checksum.dart';
 import 'package:offline_sync/services/model_config.dart';
+import 'package:offline_sync/services/model_digest_resolver.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/utils/download_failure.dart';
 import 'package:offline_sync/utils/hugging_face.dart';
@@ -118,6 +119,7 @@ class ModelManagementService {
     fileChecksumVerifier,
     ModelDeleter? modelDeleter,
     Future<SharedPreferences> Function()? sharedPreferencesLoader,
+    Future<String> Function(ModelDefinition definition)? remoteSha256Resolver,
     Future<void> Function()? clearActiveInferenceIdentity,
     Future<void> Function()? clearActiveEmbeddingIdentity,
     bool? isWebOverride,
@@ -134,6 +136,8 @@ class ModelManagementService {
        _fileChecksumVerifier = fileChecksumVerifier,
        _modelDeleter = modelDeleter,
        _sharedPreferencesLoader = sharedPreferencesLoader,
+       _remoteSha256Resolver =
+           remoteSha256Resolver ?? HuggingFaceDigestResolver().resolve,
        _clearActiveInferenceIdentity = clearActiveInferenceIdentity,
        _clearActiveEmbeddingIdentity = clearActiveEmbeddingIdentity,
        _isWeb = isWebOverride ?? kIsWeb,
@@ -169,6 +173,8 @@ class ModelManagementService {
   _fileChecksumVerifier;
   final ModelDeleter? _modelDeleter;
   final Future<SharedPreferences> Function()? _sharedPreferencesLoader;
+  final Future<String> Function(ModelDefinition definition)
+  _remoteSha256Resolver;
   final Future<void> Function()? _clearActiveInferenceIdentity;
   final Future<void> Function()? _clearActiveEmbeddingIdentity;
   final bool _isWeb;
@@ -741,42 +747,49 @@ class ModelManagementService {
     final wasActive = model.type == AppModelType.inference
         ? _activeInferenceModelId == model.id
         : _activeEmbeddingModelId == model.id;
+    final previousStatus = model.status;
+    final previousProgress = model.progress;
+    final previousFailureKind = model.failureKind;
+    final previousErrorMessage = model.errorMessage;
+    var activeIdentityMayHaveBeenCleared = false;
 
     try {
+      if (wasActive) {
+        // Clear external identities before deleting the files. If cleanup
+        // fails, the model remains available for activation and retry.
+        activeIdentityMayHaveBeenCleared = true;
+        final manager = FlutterGemmaPlugin.instance.modelManager;
+        if (model.type == AppModelType.inference) {
+          await (_clearActiveInferenceIdentity?.call() ??
+              (_modelDeleter == null
+                  ? manager.clearActiveInferenceIdentity()
+                  : Future<void>.value()));
+          await _ragSettings.clearActiveInferenceModelId();
+        } else {
+          await (_clearActiveEmbeddingIdentity?.call() ??
+              (_modelDeleter == null
+                  ? manager.clearActiveEmbeddingIdentity()
+                  : Future<void>.value()));
+          await _ragSettings.clearActiveEmbeddingModelId();
+        }
+      }
+
       final deleter = _modelDeleter;
       if (deleter != null) {
         await deleter(model);
-        if (wasActive) {
-          if (model.type == AppModelType.inference) {
-            await _clearActiveInferenceIdentity?.call();
-          } else {
-            await _clearActiveEmbeddingIdentity?.call();
-          }
-        }
       } else {
         final manager = FlutterGemmaPlugin.instance.modelManager;
         await manager.deleteModel(_buildModelSpec(definition));
-        if (wasActive) {
-          if (model.type == AppModelType.inference) {
-            await (_clearActiveInferenceIdentity?.call() ??
-                manager.clearActiveInferenceIdentity());
-          } else {
-            await (_clearActiveEmbeddingIdentity?.call() ??
-                manager.clearActiveEmbeddingIdentity());
-          }
-        }
       }
 
       if (wasActive) {
         if (model.type == AppModelType.inference) {
           _activeInferenceModelId = null;
-          await _ragSettings.clearActiveInferenceModelId();
           if (locator.isRegistered<InferenceModelProvider>()) {
             locator<InferenceModelProvider>().clearCache();
           }
         } else {
           _activeEmbeddingModelId = null;
-          await _ragSettings.clearActiveEmbeddingModelId();
         }
       }
       await _clearPersistedVerificationMetadata(model);
@@ -788,10 +801,57 @@ class ModelManagementService {
       _notify();
       return true;
     } on Object catch (_) {
+      if (wasActive && activeIdentityMayHaveBeenCleared) {
+        final restored = await _restoreActiveIdentity(model);
+        if (!restored) {
+          if (model.type == AppModelType.inference) {
+            _activeInferenceModelId = null;
+          } else {
+            _activeEmbeddingModelId = null;
+          }
+          model
+            ..status = ModelStatus.error
+            ..progress = 0.0
+            ..errorMessage =
+                'Model deletion failed and active identity could not be '
+                'restored';
+          _notify();
+          return false;
+        }
+      }
       model
-        ..status = ModelStatus.error
-        ..errorMessage = 'Unable to delete this model. Please try again.';
+        ..status = previousStatus
+        ..progress = previousProgress
+        ..failureKind = previousFailureKind
+        ..errorMessage = previousErrorMessage;
       _notify();
+      return false;
+    }
+  }
+
+  Future<bool> _restoreActiveIdentity(ModelInfo model) async {
+    try {
+      final restored = model.type == AppModelType.inference
+          ? await _activateInferenceModel(model)
+          : await _activateEmbeddingModel(model);
+      if (!restored) return false;
+
+      if (model.type == AppModelType.inference) {
+        await _ragSettings.setActiveInferenceModelId(model.id);
+        _activeInferenceModelId = model.id;
+        if (locator.isRegistered<InferenceModelProvider>()) {
+          locator<InferenceModelProvider>().clearCache();
+        }
+      } else {
+        await _ragSettings.setActiveEmbeddingModelId(model.id);
+        _activeEmbeddingModelId = model.id;
+      }
+      return true;
+    } on Object catch (error) {
+      log(
+        'Unable to restore active model identity for ${model.id}: '
+        '${error.runtimeType}',
+      );
       return false;
     }
   }
@@ -884,8 +944,7 @@ class ModelManagementService {
 
   Future<bool> _verifyDeclaredChecksum(ModelInfo model) async {
     final definition = _modelDefinitionsById[model.id];
-    final expectedSha256 = definition?.sha256;
-    if (definition == null || expectedSha256 == null) {
+    if (definition == null) {
       return true;
     }
 
@@ -899,6 +958,12 @@ class ModelManagementService {
       return true;
     }
 
+    // On web, flutter_gemma owns the Cache API/OPFS/blob/network source and
+    // its installed-model check is the integrity boundary. There is no
+    // dart:io path to hash, and getModelFilePaths may legitimately return a
+    // network URL when caching is disabled.
+    if (_isWeb) return true;
+
     final pathResolution = await _resolveInstalledModelPath(definition);
     if (pathResolution.kind == _InstalledModelPathResolutionKind.unavailable) {
       return _recordVerificationUnavailable(model);
@@ -911,13 +976,8 @@ class ModelManagementService {
     }
     final installedModelPath = pathResolution.path!;
 
-    // flutter_gemma owns model blobs and Cache API entries on web. They are
-    // already verified by the plugin; constructing a dart:io File for them
-    // would fail on web and would incorrectly reject a valid download.
-    if (_isWeb) {
-      if (_isWebManagedModelPath(installedModelPath)) return true;
-      return _recordVerificationUnavailable(model);
-    }
+    final expectedSha256 = await _resolveExpectedSha256(model, definition);
+    if (expectedSha256 == null) return false;
 
     final modelFile = _checksumFile(installedModelPath);
     final metadata = await readChecksumFileMetadata(modelFile);
@@ -971,6 +1031,27 @@ class ModelManagementService {
     return _verifyDeclaredChecksum(model);
   }
 
+  Future<String?> _resolveExpectedSha256(
+    ModelInfo model,
+    ModelDefinition definition,
+  ) async {
+    if (definition.digestSource == ModelDigestSource.declared) {
+      return definition.sha256;
+    }
+
+    try {
+      return await _remoteSha256Resolver(definition);
+    } on Object catch (error) {
+      _recordVerificationUnavailable(
+        model,
+        message:
+            'Unable to retrieve the current checksum for ${model.id}: '
+            '${_safeFailureDetails(error)}',
+      );
+      return null;
+    }
+  }
+
   Future<_InstalledModelPathResolution> _resolveInstalledModelPath(
     ModelDefinition definition,
   ) async {
@@ -995,9 +1076,6 @@ class ModelManagementService {
       }
 
       for (final installedPath in filePaths.values) {
-        if (_isWeb && _isWebManagedModelPath(installedPath)) {
-          return _InstalledModelPathResolution.resolved(installedPath);
-        }
         if (installedPath.split(_pathSeparatorRegex).last ==
             definition.fileName) {
           return _InstalledModelPathResolution.resolved(installedPath);
@@ -1036,13 +1114,6 @@ class ModelManagementService {
     } on Object catch (error) {
       return ChecksumVerificationResult.readError(error);
     }
-  }
-
-  bool _isWebManagedModelPath(String path) {
-    final normalized = path.toLowerCase();
-    return normalized.startsWith('blob:') ||
-        normalized.startsWith('cache:') ||
-        normalized.startsWith('opfs:');
   }
 
   Future<bool> _hasPersistedVerificationMetadata(
@@ -1107,11 +1178,15 @@ class ModelManagementService {
   static String _verificationMetadataKey(String modelId) =>
       'model_verification_metadata_$modelId';
 
-  bool _recordVerificationUnavailable(ModelInfo model) {
+  bool _recordVerificationUnavailable(
+    ModelInfo model, {
+    String? message,
+  }) {
     model
       ..status = ModelStatus.error
       ..progress = 0.0
       ..errorMessage =
+          message ??
           'Checksum verification unavailable: installed file path not exposed';
     _statusController.addError(
       'Checksum verification unavailable for ${model.id}.',

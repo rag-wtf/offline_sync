@@ -13,6 +13,8 @@ enum DeviceTier { low, mid, high, premium }
 /// Platform runtime that has a registered model engine.
 enum ModelPlatform { web, android, ios, linux, macos, windows }
 
+enum ModelDigestSource { declared, huggingFaceLfs }
+
 extension ModelPlatformParsing on ModelPlatform {
   static ModelPlatform? fromDevicePlatform(String platform) {
     for (final value in ModelPlatform.values) {
@@ -110,7 +112,7 @@ class InferenceModels {
     tier: DeviceTier.high,
     maxTokens: 4096, // Larger context for high-end devices
     contextLimit: 4096,
-    sha256: 'a7f544cfee68f579fabadb22aa9284faa4020a0f5358d0e15b49fdd4cefe4200',
+    digestSource: ModelDigestSource.huggingFaceLfs,
     fileType: ModelFileType.task,
     supportedPlatforms: {
       ModelPlatform.web,
@@ -132,7 +134,7 @@ class InferenceModels {
     tier: DeviceTier.premium,
     maxTokens: 8192, // Maximum context for premium devices
     contextLimit: 8192,
-    sha256: '2b8e9d04bf8c5c50346d248c5e24a7e65102251c94dee6f04d5dce5ce3e6ac4f',
+    digestSource: ModelDigestSource.huggingFaceLfs,
     fileType: ModelFileType.task,
     supportedPlatforms: {
       ModelPlatform.web,
@@ -243,6 +245,7 @@ class ModelDefinition {
     this.contextLimit,
     this.tokenizerUrl,
     this.sha256,
+    this.digestSource = ModelDigestSource.declared,
     this.fileType = ModelFileType.binary,
     this.supportedPlatforms = allPlatforms,
   });
@@ -269,7 +272,8 @@ class ModelDefinition {
   /// Exact context window supported by the model file's KV cache.
   /// [maxTokens] remains the compatibility/default value for older callers.
   final int? contextLimit;
-  final String? sha256; // For future checksum validation
+  final String? sha256;
+  final ModelDigestSource digestSource;
   final ModelFileType fileType;
   final Set<ModelPlatform> supportedPlatforms;
 

@@ -339,19 +339,6 @@ MockInferenceModelProvider getAndRegisterMockInferenceModelProvider() {
               as Future<Null> Function(InferenceChat),
     );
   });
-  when(
-    () => service.runSerializedModelManagement<void>(any()),
-  ).thenAnswer((invocation) {
-    return (invocation.positionalArguments.first as Future<void> Function())();
-  });
-  when(
-    () => service.runSerializedModelManagement<bool>(any()),
-  ).thenAnswer((invocation) {
-    return (invocation.positionalArguments.first as Future<bool> Function())();
-  });
-  when(service.clearCacheAndWaitInManagement).thenAnswer(
-    (_) => service.clearCacheAndWait(),
-  );
   locator.registerSingleton<InferenceModelProvider>(service);
   return service;
 }

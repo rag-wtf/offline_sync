@@ -280,6 +280,82 @@ void main() {
           expect(other.status, ModelStatus.downloaded);
         },
       );
+
+      test('keeps an active model usable when deletion fails', () async {
+        var clearIdentityCalls = 0;
+        when(
+          () => locator<RagSettingsService>().setActiveInferenceModelId(any()),
+        ).thenAnswer((_) async {});
+        final service = ModelManagementService(
+          inferenceModelActivator: (_) async {},
+          modelDeleter: (_) async => throw StateError('delete failed'),
+          clearActiveInferenceIdentity: () async {
+            clearIdentityCalls++;
+          },
+          capabilitiesProvider: () async => const DeviceCapabilities(
+            totalRamMB: 4096,
+            availableStorageMB: 4096,
+            hasGpu: true,
+            platform: 'android',
+          ),
+        );
+        addTearDown(service.dispose);
+        final model =
+            service.models.firstWhere(
+                (candidate) => candidate.type == AppModelType.inference,
+              )
+              ..status = ModelStatus.downloaded
+              ..progress = 1.0;
+
+        await service.switchInferenceModel(model.id);
+
+        expect(await service.deleteModel(model.id), isFalse);
+        expect(service.activeInferenceModel, same(model));
+        expect(model.status, ModelStatus.downloaded);
+        expect(model.progress, 1.0);
+        expect(clearIdentityCalls, 1);
+      });
+
+      test(
+        'does not delete an active model when identity cleanup fails',
+        () async {
+          var deleteCalls = 0;
+          when(
+            () =>
+                locator<RagSettingsService>().setActiveInferenceModelId(any()),
+          ).thenAnswer((_) async {});
+          final service = ModelManagementService(
+            inferenceModelActivator: (_) async {},
+            modelDeleter: (_) async {
+              deleteCalls++;
+            },
+            clearActiveInferenceIdentity: () async {
+              throw StateError('identity cleanup failed');
+            },
+            capabilitiesProvider: () async => const DeviceCapabilities(
+              totalRamMB: 4096,
+              availableStorageMB: 4096,
+              hasGpu: true,
+              platform: 'android',
+            ),
+          );
+          addTearDown(service.dispose);
+          final model =
+              service.models.firstWhere(
+                  (candidate) => candidate.type == AppModelType.inference,
+                )
+                ..status = ModelStatus.downloaded
+                ..progress = 1.0;
+
+          await service.switchInferenceModel(model.id);
+
+          expect(await service.deleteModel(model.id), isFalse);
+          expect(deleteCalls, 0);
+          expect(service.activeInferenceModel, same(model));
+          expect(model.status, ModelStatus.downloaded);
+          expect(model.progress, 1.0);
+        },
+      );
     });
 
     group('Model status enum -', () {
@@ -433,6 +509,134 @@ void main() {
           ),
         );
       });
+
+      test('resolves preview model digests from the remote source', () async {
+        final tempDir = await Directory.systemTemp.createTemp(
+          'model-remote-sha256-',
+        );
+        addTearDown(() async {
+          if (tempDir.existsSync()) await tempDir.delete(recursive: true);
+        });
+        const expectedDigest =
+            'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789';
+        final file = File(
+          '${tempDir.path}/${InferenceModels.gemma3n_2B.fileName}',
+        );
+        await file.writeAsBytes(const [1, 2, 3]);
+        var resolverCalls = 0;
+        String? verifiedDigest;
+        final service = ModelManagementService(
+          installedModelPathResolver: (_) async => file.path,
+          remoteSha256Resolver: (definition) async {
+            resolverCalls++;
+            expect(definition, InferenceModels.gemma3n_2B);
+            return expectedDigest;
+          },
+          fileChecksumVerifier: (_, digest) async {
+            verifiedDigest = digest;
+            return true;
+          },
+        );
+        addTearDown(service.dispose);
+        final model = service.models.firstWhere(
+          (candidate) => candidate.id == InferenceModels.gemma3n_2B.id,
+        );
+
+        expect(await service.verifyDeclaredChecksumForTest(model), isTrue);
+        expect(resolverCalls, 1);
+        expect(verifiedDigest, expectedDigest);
+      });
+
+      test(
+        'preserves a preview model when its remote digest is unavailable',
+        () async {
+          final tempDir = await Directory.systemTemp.createTemp(
+            'model-remote-sha256-error-',
+          );
+          addTearDown(() async {
+            if (tempDir.existsSync()) await tempDir.delete(recursive: true);
+          });
+          final file = File(
+            '${tempDir.path}/${InferenceModels.gemma3n_2B.fileName}',
+          );
+          await file.writeAsBytes(const [1, 2, 3]);
+          final service = ModelManagementService(
+            installedModelPathResolver: (_) async => file.path,
+            remoteSha256Resolver: (_) async =>
+                throw StateError('metadata offline'),
+          );
+          addTearDown(service.dispose);
+          final model = service.models.firstWhere(
+            (candidate) => candidate.id == InferenceModels.gemma3n_2B.id,
+          );
+
+          expect(await service.verifyDeclaredChecksumForTest(model), isFalse);
+          expect(file.existsSync(), isTrue);
+          expect(model.errorMessage, contains('metadata offline'));
+        },
+      );
+
+      test(
+        'trusts plugin-managed web models without remote metadata',
+        () async {
+          var resolverCalls = 0;
+          final service = ModelManagementService(
+            isWebOverride: true,
+            installedModelPathResolver: (_) async => 'blob:preview-model',
+            remoteSha256Resolver: (_) async {
+              resolverCalls++;
+              throw StateError('offline');
+            },
+          );
+          addTearDown(service.dispose);
+          final model = service.models.firstWhere(
+            (candidate) => candidate.id == InferenceModels.gemma3n_2B.id,
+          );
+
+          expect(await service.verifyDeclaredChecksumForTest(model), isTrue);
+          expect(resolverCalls, 0);
+        },
+      );
+
+      test(
+        'trusts web models when the plugin returns a network URL',
+        () async {
+          var resolverCalls = 0;
+          final service = ModelManagementService(
+            isWebOverride: true,
+            installedModelPathResolver: (_) async =>
+                'https://example.test/preview-model',
+            remoteSha256Resolver: (_) async {
+              resolverCalls++;
+              throw StateError('offline');
+            },
+          );
+          addTearDown(service.dispose);
+          final model = service.models.firstWhere(
+            (candidate) => candidate.id == InferenceModels.gemma3n_2B.id,
+          );
+
+          expect(await service.verifyDeclaredChecksumForTest(model), isTrue);
+          expect(resolverCalls, 0);
+        },
+      );
+
+      test(
+        'trusts web models when the plugin path cannot be resolved',
+        () async {
+          final service = ModelManagementService(
+            isWebOverride: true,
+            installedModelPathResolver: (_) async =>
+                throw StateError('path lookup unavailable'),
+          );
+          addTearDown(service.dispose);
+          final model = service.models.firstWhere(
+            (candidate) => candidate.id == InferenceModels.gemma3n_2B.id,
+          );
+
+          expect(await service.verifyDeclaredChecksumForTest(model), isTrue);
+        },
+      );
 
       test('verifyFileSha256 fails closed on mismatch', () async {
         final tempDir = await Directory.systemTemp.createTemp(

@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/l10n/gen/app_localizations.dart';
 import 'package:offline_sync/services/download_policy_service.dart';
 import 'package:offline_sync/services/model_config.dart';
-import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/ui/dialogs/download_consent_dialog.dart';
 
 void main() {
@@ -12,12 +11,6 @@ void main() {
     (
       tester,
     ) async {
-      const selected = RecommendedModels(
-        inferenceModel: InferenceModels.gemma3_270M,
-        embeddingModel: EmbeddingModels.gecko64,
-        tier: DeviceTier.low,
-      );
-
       await tester.pumpWidget(
         MaterialApp(
           locale: const Locale('es'),
@@ -25,7 +18,10 @@ void main() {
           supportedLocales: AppLocalizations.supportedLocales,
           home: DownloadConsentDialog(
             request: const DownloadConsentRequest(
-              selected: selected,
+              modelsToDownload: [
+                InferenceModels.gemma3_270M,
+                EmbeddingModels.gecko64,
+              ],
               smallerCompatible: null,
               reason: DownloadPolicyReason.meteredConsent,
             ),

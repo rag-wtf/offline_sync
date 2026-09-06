@@ -318,13 +318,6 @@ class VectorStore {
       } on Object catch (_) {}
     }
 
-    if (_activeEmbeddingModelId != null) {
-      _db!.execute(
-        'UPDATE vectors SET embedding_model_id = ? '
-        'WHERE embedding_model_id IS NULL',
-        [_activeEmbeddingModelId],
-      );
-    }
     if (fromVersion < 7) {
       try {
         _db!.execute(
@@ -336,6 +329,18 @@ class VectorStore {
       try {
         _db!.execute('ALTER TABLE documents ADD COLUMN source_bytes BLOB');
       } on Object catch (_) {}
+    }
+    if (_activeEmbeddingModelId != null) {
+      _db!.execute(
+        'UPDATE vectors SET embedding_model_id = ? '
+        'WHERE embedding_model_id IS NULL',
+        [_activeEmbeddingModelId],
+      );
+      _db!.execute(
+        'UPDATE documents SET embedding_model_id = ? '
+        'WHERE embedding_model_id IS NULL',
+        [_activeEmbeddingModelId],
+      );
     }
   }
 

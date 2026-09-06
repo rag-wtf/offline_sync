@@ -608,6 +608,13 @@ void main() {
             )
           ''')
             ..execute('''
+            INSERT INTO documents (
+              id, title, file_path, format, chunk_count, total_characters,
+              content_hash, ingested_at, status
+            ) VALUES ('doc', 'Legacy', 'legacy.txt', 'plainText', 1, 14,
+              'legacy-hash', 1, 'complete')
+          ''')
+            ..execute('''
             INSERT INTO vectors (
               id, document_id, content, embedding, metadata, created_at
             ) VALUES ('legacy', 'doc', 'legacy content', '[1.0, 0.0]', '{}', 1)
@@ -623,6 +630,11 @@ void main() {
             ['legacy'],
           ).single;
           expect(row['embedding_model_id'], 'gecko-64');
+          final documentRow = vectorStore.db!.select(
+            'SELECT embedding_model_id FROM documents WHERE id = ?',
+            ['doc'],
+          ).single;
+          expect(documentRow['embedding_model_id'], 'gecko-64');
         },
       );
 
@@ -848,18 +860,32 @@ void main() {
       expect(vectorStore.optimizeDatabase, returnsNormally);
     });
 
-    test('hybridSearch returns no results without an active embedder', () async {
-      final settings = locator<RagSettingsService>();
-      when(() => settings.activeEmbeddingModelId).thenReturn(null);
+    test(
+      'hybridSearch returns no results without an active embedder',
+      () async {
+        final settings = locator<RagSettingsService>();
+        await settings.clearActiveEmbeddingModelId();
 
-      expect(
-        await vectorStore.hybridSearch('query', [1, 0]),
-        isEmpty,
-      );
-    });
+        expect(
+          await vectorStore.hybridSearch('query', [1, 0]),
+          isEmpty,
+        );
+      },
+    );
 
     test('deleteVectorsForDocument keeps the document inventory record', () {
-      final document = completeDocument('vectors-only');
+      final document = Document(
+        id: 'vectors-only',
+        title: 'Vectors only',
+        filePath: 'vectors-only.txt',
+        format: DocumentFormat.plainText,
+        chunkCount: 1,
+        totalCharacters: 7,
+        contentHash: 'vectors-only-hash',
+        ingestedAt: DateTime(2024),
+        status: IngestionStatus.complete,
+        embeddingModelId: 'gecko-64',
+      );
       vectorStore
         ..insertDocument(document)
         ..insertEmbedding(

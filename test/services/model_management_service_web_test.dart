@@ -19,6 +19,7 @@ void main() {
       ]) {
         final service = ModelManagementService(
           isWebOverride: true,
+          embeddingModelActivator: (_) async {},
           modelInstalledChecker: (filename) async =>
               filename == EmbeddingModels.gecko64.fileName,
           installedModelPathResolver: (_) async => pluginPath,
