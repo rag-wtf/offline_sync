@@ -24,13 +24,12 @@ Task 4: fix round 2/5 (duplicate declaration compile blockers addressed; commit 
 Task 4: fix round 3/5 (remaining lifecycle, filtering, atomicity, rollback, disposal, redaction, and report gaps addressed; commit 89963c5)
 Task 4: fix round 4/5 (7 findings open: clean-checkout l10n generation, analyzer gate, coverage gate, no-prior-model rollback, serialized deletion/disposal, refresh serialization, and fixture cleanup)
 Task 4: fix round 5/5 (Terra review left 3 findings: coverage below 95%, inference deletion/load race, and root-relative failure fixtures)
-Task 4: Terra final review NOT READY solely for coverage (4496/4770 = 94.26%); carry the required meaningful coverage tests into Task 6, then re-review Task 4 before completion.
+Task 4: coverage carry-over closed by Task 6 (4668/4911 = 95.052%; Terra verified all Task 4 findings fixed)
+Task 4: complete (commits 7e174e1..b55340a plus coverage closure in 5de1b49; Terra READY)
 Task 5: fix round 1/5 (Terra found bootstrap retry re-registration and flavor-insensitive macOS identity gate; commit f0a16b9)
 Task 5: fix round 2/5 (retry reset and flavor-aware identity gate addressed; commit b2d8d04)
 Task 5: fix round 3/5 (L-8 PWA title mismatch addressed in follow-up)
 Task 5: complete (commits f0a16b9..a273524, Terra review READY)
-Task 6: implementation complete (commit 9aaf6a9; coverage 4660/4918 = 94.754%, awaiting Terra review and carry-over coverage fix)
-Task 6: fix round 1/5 (Terra found 13-line coverage shortfall and unreachable AuthenticationRequiredException catch in active chat flow; commit 9aaf6a9)
-Task 6: implementation complete; addressed L-1, L-2, L-15, L-18, and added meaningful coverage tests. Full suite passed 495/495; exact LCOV is 4660/4918 (94.754%), below the unchanged 95% CI gate by 13 covered lines. Report: `task-6-report.md`.
-Task 6: fix round 2/5 (removed the unreachable streamed-RAG authentication catch and fabricated tests; added meaningful model/chat/settings coverage; commit 165a150)
-Task 6: complete (commits 9aaf6a9..165a150; local verification clean: 496 tests, LCOV 4668/4911 = 95.052%, analyzer/ARB/cspell/config/web/Android/diff checks passed; Terra re-review connector unavailable for this resumed pass)
+Task 6: fix round 1/5 (coverage shortfall and unreachable AuthenticationRequiredException catch identified; commit 9aaf6a9)
+Task 6: fix round 2/5 (removed unreachable streamed-RAG authentication catch and fabricated tests; added meaningful model/chat/settings coverage; commit 5de1b49)
+Task 6: complete (commits 9aaf6a9..5de1b49; 496 tests, LCOV 4668/4911 = 95.052%, analyzer/ARB/cspell/config/web/Android/diff checks passed; Terra review verified)
