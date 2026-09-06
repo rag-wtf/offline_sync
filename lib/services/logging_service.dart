@@ -130,7 +130,7 @@ class LoggingService {
       '[redacted-credential]',
     );
     safe = safe.replaceAll(
-      RegExp(r'\b(?:hf|sk)-[A-Za-z0-9_-]{8,}\b', caseSensitive: false),
+      RegExp(r'\b(?:hf[_-]|sk-)[A-Za-z0-9_-]{8,}\b', caseSensitive: false),
       '[redacted-token]',
     );
     safe = safe.replaceAll(
@@ -139,7 +139,7 @@ class LoggingService {
     );
     return safe.replaceAll(
       RegExp(
-        r'(?:[A-Z]:[\\/]|\\\\|/(?:Users|home|private|tmp|var)/)[^\s\n,;)]*',
+        r'(?:[A-Z]:[\\/]|\\\\|/(?:Users|home|private|tmp|var|data|storage|sdcard|mnt|opt|usr|etc|root|workspace)(?:[\\/]|$))[^\s\n,;)]*',
         caseSensitive: false,
       ),
       '[redacted-path]',

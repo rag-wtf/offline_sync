@@ -236,6 +236,7 @@ void main() {
       ],
     );
     final viewModel = ChatViewModel();
+    addTearDown(viewModel.dispose);
     await viewModel.initialize();
 
     await tester.pumpWidget(buildSubject(viewModel));

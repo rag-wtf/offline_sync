@@ -20,6 +20,13 @@ class FakeDeviceCapabilityService extends DeviceCapabilityService {
       capabilities;
 }
 
+class ThrowingDeviceCapabilityService extends DeviceCapabilityService {
+  @override
+  Future<DeviceCapabilities> getCapabilities({bool refresh = false}) async {
+    throw StateError('capability read failed');
+  }
+}
+
 void main() {
   late MockModelManagementService modelService;
   late MockRagSettingsService ragSettings;
@@ -368,6 +375,50 @@ void main() {
 
     expect(viewModel.chunkOverlapDisplay, 25);
 
+    viewModel.dispose();
+  });
+
+  test('records initialization, persistence, and model action failures', () async {
+    when(modelService.initialize).thenThrow(StateError('initialize failed'));
+    when(() => modelService.downloadModel(any())).thenThrow(
+      StateError('download failed'),
+    );
+    when(() => modelService.switchInferenceModel(any())).thenThrow(
+      StateError('inference switch failed'),
+    );
+    when(() => modelService.switchEmbeddingModel(any())).thenThrow(
+      StateError('embedding switch failed'),
+    );
+    when(() => ragSettings.setQueryExpansionEnabled(value: any(named: 'value')))
+        .thenThrow(StateError('settings failed'));
+
+    final viewModel = SettingsViewModel(
+      modelService: modelService,
+      ragSettings: ragSettings,
+      navigationService: navigationService,
+      deviceService: ThrowingDeviceCapabilityService(),
+      saveTokenAction: (_) async => throw StateError('token save failed'),
+      clearTokenAction: () async => throw StateError('token clear failed'),
+      clearChatHistoryAction: () async => throw StateError('history failed'),
+      getCrashLogsAction: () async => throw StateError('logs load failed'),
+      clearCrashLogsAction: () async => throw StateError('logs clear failed'),
+    );
+
+    viewModel.setup();
+    await Future<void>.delayed(Duration.zero);
+    await viewModel.downloadModel('inference-a');
+    await viewModel.switchInferenceModel('inference-a');
+    await viewModel.switchEmbeddingModel('embedding-a');
+    await viewModel.toggleQueryExpansion(true);
+    expect(await viewModel.saveToken('bad'), isFalse);
+    await viewModel.clearToken();
+    expect(await viewModel.clearChatHistory(), isFalse);
+    await viewModel.loadCrashLogs();
+    await viewModel.clearCrashLogs();
+
+    expect(viewModel.actionError, isNotNull);
+    expect(viewModel.hasModelStatusError, isTrue);
+    expect(viewModel.isLoadingCrashLogs, isFalse);
     viewModel.dispose();
   });
 }

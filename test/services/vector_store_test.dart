@@ -26,6 +26,27 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late VectorStore vectorStore;
 
+  void insertSearchableDocument(
+    String id, {
+    String embeddingModelId = 'gecko-64',
+    IngestionStatus status = IngestionStatus.complete,
+  }) {
+    vectorStore.insertDocument(
+      Document(
+        id: id,
+        title: id,
+        filePath: '$id.txt',
+        format: DocumentFormat.plainText,
+        chunkCount: 1,
+        totalCharacters: 1,
+        contentHash: '$id-hash',
+        ingestedAt: DateTime(2024),
+        status: status,
+        embeddingModelId: embeddingModelId,
+      ),
+    );
+  }
+
   setUp(() async {
     PathProviderPlatform.instance = MockPathProviderPlatform();
 
@@ -202,6 +223,7 @@ void main() {
     test('insert and retrieve semantic embedding', () async {
       const id = 'test_1';
       const embedding = [0.1, 0.2, 0.3];
+      insertSearchableDocument('doc_1');
 
       vectorStore.insertEmbedding(
         id: id,
@@ -271,6 +293,7 @@ void main() {
     );
 
     test('FTS5 search fallback works', () async {
+      insertSearchableDocument('doc_2');
       vectorStore.insertEmbedding(
         id: 'fts_1',
         documentId: 'doc_2',
@@ -290,6 +313,7 @@ void main() {
     });
 
     test('FTS5 preserves punctuation and ordinary operator words', () async {
+      insertSearchableDocument('doc-punctuation');
       vectorStore.insertEmbedding(
         id: 'punctuation',
         documentId: 'doc-punctuation',
@@ -308,6 +332,8 @@ void main() {
     });
 
     test('punctuation-only queries still use semantic retrieval', () async {
+      insertSearchableDocument('old-document');
+      insertSearchableDocument('new-document');
       vectorStore.insertEmbedding(
         id: 'old-semantic-match',
         documentId: 'old-document',
@@ -336,6 +362,8 @@ void main() {
     test(
       'search filters semantic and keyword results by document ids',
       () async {
+        insertSearchableDocument('include');
+        insertSearchableDocument('exclude');
         vectorStore
           ..insertEmbedding(
             id: 'included',
@@ -366,6 +394,8 @@ void main() {
     });
 
     test('falls back to LIKE search when FTS query execution fails', () async {
+      insertSearchableDocument('include-doc');
+      insertSearchableDocument('exclude-doc');
       vectorStore
         ..insertEmbedding(
           id: 'fallback-include',
@@ -731,6 +761,8 @@ void main() {
           totalCharacters: 1000,
           contentHash: 'hash123',
           ingestedAt: DateTime.now(),
+          status: IngestionStatus.complete,
+          embeddingModelId: 'gecko-64',
         );
         vectorStore.updateDocument(updatedDoc);
         expect(vectorStore.getDocument('doc_1')!.title, 'Updated Title');
@@ -816,6 +848,36 @@ void main() {
       expect(vectorStore.optimizeDatabase, returnsNormally);
     });
 
+    test('hybridSearch returns no results without an active embedder', () async {
+      final settings = locator<RagSettingsService>();
+      when(() => settings.activeEmbeddingModelId).thenReturn(null);
+
+      expect(
+        await vectorStore.hybridSearch('query', [1, 0]),
+        isEmpty,
+      );
+    });
+
+    test('deleteVectorsForDocument keeps the document inventory record', () {
+      final document = completeDocument('vectors-only');
+      vectorStore
+        ..insertDocument(document)
+        ..insertEmbedding(
+          id: 'vectors-only-chunk',
+          documentId: document.id,
+          content: 'content',
+          embedding: [1, 0],
+        )
+        ..deleteVectorsForDocument(document.id);
+
+      expect(vectorStore.getDocument(document.id), isNotNull);
+      expect(vectorStore.getChunksForDocument(document.id), isEmpty);
+    });
+
+    test('getDocument returns null for an unknown id', () {
+      expect(vectorStore.getDocument('missing-document'), isNull);
+    });
+
     test('batch insertion rolls back the transaction when a row fails', () {
       vectorStore.db!.execute('''
         CREATE TRIGGER fail_bad_batch_insert
@@ -889,6 +951,7 @@ void main() {
     test(
       'semantic search skips rows with mismatched embedding dimension',
       () async {
+        insertSearchableDocument('d');
         vectorStore
           ..insertEmbedding(
             id: 'ok',

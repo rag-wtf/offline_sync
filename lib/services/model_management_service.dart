@@ -654,9 +654,22 @@ class ModelManagementService {
     }
     try {
       await _ragSettings.setActiveInferenceModelId(modelId);
-    } on Object {
-      await _restoreInferenceModel(previousActiveId);
-      rethrow;
+    } on Object catch (error, stackTrace) {
+      try {
+        final restored = await _restoreInferenceModel(previousActiveId);
+        if (!restored) {
+          throw StateError('Inference model rollback was not confirmed');
+        }
+      } on Object catch (rollbackError, rollbackStack) {
+        LoggingService.error(
+          'Inference model rollback failed',
+          name: 'ModelManagementService',
+          error: rollbackError,
+          stackTrace: rollbackStack,
+        );
+        Error.throwWithStackTrace(rollbackError, rollbackStack);
+      }
+      Error.throwWithStackTrace(error, stackTrace);
     }
     _activeInferenceModelId = modelId;
     if (locator.isRegistered<InferenceModelProvider>()) {
@@ -679,22 +692,37 @@ class ModelManagementService {
       // coverage:ignore-end
     }
     log('Switching to embedding model $modelId');
-    final previousActiveId = _activeEmbeddingModelId;
-    if (!await _activateEmbeddingModel(model)) {
-      // coverage:ignore-start
-      _activeEmbeddingModelId = previousActiveId;
+    await _ragSettings.runEmbeddingModelSwitch(() async {
+      final previousActiveId = _activeEmbeddingModelId;
+      if (!await _activateEmbeddingModel(model)) {
+        // coverage:ignore-start
+        _activeEmbeddingModelId = previousActiveId;
+        _notify();
+        return;
+        // coverage:ignore-end
+      }
+      try {
+        await _ragSettings.setActiveEmbeddingModelId(modelId);
+      } on Object catch (error, stackTrace) {
+        try {
+          final restored = await _restoreEmbeddingModel(previousActiveId);
+          if (!restored) {
+            throw StateError('Embedding model rollback was not confirmed');
+          }
+        } on Object catch (rollbackError, rollbackStack) {
+          LoggingService.error(
+            'Embedding model rollback failed',
+            name: 'ModelManagementService',
+            error: rollbackError,
+            stackTrace: rollbackStack,
+          );
+          Error.throwWithStackTrace(rollbackError, rollbackStack);
+        }
+        Error.throwWithStackTrace(error, stackTrace);
+      }
+      _activeEmbeddingModelId = modelId;
       _notify();
-      return;
-      // coverage:ignore-end
-    }
-    try {
-      await _ragSettings.setActiveEmbeddingModelId(modelId);
-    } on Object {
-      await _restoreEmbeddingModel(previousActiveId);
-      rethrow;
-    }
-    _activeEmbeddingModelId = modelId;
-    _notify();
+    });
   }
 
   Future<bool> deleteModel(String modelId) async {
@@ -768,22 +796,24 @@ class ModelManagementService {
     }
   }
 
-  Future<void> _restoreInferenceModel(String? modelId) async {
+  Future<bool> _restoreInferenceModel(String? modelId) async {
     if (modelId == null) {
       await _clearActiveInferenceIdentity?.call();
-      return;
+      return true;
     }
-    final model = _models.firstWhere((candidate) => candidate.id == modelId);
-    await _activateInferenceModel(model);
+    final model = _modelForSavedId(modelId, AppModelType.inference);
+    if (model == null) return false;
+    return _activateInferenceModel(model);
   }
 
-  Future<void> _restoreEmbeddingModel(String? modelId) async {
+  Future<bool> _restoreEmbeddingModel(String? modelId) async {
     if (modelId == null) {
       await _clearActiveEmbeddingIdentity?.call();
-      return;
+      return true;
     }
-    final model = _models.firstWhere((candidate) => candidate.id == modelId);
-    await _activateEmbeddingModel(model);
+    final model = _modelForSavedId(modelId, AppModelType.embedding);
+    if (model == null) return false;
+    return _activateEmbeddingModel(model);
   }
 
   void _notify() {
@@ -1103,23 +1133,7 @@ class ModelManagementService {
   }
 
   String _safeFailureDetails(Object error) {
-    var details = error.toString();
-    details = details.replaceAll(
-      RegExp(
-        r'(authorization|bearer|token)\s*[:=]\s*\S+',
-        caseSensitive: false,
-      ),
-      '[redacted]',
-    );
-    details = details.replaceAll(
-      RegExp(r'https?://[^\s]+'),
-      '[URL redacted]',
-    );
-    details = details.replaceAll(
-      RegExp(r'(?:[A-Za-z]:[\\/]|/(?:Users|home|tmp)[\\/])[^\s]+'),
-      '[path redacted]',
-    );
-    return details;
+    return LoggingService.redact(error.toString());
   }
 
   // coverage:ignore-start

@@ -113,6 +113,8 @@
     "clearChatHistorySubtitle": "Eliminar las conversaciones guardadas localmente.",
     "chatHistoryClearError": "No se pudo borrar el historial de chat. Inténtalo de nuevo.",
     "clearAction": "Borrar",
+    "clearCrashLogsTitle": "¿Borrar los registros de fallos?",
+    "clearCrashLogsDescription": "¿Eliminar todos los diagnósticos de fallos guardados localmente?",
     "crashLogsLoadError": "No se pudieron cargar los registros de fallos. Inténtalo de nuevo.",
     "crashLogsClearError": "No se pudieron borrar los registros de fallos. Inténtalo de nuevo.",
     "continueAction": "Continuar",

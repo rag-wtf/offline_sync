@@ -46,7 +46,7 @@ class DocumentLibraryViewModel extends BaseViewModel {
       document.needsReindex(_settingsService.activeEmbeddingModelId);
 
   bool canReindex(Document document) =>
-      _documentService.hasSourceForReindex(document);
+      _documentService.hasSourceForReindex(document) == true;
 
   AppLocalizations? get _l10n {
     final context = StackedService.navigatorKey?.currentContext;

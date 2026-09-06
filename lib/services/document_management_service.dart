@@ -9,6 +9,7 @@ import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/contextual_retrieval_service.dart';
 import 'package:offline_sync/services/document_parser_service.dart';
 import 'package:offline_sync/services/embedding_service.dart';
+import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/services/rag_constants.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/smart_chunker.dart';
@@ -135,6 +136,7 @@ class DocumentManagementService {
       filePath: filePath,
       hash: hash,
       parseParams: {'filePath': filePath, 'overlapChars': overlapChars},
+      sourceBytes: null,
       retainErrorRecord: retainErrorRecord,
     );
   }
@@ -190,6 +192,7 @@ class DocumentManagementService {
         'fileName': file.name,
         'overlapChars': overlapChars,
       },
+      sourceBytes: bytes,
     );
   }
 
@@ -199,6 +202,7 @@ class DocumentManagementService {
     required String? filePath,
     required String hash,
     required Map<String, dynamic> parseParams,
+    required Uint8List? sourceBytes,
     bool persistDocument = true,
     bool retainErrorRecord = true,
   }) async {
@@ -227,6 +231,7 @@ class DocumentManagementService {
       status: IngestionStatus.processing,
       contextualRetrievalEnabled: contextualRetrievalEnabled,
       embeddingModelId: activeEmbeddingModelId,
+      sourceBytes: sourceBytes,
     );
     try {
       if (persistDocument) _vectorStore.insertDocument(doc);
@@ -288,70 +293,75 @@ class DocumentManagementService {
 
       // 5. Embed & Store in batches of 10 to avoid high memory watermark.
       // Embedding backends are stateful; pin the model and serialize calls.
-      const batchSize = 10;
+      await _settingsService.runWithEmbeddingModel(
+        activeEmbeddingModelId,
+        () async {
+          const batchSize = 10;
+          for (var i = 0; i < chunksToEmbed.length; i += batchSize) {
+            if (job.isCancelled) {
+              throw Exception('Ingestion cancelled'); // coverage:ignore-line
+            }
 
-      for (var i = 0; i < chunksToEmbed.length; i += batchSize) {
-        if (job.isCancelled) {
-          throw Exception('Ingestion cancelled'); // coverage:ignore-line
-        }
-
-        // coverage:ignore-start
-        final end = (i + batchSize < chunksToEmbed.length)
-            ? i + batchSize
-            : chunksToEmbed.length;
-        // coverage:ignore-end
-        final batch = chunksToEmbed.sublist(i, end);
-
-        final batchResults = <EmbeddingData>[];
-        for (final entry in batch.asMap().entries) {
-          if (_settingsService.activeEmbeddingModelId !=
-              activeEmbeddingModelId) {
-            throw StateError('Embedding model changed during ingestion');
-          }
-          final localIndex = entry.key;
-          final chunkContent = entry.value;
-          final globalIndex = i + localIndex;
-
-          final embedding = await _embeddingService.generateEmbedding(
-            chunkContent,
-          );
-
-          final metadata = {
-            'documentId': docId,
-            'documentTitle': title,
-            'documentPath': filePath ?? fileName,
             // coverage:ignore-start
-            'seq': globalIndex,
-            'totalChunks': chunks.length,
+            final end = (i + batchSize < chunksToEmbed.length)
+                ? i + batchSize
+                : chunksToEmbed.length;
             // coverage:ignore-end
-          };
+            final batch = chunksToEmbed.sublist(i, end);
 
-          // coverage:ignore-start
-          if (contextMetadata.isNotEmpty &&
-              globalIndex < contextMetadata.length) {
-            metadata.addAll(contextMetadata[globalIndex]);
+            final batchResults = <EmbeddingData>[];
+            for (final entry in batch.asMap().entries) {
+              if (_settingsService.activeEmbeddingModelId !=
+                  activeEmbeddingModelId) {
+                throw StateError('Embedding model changed during ingestion');
+              }
+              final localIndex = entry.key;
+              final chunkContent = entry.value;
+              final globalIndex = i + localIndex;
+
+              final embedding = await _embeddingService.generateEmbedding(
+                chunkContent,
+              );
+
+              final metadata = {
+                'documentId': docId,
+                'documentTitle': title,
+                'documentPath': filePath ?? fileName,
+                // coverage:ignore-start
+                'seq': globalIndex,
+                'totalChunks': chunks.length,
+                // coverage:ignore-end
+              };
+
+              // coverage:ignore-start
+              if (contextMetadata.isNotEmpty &&
+                  globalIndex < contextMetadata.length) {
+                metadata.addAll(contextMetadata[globalIndex]);
+              }
+              // coverage:ignore-end
+
+              batchResults.add(
+                EmbeddingData(
+                  id: const Uuid().v4(),
+                  documentId: docId,
+                  content: chunkContent,
+                  embedding: embedding,
+                  metadata: metadata,
+                  embeddingModelId: activeEmbeddingModelId,
+                ),
+              );
+            }
+
+            if (_settingsService.activeEmbeddingModelId !=
+                activeEmbeddingModelId) {
+              throw StateError('Embedding model changed during ingestion');
+            }
+            _vectorStore.insertEmbeddingsBatch(batchResults);
+
+            _emitProgress(docId, fileName, 'embedding', end, chunks.length);
           }
-          // coverage:ignore-end
-
-          batchResults.add(
-            EmbeddingData(
-              id: const Uuid().v4(),
-              documentId: docId,
-              content: chunkContent,
-              embedding: embedding,
-              metadata: metadata,
-              embeddingModelId: activeEmbeddingModelId,
-            ),
-          );
-        }
-
-        if (_settingsService.activeEmbeddingModelId != activeEmbeddingModelId) {
-          throw StateError('Embedding model changed during ingestion');
-        }
-        _vectorStore.insertEmbeddingsBatch(batchResults);
-
-        _emitProgress(docId, fileName, 'embedding', end, chunks.length);
-      }
+        },
+      );
 
       // 6. Update Document Status
       doc = Document(
@@ -366,16 +376,19 @@ class DocumentManagementService {
         status: IngestionStatus.complete,
         contextualRetrievalEnabled: contextualRetrievalEnabled,
         embeddingModelId: activeEmbeddingModelId,
+        sourceBytes: sourceBytes,
       );
       if (persistDocument) _vectorStore.updateDocument(doc);
       _emitProgress(docId, fileName, 'complete', chunks.length, chunks.length);
 
       return doc;
-    } on Object catch (error) {
+    } on Object catch (error, stackTrace) {
       final status = job.isCancelled
           ? IngestionStatus.cancelled
           : IngestionStatus.error;
-      final msg = job.isCancelled ? 'Cancelled' : error.toString();
+      final msg = job.isCancelled
+          ? 'Cancelled'
+          : LoggingService.redact(error.toString());
 
       final errorDoc = Document(
         id: docId,
@@ -390,11 +403,15 @@ class DocumentManagementService {
         contextualRetrievalEnabled: contextualRetrievalEnabled,
         embeddingModelId: activeEmbeddingModelId,
         errorMessage: msg,
+        sourceBytes: sourceBytes,
       );
+      Object? cleanupError;
+      StackTrace? cleanupStack;
       try {
         _vectorStore.deleteVectorsForDocument(docId);
-      } on Object catch (_) {
-        // Best-effort cleanup; do not hide the original ingestion failure.
+      } on Object catch (error, stackTrace) {
+        cleanupError = error;
+        cleanupStack = stackTrace;
       }
       if (persistDocument && retainErrorRecord) {
         try {
@@ -411,8 +428,19 @@ class DocumentManagementService {
           // ingestion error when cleanup cannot complete.
         }
       }
+      if (cleanupError != null) {
+        Error.throwWithStackTrace(
+          StateError(
+            'Ingestion cleanup failed after ' +
+                error.runtimeType.toString() +
+                ': ' +
+                cleanupError.runtimeType.toString(),
+          ),
+          cleanupStack!,
+        );
+      }
       _emitProgress(docId, fileName, 'error');
-      rethrow;
+      Error.throwWithStackTrace(error, stackTrace);
     } finally {
       _activeJobs.remove(docId);
       _inFlightHashes.remove(hash);
@@ -429,8 +457,9 @@ class DocumentManagementService {
 
     // Avoid re-ingesting an unchanged file. This also prevents the UNIQUE
     // content-hash index from turning a harmless refresh into an error record.
-    final sourceFile = File(oldDoc.filePath);
-    final currentHash = await _calculateFileHash(sourceFile);
+    final currentHash = oldDoc.sourceBytes != null
+        ? sha256.convert(oldDoc.sourceBytes!).toString()
+        : await _calculateFileHash(File(oldDoc.filePath));
     if (currentHash == oldDoc.contentHash) {
       return oldDoc;
     }
@@ -439,7 +468,7 @@ class DocumentManagementService {
   }
 
   bool _hasSourceFile(Document document) {
-    return File(document.filePath).existsSync();
+    return document.sourceBytes != null || File(document.filePath).existsSync();
   }
 
   bool hasSourceForReindex(Document document) => _hasSourceFile(document);
@@ -466,8 +495,9 @@ class DocumentManagementService {
     final oldDocument = _vectorStore.getDocument(documentId);
     if (oldDocument == null || !_hasSourceFile(oldDocument)) return oldDocument;
 
-    final sourceFile = File(oldDocument.filePath);
-    final hash = await _calculateFileHash(sourceFile);
+    final hash = oldDocument.sourceBytes != null
+        ? sha256.convert(oldDocument.sourceBytes!).toString()
+        : await _calculateFileHash(File(oldDocument.filePath));
     return _reindexExistingDocument(oldDocument, hash);
   }
 
@@ -491,9 +521,14 @@ class DocumentManagementService {
         filePath: oldDocument.filePath,
         hash: hash,
         parseParams: {
-          'filePath': oldDocument.filePath,
+          if (oldDocument.sourceBytes != null) ...{
+            'bytes': oldDocument.sourceBytes,
+            'fileName': oldDocument.title,
+          } else
+            'filePath': oldDocument.filePath,
           'overlapChars': overlapChars,
         },
+        sourceBytes: oldDocument.sourceBytes,
         persistDocument: false,
         retainErrorRecord: false,
       );
@@ -509,12 +544,34 @@ class DocumentManagementService {
         status: staged.status,
         contextualRetrievalEnabled: staged.contextualRetrievalEnabled,
         embeddingModelId: staged.embeddingModelId,
+        sourceBytes: staged.sourceBytes,
       );
-      _vectorStore.replaceDocument(
-        oldDocumentId: oldDocument.id,
-        stagedDocumentId: staged.id,
-        replacement: replacement,
-      );
+      try {
+        _vectorStore.replaceDocument(
+          oldDocumentId: oldDocument.id,
+          stagedDocumentId: staged.id,
+          replacement: replacement,
+        );
+      } on Object catch (error, stackTrace) {
+        Object? cleanupError;
+        StackTrace? cleanupStack;
+        try {
+          _vectorStore.deleteVectorsForDocument(staged.id);
+        } on Object catch (error, stackTrace) {
+          cleanupError = error;
+          cleanupStack = stackTrace;
+        }
+        if (cleanupError != null) {
+          Error.throwWithStackTrace(
+            StateError(
+              'Reindex cleanup failed after ${error.runtimeType}: '
+              '${cleanupError.runtimeType}',
+            ),
+            cleanupStack!,
+          );
+        }
+        Error.throwWithStackTrace(error, stackTrace);
+      }
       return replacement;
     } on Object {
       _inFlightHashes.remove(hash);
@@ -538,6 +595,10 @@ class DocumentManagementService {
     if (doc == null) return false;
 
     final file = File(doc.filePath);
+    if (doc.sourceBytes != null) {
+      final currentHash = sha256.convert(doc.sourceBytes!).toString();
+      return currentHash != doc.contentHash;
+    }
     if (!file.existsSync()) return true;
 
     final currentHash = await _calculateFileHash(file);

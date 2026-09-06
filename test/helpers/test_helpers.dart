@@ -217,6 +217,18 @@ MockRagSettingsService getAndRegisterMockRagSettingsService() {
   when(() => service.contextualRetrievalEnabled).thenReturn(false);
   when(() => service.activeEmbeddingModelId).thenReturn('gecko-64');
   when(service.initialize).thenAnswer((_) async {});
+  when(() => service.runWithEmbeddingModel(any(), any())).thenAnswer((
+    invocation,
+  ) async {
+    final action = invocation.positionalArguments[1] as Future<void> Function();
+    await action();
+  });
+  when(() => service.runEmbeddingModelSwitch(any())).thenAnswer((
+    invocation,
+  ) async {
+    final action = invocation.positionalArguments[0] as Future<void> Function();
+    await action();
+  });
 
   if (!locator.isRegistered<DeviceCapabilityService>()) {
     _registerCapabilityDependencies();
@@ -327,6 +339,19 @@ MockInferenceModelProvider getAndRegisterMockInferenceModelProvider() {
               as Future<Null> Function(InferenceChat),
     );
   });
+  when(
+    () => service.runSerializedModelManagement<void>(any()),
+  ).thenAnswer((invocation) {
+    return (invocation.positionalArguments.first as Future<void> Function())();
+  });
+  when(
+    () => service.runSerializedModelManagement<bool>(any()),
+  ).thenAnswer((invocation) {
+    return (invocation.positionalArguments.first as Future<bool> Function())();
+  });
+  when(service.clearCacheAndWaitInManagement).thenAnswer(
+    (_) => service.clearCacheAndWait(),
+  );
   locator.registerSingleton<InferenceModelProvider>(service);
   return service;
 }

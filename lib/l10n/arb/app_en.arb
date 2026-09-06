@@ -167,6 +167,8 @@
     "clearChatHistoryDescription": "Delete all locally saved conversations?",
     "clearChatHistorySubtitle": "Delete locally saved conversations.",
     "clearAction": "Clear",
+    "clearCrashLogsTitle": "Clear crash logs?",
+    "clearCrashLogsDescription": "Delete all locally saved crash diagnostics?",
     "renameDocumentError": "Unable to rename this document.",
     "tokenSaveError": "Unable to save the token. Please try again.",
     "tokenClearError": "Unable to clear the token. Please try again.",

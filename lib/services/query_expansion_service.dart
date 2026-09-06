@@ -76,6 +76,7 @@ Variants:''';
     int limit = 10,
     double? semanticWeight,
     List<String>? documentIds,
+    String? embeddingModelId,
   }) async {
     final variantResultsList = <List<SearchResult>>[];
 
@@ -88,6 +89,7 @@ Variants:''';
         limit: limit * 2, // Get more candidates for merging
         semanticWeight: semanticWeight,
         documentIds: documentIds,
+        embeddingModelId: embeddingModelId,
       );
       variantResultsList.add(results);
     }

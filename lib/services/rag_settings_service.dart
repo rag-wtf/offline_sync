@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/model_config.dart';
@@ -29,6 +31,7 @@ class RagSettingsService {
   int? _maxTokens; // User override for max tokens (null = use model default)
   String? _activeInferenceModelId;
   String? _activeEmbeddingModelId;
+  Future<void> _embeddingOperationTail = Future<void>.value();
 
   bool get queryExpansionEnabled => _queryExpansionEnabled;
   bool get rerankingEnabled => _rerankingEnabled;
@@ -44,6 +47,43 @@ class RagSettingsService {
       ModelConfig.activeInferenceContextLimit(_activeInferenceModelId);
   String? get activeInferenceModelId => _activeInferenceModelId;
   String? get activeEmbeddingModelId => _activeEmbeddingModelId;
+
+  /// Serializes model-sensitive embedding work with embedding-model switches.
+  ///
+  /// The caller supplies the identity it observed before starting. This
+  /// prevents a query or ingestion job from pairing an embedding produced by
+  /// one model with vectors selected for another model.
+  Future<void> runWithEmbeddingModel(
+    String modelId,
+    Future<void> Function() action,
+  ) => _runEmbeddingOperation(modelId, action, validateIdentity: true);
+
+  /// Serializes an embedding model switch with model-sensitive work.
+  Future<void> runEmbeddingModelSwitch(Future<void> Function() action) {
+    return _runEmbeddingOperation(null, action, validateIdentity: false);
+  }
+
+  Future<void> _runEmbeddingOperation(
+    String? modelId,
+    Future<void> Function() action, {
+    required bool validateIdentity,
+  }) {
+    final previous = _embeddingOperationTail;
+    final release = Completer<void>();
+    _embeddingOperationTail = previous.then<void>((_) => release.future);
+
+    return () async {
+      await previous;
+      try {
+        if (validateIdentity && _activeEmbeddingModelId != modelId) {
+          throw StateError('Embedding model changed before operation started');
+        }
+        await action();
+      } finally {
+        if (!release.isCompleted) release.complete();
+      }
+    }();
+  }
 
   Future<void> initialize() async {
     final prefs = await SharedPreferences.getInstance();

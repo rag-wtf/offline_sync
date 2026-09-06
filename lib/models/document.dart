@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:offline_sync/services/document_parser_service.dart';
 
 enum IngestionStatus { pending, processing, complete, error, cancelled }
@@ -17,9 +20,11 @@ class Document {
     this.contextualRetrievalEnabled = false,
     this.errorMessage,
     this.embeddingModelId,
+    this.sourceBytes,
   });
 
   factory Document.fromJson(Map<String, dynamic> json) {
+    final sourceBytes = _readSourceBytes(json['source_bytes']);
     return Document(
       id: json['id'] as String? ?? '',
       title: json['title'] as String? ?? 'Untitled',
@@ -44,6 +49,7 @@ class Document {
       contextualRetrievalEnabled: (json['contextual_retrieval'] as int?) == 1,
       errorMessage: json['error_message'] as String?,
       embeddingModelId: json['embedding_model_id'] as String?,
+      sourceBytes: sourceBytes,
     );
   }
 
@@ -60,9 +66,10 @@ class Document {
   final bool contextualRetrievalEnabled;
   final String? errorMessage;
   final String? embeddingModelId;
+  final Uint8List? sourceBytes;
 
   Map<String, dynamic> toJson() {
-    return {
+    final json = <String, dynamic>{
       'id': id,
       'title': title,
       'file_path': filePath,
@@ -77,6 +84,10 @@ class Document {
       'error_message': errorMessage,
       'embedding_model_id': embeddingModelId,
     };
+    if (sourceBytes != null) {
+      json['source_bytes'] = base64Encode(sourceBytes!);
+    }
+    return json;
   }
 
   /// Whether this document's vectors cannot be used by the active embedder.
@@ -86,4 +97,17 @@ class Document {
         activeEmbeddingModelId == null ||
         embeddingModelId != activeEmbeddingModelId;
   }
+}
+
+Uint8List? _readSourceBytes(Object? value) {
+  if (value is Uint8List) return Uint8List.fromList(value);
+  if (value is List<int>) return Uint8List.fromList(value);
+  if (value is String && value.isNotEmpty) {
+    try {
+      return Uint8List.fromList(base64Decode(value));
+    } on FormatException {
+      return null;
+    }
+  }
+  return null;
 }

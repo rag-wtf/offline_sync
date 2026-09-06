@@ -28,7 +28,7 @@ class SettingsViewModel extends BaseViewModel {
     DocumentManagementService? documentService,
     Future<void> Function(String token)? saveTokenAction,
     Future<void> Function()? clearTokenAction,
-    Future<void> Function()? clearChatHistoryAction,
+    Future<bool> Function()? clearChatHistoryAction,
     Future<List<String>> Function()? getCrashLogsAction,
     Future<void> Function()? clearCrashLogsAction,
   }) : _modelService = modelService ?? locator<ModelManagementService>(),
@@ -59,7 +59,7 @@ class SettingsViewModel extends BaseViewModel {
   final DocumentManagementService? _documentService;
   final Future<void> Function(String token)? _saveTokenAction;
   final Future<void> Function()? _clearTokenAction;
-  final Future<void> Function()? _clearChatHistoryAction;
+  final Future<bool> Function()? _clearChatHistoryAction;
   final Future<List<String>> Function()? _getCrashLogsAction;
   final Future<void> Function()? _clearCrashLogsAction;
 
@@ -192,6 +192,7 @@ class SettingsViewModel extends BaseViewModel {
     try {
       _capabilities = await _deviceService.getCapabilities();
     } on Object catch (_) {
+      if (disposed) return;
       _actionError =
           _l10n?.settingsSaveError ??
           'Unable to load device information. Please try again.';
@@ -203,6 +204,7 @@ class SettingsViewModel extends BaseViewModel {
     try {
       _hasToken = await AuthTokenService.hasToken();
     } on Object catch (_) {
+      if (disposed) return;
       _actionError =
           _l10n?.tokenStatusError ??
           'Unable to read token status. Please try again.';
@@ -229,7 +231,9 @@ class SettingsViewModel extends BaseViewModel {
     _actionError = null;
     try {
       await _modelService.downloadModel(id);
+      if (disposed) return;
     } on Object catch (_) {
+      if (disposed) return;
       _actionError =
           _l10n?.settingsSaveError ??
           'Unable to download this model. Please try again.';
@@ -249,10 +253,12 @@ class SettingsViewModel extends BaseViewModel {
             'Remove ${model.first.name} and its local files?',
         confirmationTitle: _l10n?.deleteModelAction ?? 'Delete',
       );
+      if (disposed) return false;
       if (response?.confirmed != true) return false;
     }
     try {
       final deleted = await _modelService.deleteModel(id);
+      if (disposed) return deleted;
       if (!deleted) {
         _actionError =
             _l10n?.modelDeleteError ??
@@ -261,6 +267,7 @@ class SettingsViewModel extends BaseViewModel {
       notifyListeners();
       return deleted;
     } on Object catch (_) {
+      if (disposed) return false;
       _actionError =
           _l10n?.modelDeleteError ??
           'Unable to delete this model. Please try again.';
@@ -273,10 +280,12 @@ class SettingsViewModel extends BaseViewModel {
     _actionError = null;
     try {
       await (_saveTokenAction ?? AuthTokenService.saveToken)(token);
+      if (disposed) return false;
       _hasToken = true;
       notifyListeners();
       return true;
     } on Object catch (_) {
+      if (disposed) return false;
       _actionError =
           _l10n?.tokenSaveError ??
           'Unable to save the token. Please try again.';
@@ -289,16 +298,18 @@ class SettingsViewModel extends BaseViewModel {
     _actionError = null;
     try {
       await (_clearTokenAction ?? AuthTokenService.clearToken)();
+      if (disposed) return;
       _hasToken = false;
     } on Object catch (_) {
+      if (disposed) return;
       _actionError =
           _l10n?.tokenClearError ??
           'Unable to clear the token. Please try again.';
     }
-    notifyListeners();
+    _notifyIfMounted();
   }
 
-  Future<void> clearChatHistory() async {
+  Future<bool> clearChatHistory() async {
     _actionError = null;
     if (_dialogService != null) {
       final response = await _dialogService.showConfirmationDialog(
@@ -308,17 +319,26 @@ class SettingsViewModel extends BaseViewModel {
             'Delete all locally saved conversations?',
         confirmationTitle: _l10n?.clearAction ?? 'Clear',
       );
-      if (response?.confirmed != true) return;
+      if (disposed || response?.confirmed != true) return false;
     }
     try {
-      await (_clearChatHistoryAction ??
-          locator<ChatRepository>().clearHistory)();
+      final clearAction =
+          _clearChatHistoryAction ??
+          () async {
+            await locator<ChatRepository>().clearHistory();
+            return true;
+          };
+      final cleared = await clearAction();
+      if (disposed) return cleared;
+      if (!cleared) return false;
     } on Object catch (_) {
+      if (disposed) return false;
       _actionError =
           _l10n?.chatHistoryClearError ??
           'Unable to clear chat history. Please try again.';
     }
     notifyListeners();
+    return _actionError == null;
   }
 
   Future<void> loadCrashLogs() async {
@@ -327,7 +347,9 @@ class SettingsViewModel extends BaseViewModel {
     if (!disposed) notifyListeners();
     try {
       _crashLogs = await (_getCrashLogsAction ?? LoggingService.getCrashLogs)();
+      if (disposed) return;
     } on Object catch (_) {
+      if (disposed) return;
       _actionError =
           _l10n?.crashLogsLoadError ??
           'Unable to load crash logs. Please try again.';
@@ -337,17 +359,30 @@ class SettingsViewModel extends BaseViewModel {
     }
   }
 
-  Future<void> clearCrashLogs() async {
+  Future<bool> clearCrashLogs() async {
     _actionError = null;
+    if (_dialogService != null) {
+      final response = await _dialogService.showConfirmationDialog(
+        title: _l10n?.clearCrashLogsTitle ?? 'Clear crash logs?',
+        description:
+            _l10n?.clearCrashLogsDescription ??
+            'Delete all locally saved crash diagnostics?',
+        confirmationTitle: _l10n?.clearAction ?? 'Clear',
+      );
+      if (disposed || response?.confirmed != true) return false;
+    }
     try {
       await (_clearCrashLogsAction ?? LoggingService.clearCrashLogs)();
+      if (disposed) return true;
       _crashLogs = [];
     } on Object catch (_) {
+      if (disposed) return false;
       _actionError =
           _l10n?.crashLogsClearError ??
           'Unable to clear crash logs. Please try again.';
     }
     notifyListeners();
+    return _actionError == null;
   }
 
   Future<void> enterToken() async {
@@ -359,8 +394,10 @@ class SettingsViewModel extends BaseViewModel {
         variant: DialogType.tokenInput,
         data: const TokenInputDialogData(),
       );
+      if (disposed) return;
       await _loadTokenState();
     } on Object catch (_) {
+      if (disposed) return;
       _actionError =
           _l10n?.tokenSaveError ??
           'Unable to open token editor. Please try again.';
@@ -372,6 +409,7 @@ class SettingsViewModel extends BaseViewModel {
     _actionError = null;
     try {
       await Clipboard.setData(ClipboardData(text: _crashLogs.join('\n')));
+      if (disposed) return;
     } on Object catch (_) {
       _actionError =
           _l10n?.diagnosticsExportError ??
@@ -385,6 +423,7 @@ class SettingsViewModel extends BaseViewModel {
     _actionError = null;
     try {
       await _modelService.switchInferenceModel(modelId);
+      if (disposed) return;
     } on Object catch (_) {
       _actionError =
           _l10n?.settingsSaveError ??
@@ -400,6 +439,7 @@ class SettingsViewModel extends BaseViewModel {
         _modelService.activeEmbeddingModel?.id != modelId) {
       try {
         final documents = await documentService.getAllDocuments();
+        if (disposed) return;
         final count = documents
             .where(
               (document) => document.needsReindex(modelId),
@@ -414,9 +454,10 @@ class SettingsViewModel extends BaseViewModel {
             confirmationTitle: _l10n?.continueAction ?? 'Continue',
             cancelTitle: _l10n?.cancelAction ?? 'Cancel',
           );
-          if (!(response?.confirmed ?? false)) return;
+          if (disposed || !(response?.confirmed ?? false)) return;
         }
       } on Object catch (_) {
+        if (disposed) return;
         _actionError =
             _l10n?.embeddingStatusCheckError ??
             'Unable to check document index status.';
@@ -426,7 +467,9 @@ class SettingsViewModel extends BaseViewModel {
     }
     try {
       await _modelService.switchEmbeddingModel(modelId);
+      if (disposed) return;
     } on Object catch (_) {
+      if (disposed) return;
       _actionError =
           _l10n?.settingsSaveError ??
           'Unable to save settings. Please try again.';
@@ -441,14 +484,14 @@ class SettingsViewModel extends BaseViewModel {
     await _persist(
       () => _ragSettings.setQueryExpansionEnabled(value: value),
     );
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   // Positional bool required by SwitchListTile.onChanged callback signature
   // ignore: avoid_positional_boolean_parameters
   Future<void> toggleReranking(bool value) async {
     await _persist(() => _ragSettings.setRerankingEnabled(value: value));
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   // Positional bool required by SwitchListTile.onChanged callback signature
@@ -457,7 +500,7 @@ class SettingsViewModel extends BaseViewModel {
     await _persist(
       () => _ragSettings.setContextualRetrievalEnabled(value: value),
     );
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   void onChunkOverlapChanged(double value) {
@@ -469,10 +512,11 @@ class SettingsViewModel extends BaseViewModel {
   Future<void> onChunkOverlapChangeEnd(double value) async {
     final dragToken = _chunkOverlapDragToken;
     await _persist(() => _ragSettings.setChunkOverlapPercent(value / 100));
+    if (disposed) return;
     if (_chunkOverlapDragToken == dragToken) {
       _pendingChunkOverlap = null;
     }
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   void onSemanticWeightChanged(double value) {
@@ -484,10 +528,11 @@ class SettingsViewModel extends BaseViewModel {
   Future<void> onSemanticWeightChangeEnd(double value) async {
     final dragToken = _semanticWeightDragToken;
     await _persist(() => _ragSettings.setSemanticWeight(value));
+    if (disposed) return;
     if (_semanticWeightDragToken == dragToken) {
       _pendingSemanticWeight = null;
     }
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   void onRerankTopKChanged(double value) {
@@ -499,10 +544,11 @@ class SettingsViewModel extends BaseViewModel {
   Future<void> onRerankTopKChangeEnd(double value) async {
     final dragToken = _rerankTopKDragToken;
     await _persist(() => _ragSettings.setRerankTopK(value.round()));
+    if (disposed) return;
     if (_rerankTopKDragToken == dragToken) {
       _pendingRerankTopK = null;
     }
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   void onSearchTopKChanged(double value) {
@@ -514,10 +560,11 @@ class SettingsViewModel extends BaseViewModel {
   Future<void> onSearchTopKChangeEnd(double value) async {
     final dragToken = _searchTopKDragToken;
     await _persist(() => _ragSettings.setSearchTopK(value.round()));
+    if (disposed) return;
     if (_searchTopKDragToken == dragToken) {
       _pendingSearchTopK = null;
     }
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   void onMaxHistoryMessagesChanged(double value) {
@@ -529,10 +576,11 @@ class SettingsViewModel extends BaseViewModel {
   Future<void> onMaxHistoryMessagesChangeEnd(double value) async {
     final dragToken = _maxHistoryMessagesDragToken;
     await _persist(() => _ragSettings.setMaxHistoryMessages(value.round()));
+    if (disposed) return;
     if (_maxHistoryMessagesDragToken == dragToken) {
       _pendingMaxHistoryMessages = null;
     }
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   void onMaxTokensChanged(double value) {
@@ -550,15 +598,16 @@ class SettingsViewModel extends BaseViewModel {
     } else {
       await _persist(() => _ragSettings.setMaxTokens(intValue));
     }
+    if (disposed) return;
     if (_maxTokensDragToken == dragToken) {
       _pendingMaxTokens = null;
     }
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   Future<void> setMaxDocumentSizeMB(double value) async {
     await _persist(() => _ragSettings.setMaxDocumentSizeMB(value.round()));
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   void onMaxDocumentSizeChanged(double value) {
@@ -570,22 +619,29 @@ class SettingsViewModel extends BaseViewModel {
   Future<void> onMaxDocumentSizeChangeEnd(double value) async {
     final dragToken = _maxDocumentSizeDragToken;
     await setMaxDocumentSizeMB(value);
+    if (disposed) return;
     if (_maxDocumentSizeDragToken == dragToken) {
       _pendingMaxDocumentSize = null;
     }
-    notifyListeners();
+    _notifyIfMounted();
   }
 
   Future<void> _persist(Future<void> Function() action) async {
     try {
       await action();
+      if (disposed) return;
       _actionError = null;
     } on Object catch (_) {
+      if (disposed) return;
       _actionError =
           _l10n?.settingsSaveError ??
           'Unable to save settings. Please try again.';
     }
-    notifyListeners();
+    _notifyIfMounted();
+  }
+
+  void _notifyIfMounted() {
+    if (!disposed) notifyListeners();
   }
 
   Future<void> navigateToDocumentLibrary() async {

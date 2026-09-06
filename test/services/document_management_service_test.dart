@@ -147,6 +147,7 @@ void main() {
       expect(result.title, 'memory.txt');
       expect(result.filePath, 'memory.txt');
       expect(result.status, IngestionStatus.complete);
+      expect(result.sourceBytes, orderedEquals('memory bytes'.codeUnits));
     });
 
     test('addDocumentFromPlatformFile rejects missing bytes', () async {
@@ -465,7 +466,11 @@ void main() {
     });
 
     test('refreshDocument keeps old document when reingestion fails', () async {
-      final file = File('refresh_failure.txt');
+      final tempDir = await Directory.systemTemp.createTemp(
+        'offline-sync-refresh-failure-',
+      );
+      addTearDown(() => tempDir.delete(recursive: true));
+      final file = File('${tempDir.path}/refresh_failure.txt');
       await file.writeAsString('new content');
 
       final oldDoc = Document(
@@ -485,23 +490,29 @@ void main() {
         () => mockParserService.detectFormat(any<String>()),
       ).thenReturn(DocumentFormat.plainText);
       when(
+        () => mockEmbeddingService.generateEmbedding(any<String>()),
+      ).thenThrow(StateError('embedding failed'));
+      when(
         () => mockVectorStore.insertDocument(any<Document>()),
       ).thenThrow(Exception('insert failed'));
 
       await expectLater(
         service.refreshDocument('old_doc'),
-        throwsA(isA<Exception>()),
+        throwsA(isA<StateError>()),
       );
 
       verifyNever(() => mockVectorStore.deleteDocument('old_doc'));
 
-      await file.delete();
     });
 
     test(
       'reindexDocument does not delete old vectors before success',
       () async {
-        final file = File('reindex_failure.txt');
+        final tempDir = await Directory.systemTemp.createTemp(
+          'offline-sync-reindex-failure-',
+        );
+        addTearDown(() => tempDir.delete(recursive: true));
+        final file = File('${tempDir.path}/reindex_failure.txt');
         await file.writeAsString('reindex failure content');
 
         final oldDoc = Document(
@@ -534,7 +545,6 @@ void main() {
         );
 
         verifyNever(() => mockVectorStore.deleteDocument('old_doc'));
-        await file.delete();
       },
     );
 
