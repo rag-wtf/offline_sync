@@ -481,24 +481,6 @@ class DocumentManagementService {
     }
   }
 
-  Future<Document?> refreshDocument(String documentId) async {
-    final oldDoc = _vectorStore.getDocument(documentId);
-    if (oldDoc == null) return null;
-
-    if (!_hasSourceFile(oldDoc)) {
-      return oldDoc;
-    }
-
-    // Avoid re-ingesting an unchanged file. This also prevents the UNIQUE
-    // content-hash index from turning a harmless refresh into an error record.
-    final currentHash = _calculateBytesHash(await _readSourceBytes(oldDoc));
-    if (currentHash == oldDoc.contentHash) {
-      return oldDoc;
-    }
-
-    return _reindexExistingDocument(oldDoc, currentHash);
-  }
-
   bool _hasSourceFile(Document document) {
     return document.sourceBytes != null || File(document.filePath).existsSync();
   }
@@ -602,23 +584,6 @@ class DocumentManagementService {
     return _vectorStore.getAllDocuments();
   }
 
-  // coverage:ignore-start
-  Future<void> deleteAllDocuments() async {
-    _vectorStore.deleteAllDocuments();
-  }
-  // coverage:ignore-end
-
-  // coverage:ignore-start
-  Future<bool> hasDocumentChanged(String documentId) async {
-    final doc = _vectorStore.getDocument(documentId);
-    if (doc == null) return false;
-
-    if (!_hasSourceFile(doc)) return true;
-    final currentHash = _calculateBytesHash(await _readSourceBytes(doc));
-    return currentHash != doc.contentHash;
-  }
-  // coverage:ignore-end
-
   Future<Document?> findByHash(String contentHash) async {
     return _vectorStore.findByHash(contentHash);
   }
@@ -626,16 +591,6 @@ class DocumentManagementService {
   Future<List<EmbeddingData>> getDocumentChunks(String documentId) async {
     return _vectorStore.getChunksForDocument(documentId);
   }
-
-  Future<void> optimizeDatabase() async {
-    _vectorStore.optimizeDatabase();
-  }
-
-  // coverage:ignore-start
-  void cancelIngestion(String documentId) {
-    _activeJobs[documentId]?.cancel();
-  }
-  // coverage:ignore-end
 
   String _calculateBytesHash(Uint8List bytes) =>
       sha256.convert(bytes).toString();

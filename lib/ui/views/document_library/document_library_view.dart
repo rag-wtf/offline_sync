@@ -26,16 +26,17 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Knowledge Base'),
+        title: Text(l10n.knowledgeBaseTitle),
         elevation: 0,
         scrolledUnderElevation: 4,
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: viewModel.pickAndIngestFile,
         icon: const Icon(Icons.add_rounded),
-        label: const Text('Add Document'),
+        label: Text(l10n.uploadDocument),
         elevation: 2,
       ),
       body: viewModel.isBusy
@@ -46,7 +47,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
                   CircularProgressIndicator(color: colorScheme.primary),
                   const SizedBox(height: 16),
                   Text(
-                    'Loading documents...',
+                    l10n.loadingDocuments,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
@@ -63,6 +64,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
   Widget _buildEmptyState(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
 
     return Center(
       child: Padding(
@@ -84,15 +86,14 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
             ),
             const SizedBox(height: 24),
             Text(
-              'No documents yet',
+              l10n.noDocumentsYet,
               style: theme.textTheme.titleLarge?.copyWith(
                 color: colorScheme.onSurface,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              'Add PDF, DOCX, Markdown, or Text files\n'
-              'to start chatting with your data.',
+              l10n.documentFormatsPrompt,
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: colorScheme.onSurfaceVariant,
@@ -100,7 +101,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
             ),
             const SizedBox(height: 32),
             Text(
-              'Tap the button below to get started',
+              l10n.getStartedPrompt,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.outline,
               ),
@@ -117,7 +118,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
+    final l10n = AppLocalizations.of(context);
 
     return Column(
       children: [
@@ -179,10 +180,12 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
-                                        '${doc.chunkCount} chunks • '
-                                        '${DateFormat.yMMMd().format(
-                                          doc.ingestedAt,
-                                        )}',
+                                        l10n.chunksSummary(
+                                          doc.chunkCount,
+                                          DateFormat.yMMMd().format(
+                                            doc.ingestedAt,
+                                          ),
+                                        ),
                                         style: theme.textTheme.bodySmall
                                             ?.copyWith(
                                               color:
@@ -211,9 +214,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
                                       children: [
                                         Expanded(
                                           child: Text(
-                                            l10n?.documentNeedsReindex ??
-                                                'This document needs '
-                                                    're-indexing.',
+                                            l10n.documentNeedsReindex,
                                             style: theme.textTheme.bodySmall
                                                 ?.copyWith(
                                                   color: colorScheme.error,
@@ -225,16 +226,13 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
                                             onPressed: () =>
                                                 viewModel.reindexDocument(doc),
                                             child: Text(
-                                              l10n?.reindexDocument ??
-                                                  'Re-index document',
+                                              l10n.reindexDocument,
                                             ),
                                           )
                                         else
                                           Expanded(
                                             child: Text(
-                                              l10n?.reindexUnavailable ??
-                                                  'Source unavailable for '
-                                                      're-indexing.',
+                                              l10n.reindexUnavailable,
                                               style: TextStyle(
                                                 color: colorScheme.error,
                                               ),
@@ -270,6 +268,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
 
     // Determine stage display properties
     var stageLabel = '';
@@ -280,11 +279,11 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
 
     switch (progress.stage) {
       case 'parsing':
-        stageLabel = 'Parsing and chunking...';
+        stageLabel = l10n.parsingStage;
         stageIcon = Icons.description_rounded;
         stageColor = Colors.purple;
       case 'contextualizing':
-        stageLabel = 'Contextualizing...';
+        stageLabel = l10n.contextualizingStage;
         stageIcon = Icons.auto_awesome_rounded;
         stageColor = Colors.orange;
         if (progress.totalChunks > 0) {
@@ -292,7 +291,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
           progressValue = progress.currentChunk / progress.totalChunks;
         }
       case 'embedding':
-        stageLabel = 'Generating embeddings...';
+        stageLabel = l10n.embeddingStage;
         stageIcon = Icons.auto_awesome_rounded;
         stageColor = Colors.teal;
         if (progress.totalChunks > 0) {
@@ -300,15 +299,15 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
           progressValue = progress.currentChunk / progress.totalChunks;
         }
       case 'complete':
-        stageLabel = 'Complete!';
+        stageLabel = l10n.completeStage;
         stageIcon = Icons.check_circle_rounded;
         stageColor = Colors.green;
       case 'error':
-        stageLabel = 'Failed';
+        stageLabel = l10n.failedStage;
         stageIcon = Icons.error_rounded;
         stageColor = colorScheme.error;
       default:
-        stageLabel = 'Processing...';
+        stageLabel = l10n.processingStage;
         stageIcon = Icons.sync_rounded;
         stageColor = colorScheme.primary;
     }
@@ -374,7 +373,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
           if (showProgress) const SizedBox(height: 6),
           if (showProgress)
             Text(
-              '${progress.currentChunk}/${progress.totalChunks} chunks',
+              l10n.progressChunks(progress.currentChunk, progress.totalChunks),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
               ),
@@ -422,6 +421,7 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
   Widget _buildStatusBadge(BuildContext context, IngestionStatus status) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
 
     Color color;
     String label;
@@ -430,23 +430,23 @@ class DocumentLibraryView extends StackedView<DocumentLibraryViewModel> {
     switch (status) {
       case IngestionStatus.pending:
         color = colorScheme.outline;
-        label = 'Pending';
+        label = l10n.pendingStatus;
         icon = Icons.hourglass_empty_rounded;
       case IngestionStatus.processing:
         color = colorScheme.primary;
-        label = 'Processing';
+        label = l10n.processingStatus;
         icon = Icons.sync_rounded;
       case IngestionStatus.complete:
         color = Colors.green;
-        label = 'Ready';
+        label = l10n.readyStatus;
         icon = Icons.check_circle_rounded;
       case IngestionStatus.error:
         color = colorScheme.error;
-        label = 'Failed';
+        label = l10n.failedStatus;
         icon = Icons.error_rounded;
       case IngestionStatus.cancelled:
         color = Colors.orange;
-        label = 'Cancelled';
+        label = l10n.cancelledStatus;
         icon = Icons.cancel_rounded;
     }
 

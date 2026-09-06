@@ -35,6 +35,9 @@ jobs:
       - name: Generate localization
         run: flutter gen-l10n
 
+      - name: Validate localization keys
+        run: dart run tool/check_arb_unused.dart
+
       - name: Analyze
         run: flutter analyze
 

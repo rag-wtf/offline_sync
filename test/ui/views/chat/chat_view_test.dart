@@ -302,7 +302,7 @@ void main() {
     await tester.pump();
 
     expect(
-      find.text('Ingesting Operations Runbook (embedding)...'),
+      find.text('Ingesting Operations Runbook (Generating embeddings...)...'),
       findsOneWidget,
     );
     expect(find.text('50%'), findsOneWidget);

@@ -1,8 +1,6 @@
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:crypto/crypto.dart';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -256,15 +254,12 @@ void main() {
       when(
         () => mockVectorStore.getChunksForDocument('doc'),
       ).thenReturn(chunks);
-      when(() => mockVectorStore.optimizeDatabase()).thenReturn(null);
       when(() => mockVectorStore.deleteDocument('doc')).thenReturn(null);
 
       expect(await service.getAllDocuments(), [document]);
       expect(await service.findByHash('hash'), same(document));
       expect(await service.getDocumentChunks('doc'), chunks);
-      await service.optimizeDatabase();
       await service.deleteDocument('doc');
-      verify(() => mockVectorStore.optimizeDatabase()).called(1);
       verify(() => mockVectorStore.deleteDocument('doc')).called(1);
     });
 
@@ -505,7 +500,7 @@ void main() {
       await file.delete();
     });
 
-    test('refreshDocument keeps old document when reingestion fails', () async {
+    test('reindexDocument keeps old document when reingestion fails', () async {
       final file = File(path.join(testDirectory.path, 'refresh_failure.txt'));
       await file.writeAsString('new content');
 
@@ -536,7 +531,7 @@ void main() {
       ).thenThrow(Exception('insert failed'));
 
       await expectLater(
-        service.refreshDocument('old_doc'),
+        service.reindexDocument('old_doc'),
         throwsA(isA<StateError>()),
       );
 
@@ -589,7 +584,7 @@ void main() {
     );
 
     test(
-      'refreshDocument returns byte-backed documents without refreshing',
+      'reindexDocument returns byte-backed documents without refreshing',
       () async {
         final byteBackedDoc = Document(
           id: 'bytes_doc',
@@ -606,7 +601,7 @@ void main() {
           () => mockVectorStore.getDocument('bytes_doc'),
         ).thenReturn(byteBackedDoc);
 
-        final result = await service.refreshDocument('bytes_doc');
+        final result = await service.reindexDocument('bytes_doc');
 
         expect(result, same(byteBackedDoc));
         verifyNever(() => mockVectorStore.deleteDocument(any()));
@@ -703,37 +698,5 @@ void main() {
         ),
       );
     });
-
-    test(
-      'refreshDocument returns the existing document when hash is unchanged',
-      () async {
-        final file = File(
-          path.join(testDirectory.path, 'refresh_same_hash.txt'),
-        );
-        await file.writeAsString('Refresh content');
-        final hash = sha256.convert(utf8.encode('Refresh content')).toString();
-
-        final oldDoc = Document(
-          id: 'old_doc',
-          title: 'refresh_same_hash.txt',
-          filePath: file.path,
-          format: DocumentFormat.plainText,
-          chunkCount: 1,
-          totalCharacters: 15,
-          contentHash: hash,
-          ingestedAt: DateTime.now(),
-          status: IngestionStatus.complete,
-        );
-
-        when(() => mockVectorStore.getDocument('old_doc')).thenReturn(oldDoc);
-        final result = await service.refreshDocument('old_doc');
-
-        expect(result, same(oldDoc));
-        verifyNever(() => mockVectorStore.insertDocument(any<Document>()));
-        verifyNever(() => mockVectorStore.deleteDocument(any()));
-
-        await file.delete();
-      },
-    );
   });
 }

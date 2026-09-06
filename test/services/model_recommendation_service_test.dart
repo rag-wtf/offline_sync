@@ -55,6 +55,11 @@ void main() {
           hasGpu: false,
           platform: 'android',
         ),
+        intro: 'Your device has limited resources:',
+        ramMessage: (actual, minimum) =>
+            '• RAM: ${actual}MB (need ${minimum}MB minimum)',
+        storageMessage: (actual, minimum) =>
+            '• Storage: ${actual}MB free (need ${minimum}MB minimum)',
       );
 
       expect(message, contains('RAM: 1024MB'));

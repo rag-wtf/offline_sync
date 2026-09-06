@@ -9,16 +9,21 @@ import 'package:offline_sync/services/document_parser_service.dart';
 import 'package:offline_sync/services/rag_constants.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:offline_sync/services/vector_store.dart';
+import 'package:path/path.dart' as path;
 import 'package:path_provider_platform_interface/path_provider_platform_interface.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqlite3/sqlite3.dart';
 
 class MockPathProviderPlatform extends PathProviderPlatform {
-  @override
-  Future<String?> getApplicationDocumentsPath() async => '.';
+  MockPathProviderPlatform(this.rootPath);
+
+  final String rootPath;
 
   @override
-  Future<String?> getApplicationSupportPath() async => '.';
+  Future<String?> getApplicationDocumentsPath() async => rootPath;
+
+  @override
+  Future<String?> getApplicationSupportPath() async => rootPath;
 }
 
 Document completeDocument(String id, {String embeddingModelId = 'gecko-64'}) {
@@ -40,9 +45,17 @@ void main() {
   // No need for open.overrideFor in sqlite3 v3 - uses automatic build hooks
   TestWidgetsFlutterBinding.ensureInitialized();
   late VectorStore vectorStore;
+  late Directory testDirectory;
+  late String testDbPath;
 
   setUp(() async {
-    PathProviderPlatform.instance = MockPathProviderPlatform();
+    testDirectory = await Directory.systemTemp.createTemp(
+      'offline_sync_vector_store_test_',
+    );
+    testDbPath = path.join(testDirectory.path, 'vectors.db');
+    PathProviderPlatform.instance = MockPathProviderPlatform(
+      testDirectory.path,
+    );
 
     // Mock SharedPreferences for RagSettingsService
     SharedPreferences.setMockInitialValues({
@@ -58,13 +71,13 @@ void main() {
     final ragSettings = locator<RagSettingsService>();
     await ragSettings.initialize();
 
-    final dbFile = File('vectors.db');
+    final dbFile = File(testDbPath);
     if (dbFile.existsSync()) {
       try {
         dbFile.deleteSync();
       } on Object catch (_) {
         try {
-          sqlite3.open('vectors.db')
+          sqlite3.open(testDbPath)
             ..execute('DROP TABLE IF EXISTS vectors')
             ..execute('DROP TABLE IF EXISTS documents')
             ..execute('DROP TABLE IF EXISTS vectors_fts')
@@ -84,7 +97,7 @@ void main() {
   tearDown(() async {
     await vectorStore.close();
 
-    final dbFile = File('vectors.db');
+    final dbFile = File(testDbPath);
     try {
       if (dbFile.existsSync()) {
         dbFile.deleteSync();
@@ -92,9 +105,20 @@ void main() {
     } on Object catch (_) {}
 
     await locator.reset();
+    if (testDirectory.existsSync()) {
+      await testDirectory.delete(recursive: true);
+    }
   });
 
   group('VectorStore Tests', () {
+    test('stores the database in the per-test temporary directory', () {
+      expect(path.isWithin(testDirectory.path, testDbPath), isTrue);
+      expect(
+        File(path.join(Directory.current.path, 'vectors.db')).existsSync(),
+        isFalse,
+      );
+    });
+
     test('SearchResult exposes typed source metadata', () {
       final result = SearchResult(
         id: 'chunk',
@@ -592,12 +616,12 @@ void main() {
         () async {
           await vectorStore.close();
 
-          final dbFile = File('vectors.db');
+          final dbFile = File(testDbPath);
           if (dbFile.existsSync()) {
             dbFile.deleteSync();
           }
 
-          sqlite3.open('vectors.db')
+          sqlite3.open(testDbPath)
             ..execute('''
             CREATE TABLE vectors (
               id TEXT PRIMARY KEY,
@@ -669,10 +693,10 @@ void main() {
             'active_embedding_model_id': 'gecko-64',
           });
 
-          final dbFile = File('vectors.db');
+          final dbFile = File(testDbPath);
           if (dbFile.existsSync()) dbFile.deleteSync();
 
-          sqlite3.open('vectors.db')
+          sqlite3.open(testDbPath)
             ..execute('''
             CREATE TABLE vectors (
               id TEXT PRIMARY KEY,
@@ -746,14 +770,14 @@ void main() {
         'v4 migration quarantines base64 embeddings without explicit encoding',
         () async {
           await vectorStore.close();
-          final dbFile = File('vectors.db');
+          final dbFile = File(testDbPath);
           if (dbFile.existsSync()) dbFile.deleteSync();
 
           final float64Bytes = Float64List.fromList([
             1,
             0,
           ]).buffer.asUint8List();
-          sqlite3.open('vectors.db')
+          sqlite3.open(testDbPath)
             ..execute('''
             CREATE TABLE vectors (
               id TEXT PRIMARY KEY,
@@ -943,10 +967,35 @@ void main() {
           <String, dynamic>{},
         );
       });
-    });
 
-    test('optimizeDatabase completes successfully', () {
-      expect(vectorStore.optimizeDatabase, returnsNormally);
+      test('replaces a document while adopting staged vectors', () {
+        final oldDocument = completeDocument('replace-me');
+        final stagedDocument = completeDocument('staged-document');
+        final replacement = completeDocument('replace-me');
+        vectorStore
+          ..insertDocument(oldDocument)
+          ..insertDocument(stagedDocument)
+          ..insertEmbedding(
+            id: 'staged-vector',
+            documentId: stagedDocument.id,
+            content: 'replacement content',
+            embedding: [1, 0],
+            embeddingModelId: 'gecko-64',
+          )
+          ..replaceDocument(
+            oldDocumentId: oldDocument.id,
+            stagedDocumentId: stagedDocument.id,
+            replacement: replacement,
+          );
+
+        expect(vectorStore.getDocument(oldDocument.id), isNotNull);
+        expect(vectorStore.getDocument(stagedDocument.id), isNotNull);
+        expect(
+          vectorStore.getChunksForDocument(oldDocument.id).single.content,
+          'replacement content',
+        );
+        expect(vectorStore.getChunksForDocument(stagedDocument.id), isEmpty);
+      });
     });
 
     test(

@@ -25,16 +25,16 @@ class SettingsView extends StackedView<SettingsViewModel> {
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final l10n = Localizations.of<AppLocalizations>(context, AppLocalizations);
+    final l10n = AppLocalizations.of(context);
     final semanticWeightPct = (viewModel.semanticWeightDisplay * 100)
         .toStringAsFixed(0);
-    final maxDocumentSizeText =
-        l10n?.settingsMaxDocumentSize(viewModel.maxDocumentSizeMB) ??
-        'Documents larger than ${viewModel.maxDocumentSizeMB} MB are rejected.';
+    final maxDocumentSizeText = l10n.settingsMaxDocumentSize(
+      viewModel.maxDocumentSizeMB,
+    );
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings'),
+        title: Text(l10n.settingsTitle),
         elevation: 0,
         scrolledUnderElevation: 4,
       ),
@@ -48,18 +48,16 @@ class SettingsView extends StackedView<SettingsViewModel> {
                 leading: Icon(Icons.error_outline, color: colorScheme.error),
                 title: Text(
                   viewModel.settingsError == null
-                      ? l10n?.modelStatusError ??
-                            'Model status is unavailable. Please retry.'
-                      : l10n?.settingsSaveError ??
-                            'Some settings could not be saved.',
+                      ? l10n.modelStatusError
+                      : l10n.settingsSaveError,
                   style: TextStyle(color: colorScheme.onErrorContainer),
                 ),
               ),
             ),
           // AI Model Management Section
-          const _SectionHeader(
+          _SectionHeader(
             icon: Icons.memory_rounded,
-            title: 'AI Model Management',
+            title: l10n.modelsSection,
           ),
           const SizedBox(height: 12),
 
@@ -80,7 +78,7 @@ class SettingsView extends StackedView<SettingsViewModel> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'Active Inference Model',
+                          l10n.activeInferenceModel,
                           style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w600,
                             color: colorScheme.primary,
@@ -89,53 +87,55 @@ class SettingsView extends StackedView<SettingsViewModel> {
                       ],
                     ),
                   ),
-                  ...viewModel.downloadedInferenceModels.asMap().entries.map((
-                    entry,
-                  ) {
-                    final model = entry.value;
-                    final isLast =
-                        entry.key ==
-                        viewModel.downloadedInferenceModels.length - 1;
-                    final isActive =
-                        viewModel.activeInferenceModel?.id == model.id;
-                    return Column(
-                      children: [
-                        RadioListTile<String>(
-                          value: model.id,
-                          // RadioListTile.groupValue is deprecated
-                          // in favor of RadioGroup
-                          // ignore: deprecated_member_use
-                          groupValue: viewModel.activeInferenceModel?.id,
-                          // RadioListTile.onChanged is deprecated
-                          // in favor of RadioGroup
-                          // ignore: deprecated_member_use
-                          onChanged: (value) {
-                            if (value != null) {
-                              unawaited(viewModel.switchInferenceModel(value));
-                            }
-                          },
-                          title: Text(
-                            model.name,
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              fontWeight: isActive
-                                  ? FontWeight.w600
-                                  : FontWeight.w500,
-                            ),
-                          ),
-                          subtitle: isActive
-                              ? Text(
-                                  'ACTIVE',
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: colorScheme.primary,
-                                    fontWeight: FontWeight.w600,
+                  RadioGroup<String>(
+                    groupValue: viewModel.activeInferenceModel?.id,
+                    onChanged: (value) {
+                      if (value != null) {
+                        unawaited(viewModel.switchInferenceModel(value));
+                      }
+                    },
+                    child: Column(
+                      children: viewModel.downloadedInferenceModels
+                          .asMap()
+                          .entries
+                          .map((entry) {
+                            final model = entry.value;
+                            final isLast =
+                                entry.key ==
+                                viewModel.downloadedInferenceModels.length - 1;
+                            final isActive =
+                                viewModel.activeInferenceModel?.id == model.id;
+                            return Column(
+                              children: [
+                                RadioListTile<String>(
+                                  value: model.id,
+                                  title: Text(
+                                    model.name,
+                                    style: theme.textTheme.bodyLarge?.copyWith(
+                                      fontWeight: isActive
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
+                                    ),
                                   ),
-                                )
-                              : null,
-                        ),
-                        if (!isLast) const Divider(height: 1, indent: 56),
-                      ],
-                    );
-                  }),
+                                  subtitle: isActive
+                                      ? Text(
+                                          l10n.activeLabel,
+                                          style: theme.textTheme.labelSmall
+                                              ?.copyWith(
+                                                color: colorScheme.primary,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                        )
+                                      : null,
+                                ),
+                                if (!isLast)
+                                  const Divider(height: 1, indent: 56),
+                              ],
+                            );
+                          })
+                          .toList(),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -159,7 +159,7 @@ class SettingsView extends StackedView<SettingsViewModel> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'Active Embedding Model',
+                          l10n.activeEmbeddingModel,
                           style: theme.textTheme.titleSmall?.copyWith(
                             fontWeight: FontWeight.w600,
                             color: colorScheme.primary,
@@ -168,53 +168,55 @@ class SettingsView extends StackedView<SettingsViewModel> {
                       ],
                     ),
                   ),
-                  ...viewModel.downloadedEmbeddingModels.asMap().entries.map((
-                    entry,
-                  ) {
-                    final model = entry.value;
-                    final isLast =
-                        entry.key ==
-                        viewModel.downloadedEmbeddingModels.length - 1;
-                    final isActive =
-                        viewModel.activeEmbeddingModel?.id == model.id;
-                    return Column(
-                      children: [
-                        RadioListTile<String>(
-                          value: model.id,
-                          // RadioListTile.groupValue is deprecated
-                          // in favor of RadioGroup
-                          // ignore: deprecated_member_use
-                          groupValue: viewModel.activeEmbeddingModel?.id,
-                          // RadioListTile.onChanged is deprecated
-                          // in favor of RadioGroup
-                          // ignore: deprecated_member_use
-                          onChanged: (value) {
-                            if (value != null) {
-                              unawaited(viewModel.switchEmbeddingModel(value));
-                            }
-                          },
-                          title: Text(
-                            model.name,
-                            style: theme.textTheme.bodyLarge?.copyWith(
-                              fontWeight: isActive
-                                  ? FontWeight.w600
-                                  : FontWeight.w500,
-                            ),
-                          ),
-                          subtitle: isActive
-                              ? Text(
-                                  'ACTIVE',
-                                  style: theme.textTheme.labelSmall?.copyWith(
-                                    color: colorScheme.primary,
-                                    fontWeight: FontWeight.w600,
+                  RadioGroup<String>(
+                    groupValue: viewModel.activeEmbeddingModel?.id,
+                    onChanged: (value) {
+                      if (value != null) {
+                        unawaited(viewModel.switchEmbeddingModel(value));
+                      }
+                    },
+                    child: Column(
+                      children: viewModel.downloadedEmbeddingModels
+                          .asMap()
+                          .entries
+                          .map((entry) {
+                            final model = entry.value;
+                            final isLast =
+                                entry.key ==
+                                viewModel.downloadedEmbeddingModels.length - 1;
+                            final isActive =
+                                viewModel.activeEmbeddingModel?.id == model.id;
+                            return Column(
+                              children: [
+                                RadioListTile<String>(
+                                  value: model.id,
+                                  title: Text(
+                                    model.name,
+                                    style: theme.textTheme.bodyLarge?.copyWith(
+                                      fontWeight: isActive
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
+                                    ),
                                   ),
-                                )
-                              : null,
-                        ),
-                        if (!isLast) const Divider(height: 1, indent: 56),
-                      ],
-                    );
-                  }),
+                                  subtitle: isActive
+                                      ? Text(
+                                          l10n.activeLabel,
+                                          style: theme.textTheme.labelSmall
+                                              ?.copyWith(
+                                                color: colorScheme.primary,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                        )
+                                      : null,
+                                ),
+                                if (!isLast)
+                                  const Divider(height: 1, indent: 56),
+                              ],
+                            );
+                          })
+                          .toList(),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -237,7 +239,7 @@ class SettingsView extends StackedView<SettingsViewModel> {
                       ),
                       const SizedBox(width: 8),
                       Text(
-                        'Available Models',
+                        l10n.availableModels,
                         style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w600,
                           color: colorScheme.onSurfaceVariant,
@@ -271,38 +273,32 @@ class SettingsView extends StackedView<SettingsViewModel> {
           const SizedBox(height: 32),
 
           // RAG Quality Settings Section
-          const _SectionHeader(
+          _SectionHeader(
             icon: Icons.tune_rounded,
-            title: 'RAG Quality Settings',
-            subtitle: 'Improve retrieval accuracy and response quality',
+            title: l10n.ragQualitySettings,
+            subtitle: l10n.ragQualitySettingsSubtitle,
           ),
           const SizedBox(height: 12),
           Card(
             child: Column(
               children: [
                 SwitchListTile(
-                  title: const Text('Query Expansion'),
-                  subtitle: const Text(
-                    'Generate query variants for better recall',
-                  ),
+                  title: Text(l10n.queryExpansionTitle),
+                  subtitle: Text(l10n.queryExpansionSubtitle),
                   value: viewModel.queryExpansionEnabled,
                   onChanged: viewModel.toggleQueryExpansion,
                 ),
                 const Divider(height: 1, indent: 16),
                 SwitchListTile(
-                  title: const Text('LLM Reranking'),
-                  subtitle: const Text(
-                    'Use AI to reorder results by relevance',
-                  ),
+                  title: Text(l10n.rerankingTitle),
+                  subtitle: Text(l10n.rerankingSubtitle),
                   value: viewModel.rerankingEnabled,
                   onChanged: viewModel.toggleReranking,
                 ),
                 const Divider(height: 1, indent: 16),
                 SwitchListTile(
-                  title: const Text('Contextual Retrieval'),
-                  subtitle: const Text(
-                    'Add context to chunks for better retrieval',
-                  ),
+                  title: Text(l10n.contextualRetrievalTitle),
+                  subtitle: Text(l10n.contextualRetrievalSubtitle),
                   value: viewModel.contextualRetrievalEnabled,
                   onChanged: viewModel.toggleContextualRetrieval,
                 ),
@@ -320,10 +316,10 @@ class SettingsView extends StackedView<SettingsViewModel> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _SliderSetting(
-                    title: 'Chunk Overlap',
+                    title: l10n.chunkOverlapTitle,
                     value:
                         '${viewModel.chunkOverlapDisplay.toStringAsFixed(0)}%',
-                    subtitle: 'Context continuity between text chunks',
+                    subtitle: l10n.chunkOverlapSubtitle,
                     slider: Slider(
                       value: viewModel.chunkOverlapDisplay,
                       max: 30,
@@ -337,9 +333,9 @@ class SettingsView extends StackedView<SettingsViewModel> {
                   ),
                   const Divider(height: 24),
                   _SliderSetting(
-                    title: 'Semantic vs Keyword',
+                    title: l10n.semanticWeightTitle,
                     value: '$semanticWeightPct%',
-                    subtitle: 'Balance between search methods',
+                    subtitle: l10n.semanticWeightSubtitle,
                     slider: Slider(
                       value: viewModel.semanticWeightDisplay,
                       divisions: 10,
@@ -356,10 +352,10 @@ class SettingsView extends StackedView<SettingsViewModel> {
           const SizedBox(height: 32),
 
           // Token Management Section
-          const _SectionHeader(
+          _SectionHeader(
             icon: Icons.data_usage_rounded,
-            title: 'Token Management',
-            subtitle: 'Control context and history to fit model limits',
+            title: l10n.tokenManagementTitle,
+            subtitle: l10n.tokenManagementSubtitle,
           ),
           const SizedBox(height: 12),
           Card(
@@ -369,9 +365,9 @@ class SettingsView extends StackedView<SettingsViewModel> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _SliderSetting(
-                    title: 'Search Top K',
+                    title: l10n.searchTopKTitle,
                     value: '${viewModel.searchTopKDisplay.round()}',
-                    subtitle: 'Context chunks retrieved from vector search',
+                    subtitle: l10n.searchTopKSubtitle,
                     slider: Slider(
                       value: viewModel.searchTopKDisplay,
                       min: 1,
@@ -384,9 +380,9 @@ class SettingsView extends StackedView<SettingsViewModel> {
                   ),
                   const Divider(height: 24),
                   _SliderSetting(
-                    title: 'Max History Messages',
+                    title: l10n.maxHistoryMessagesTitle,
                     value: '${viewModel.maxHistoryMessagesDisplay.round()}',
-                    subtitle: 'Conversation history included in context',
+                    subtitle: l10n.maxHistoryMessagesSubtitle,
                     slider: Slider(
                       value: viewModel.maxHistoryMessagesDisplay,
                       max: 5,
@@ -398,13 +394,14 @@ class SettingsView extends StackedView<SettingsViewModel> {
                   ),
                   const Divider(height: 24),
                   _SliderSetting(
-                    title: 'Max Tokens',
+                    title: l10n.maxTokensTitle,
                     value: viewModel.isMaxTokensCustomDisplay
-                        ? '${viewModel.maxTokensDisplay.round()} (Custom)'
+                        ? '${viewModel.maxTokensDisplay.round()} '
+                              '${l10n.customLabel}'
                         : '${viewModel.maxTokensDisplay.round()}',
                     subtitle: viewModel.isMaxTokensCustomDisplay
-                        ? 'Default: ${viewModel.modelDefaultMaxTokens}'
-                        : 'Maximum context window (input + output)',
+                        ? l10n.defaultMaxTokens(viewModel.modelDefaultMaxTokens)
+                        : l10n.maxTokensSubtitle,
                     slider: Slider(
                       value: viewModel.maxTokensDisplay,
                       min: 512,
@@ -425,9 +422,9 @@ class SettingsView extends StackedView<SettingsViewModel> {
           const SizedBox(height: 32),
 
           // Knowledge Base Section
-          const _SectionHeader(
+          _SectionHeader(
             icon: Icons.library_books_rounded,
-            title: 'Knowledge Base',
+            title: l10n.knowledgeBaseTitle,
           ),
           const SizedBox(height: 12),
           Card(
@@ -443,9 +440,9 @@ class SettingsView extends StackedView<SettingsViewModel> {
                   color: colorScheme.primary,
                 ),
               ),
-              title: const Text('Manage Knowledge Base'),
+              title: Text(l10n.manageKnowledgeBase),
               subtitle: Text(
-                'Add, view, and delete documents\n$maxDocumentSizeText',
+                '${l10n.knowledgeBaseSubtitle}\n$maxDocumentSizeText',
               ),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: viewModel.navigateToDocumentLibrary,
@@ -456,9 +453,9 @@ class SettingsView extends StackedView<SettingsViewModel> {
 
           // Device Information Section
           if (viewModel.capabilities != null) ...[
-            const _SectionHeader(
+            _SectionHeader(
               icon: Icons.devices_rounded,
-              title: 'Device Information',
+              title: l10n.deviceInformation,
             ),
             const SizedBox(height: 12),
             Card(
@@ -478,23 +475,23 @@ class SettingsView extends StackedView<SettingsViewModel> {
                 ListTile(
                   leading: const Icon(Icons.key_outlined),
                   title: Text(
-                    l10n?.huggingFaceTokenTitle ?? 'Hugging Face token',
+                    l10n.huggingFaceTokenTitle,
                   ),
                   subtitle: Text(
                     viewModel.hasToken == true
-                        ? l10n?.tokenStatusSaved ?? 'Token saved'
-                        : l10n?.tokenStatusNotSet ?? 'No token saved',
+                        ? l10n.tokenStatusSaved
+                        : l10n.tokenStatusNotSet,
                   ),
                   trailing: TextButton(
                     onPressed: viewModel.enterToken,
                     child: Text(
-                      l10n?.enterOrReplaceToken ?? 'Enter or replace',
+                      l10n.enterOrReplaceToken,
                     ),
                   ),
                 ),
                 ListTile(
                   leading: const Icon(Icons.delete_outline),
-                  title: Text(l10n?.clearSavedToken ?? 'Clear saved token'),
+                  title: Text(l10n.clearSavedToken),
                   enabled: viewModel.hasToken == true,
                   onTap: viewModel.clearToken,
                 ),
@@ -504,15 +501,14 @@ class SettingsView extends StackedView<SettingsViewModel> {
           Card(
             child: ExpansionTile(
               leading: const Icon(Icons.bug_report_outlined),
-              title: Text(l10n?.crashLogsTitle ?? 'Crash Logs'),
+              title: Text(l10n.crashLogsTitle),
               subtitle: Text(
-                l10n?.diagnosticsCount(viewModel.crashLogs.length) ??
-                    '${viewModel.crashLogs.length} diagnostics',
+                l10n.diagnosticsCount(viewModel.crashLogs.length),
               ),
               children: [
                 if (viewModel.crashLogs.isEmpty)
                   ListTile(
-                    title: Text(l10n?.noCrashLogs ?? 'No crash logs recorded'),
+                    title: Text(l10n.noCrashLogs),
                   )
                 else
                   SizedBox(
@@ -531,13 +527,13 @@ class SettingsView extends StackedView<SettingsViewModel> {
                       onPressed: viewModel.crashLogs.isEmpty
                           ? null
                           : viewModel.exportCrashLogs,
-                      child: Text(l10n?.copyDiagnostics ?? 'Copy diagnostics'),
+                      child: Text(l10n.copyDiagnostics),
                     ),
                     TextButton(
                       onPressed: viewModel.crashLogs.isEmpty
                           ? null
                           : viewModel.clearCrashLogs,
-                      child: Text(l10n?.clearCrashLogs ?? 'Clear Crash Logs'),
+                      child: Text(l10n.clearCrashLogs),
                     ),
                   ],
                 ),
@@ -548,22 +544,19 @@ class SettingsView extends StackedView<SettingsViewModel> {
             child: ListTile(
               leading: const Icon(Icons.shield_outlined),
               title: Text(
-                l10n?.privateLocalStorageTitle ?? 'Private local storage',
+                l10n.privateLocalStorageTitle,
               ),
               subtitle: Text(
-                l10n?.privateLocalStorageSubtitle ??
-                    'Local documents and models are excluded '
-                        'from cloud backups.',
+                l10n.privateLocalStorageSubtitle,
               ),
             ),
           ),
           Card(
             child: ListTile(
               leading: const Icon(Icons.chat_bubble_outline),
-              title: Text(l10n?.clearChatHistoryTitle ?? 'Clear chat history'),
+              title: Text(l10n.clearChatHistoryTitle),
               subtitle: Text(
-                l10n?.clearChatHistorySubtitle ??
-                    'Delete locally saved conversations.',
+                l10n.clearChatHistorySubtitle,
               ),
               onTap: viewModel.clearChatHistory,
             ),
@@ -812,6 +805,7 @@ class _DeviceInfoSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
 
     String formatMemory(int mb) {
       if (mb >= 1024) {
@@ -824,7 +818,7 @@ class _DeviceInfoSection extends StatelessWidget {
       children: [
         _DeviceInfoRow(
           icon: Icons.memory,
-          label: 'RAM',
+          label: l10n.ramLabel,
           value: formatMemory(capabilities.totalRamMB),
           colorScheme: colorScheme,
           theme: theme,
@@ -832,7 +826,7 @@ class _DeviceInfoSection extends StatelessWidget {
         const SizedBox(height: 12),
         _DeviceInfoRow(
           icon: Icons.storage,
-          label: 'Storage',
+          label: l10n.storageLabel,
           value: formatMemory(capabilities.availableStorageMB),
           colorScheme: colorScheme,
           theme: theme,
@@ -840,7 +834,7 @@ class _DeviceInfoSection extends StatelessWidget {
         const SizedBox(height: 12),
         _DeviceInfoRow(
           icon: Icons.computer,
-          label: 'Platform',
+          label: l10n.platformLabel,
           value: capabilities.platform.toUpperCase(),
           colorScheme: colorScheme,
           theme: theme,
@@ -848,8 +842,10 @@ class _DeviceInfoSection extends StatelessWidget {
         const SizedBox(height: 12),
         _DeviceInfoRow(
           icon: Icons.developer_board,
-          label: 'GPU',
-          value: capabilities.hasGpu ? 'Available' : 'Not Available',
+          label: l10n.gpuLabel,
+          value: capabilities.hasGpu
+              ? l10n.availableLabel
+              : l10n.notAvailableLabel,
           colorScheme: colorScheme,
           theme: theme,
         ),

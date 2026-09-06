@@ -621,4 +621,32 @@ void main() {
       viewModel.dispose();
     },
   );
+
+  test('checks reindex impact before switching the embedding model', () async {
+    final dialogService = getAndRegisterMockDialogService();
+    final documentService = MockDocumentManagementService();
+    when(documentService.getAllDocuments).thenThrow(
+      StateError('status read failed'),
+    );
+
+    final viewModel = SettingsViewModel(
+      modelService: modelService,
+      ragSettings: ragSettings,
+      navigationService: navigationService,
+      deviceService: FakeDeviceCapabilityService(
+        const DeviceCapabilities(
+          totalRamMB: 2048,
+          availableStorageMB: 2048,
+          hasGpu: false,
+          platform: 'android',
+        ),
+      ),
+      dialogService: dialogService,
+      documentService: documentService,
+    );
+
+    await viewModel.switchEmbeddingModel('embedding-b');
+    expect(viewModel.actionError, isNotNull);
+    verifyNever(() => modelService.switchEmbeddingModel('embedding-b'));
+  });
 }

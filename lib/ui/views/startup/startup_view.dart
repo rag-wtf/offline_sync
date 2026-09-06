@@ -22,6 +22,7 @@ class StartupView extends StackedView<StartupViewModel> {
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       body: Container(
@@ -105,7 +106,7 @@ class StartupView extends StackedView<StartupViewModel> {
                     child: Column(
                       children: [
                         Text(
-                          'OfflineSync RAG',
+                          l10n.startupTitle,
                           style: theme.textTheme.headlineMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: colorScheme.onSurface,
@@ -113,7 +114,7 @@ class StartupView extends StackedView<StartupViewModel> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'On-device AI with your documents',
+                          l10n.startupSubtitle,
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: colorScheme.onSurfaceVariant,
                           ),
@@ -140,6 +141,7 @@ class StartupView extends StackedView<StartupViewModel> {
   Widget _buildLoadingState(BuildContext context, StartupViewModel viewModel) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
 
     return Column(
       children: [
@@ -153,7 +155,7 @@ class StartupView extends StackedView<StartupViewModel> {
         ),
         const SizedBox(height: 24),
         Text(
-          'Initializing AI Models...',
+          l10n.initializingModels,
           style: theme.textTheme.titleMedium?.copyWith(
             color: colorScheme.onSurfaceVariant,
           ),
@@ -162,7 +164,8 @@ class StartupView extends StackedView<StartupViewModel> {
           // coverage:ignore-start
           const SizedBox(height: 8),
           Text(
-            viewModel.statusMessage!,
+            viewModel.localizedStatusMessage(AppLocalizations.of(context)) ??
+                viewModel.statusMessage!,
             style: theme.textTheme.bodySmall?.copyWith(
               color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
             ),
@@ -184,10 +187,11 @@ class StartupView extends StackedView<StartupViewModel> {
   Widget _buildErrorState(BuildContext context, StartupViewModel viewModel) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
     final policyReason = viewModel.downloadPolicyReason;
     final errorMessage = policyReason == null
         ? LoggingService.redact(
-            viewModel.modelError?.toString() ?? 'Unknown error',
+            viewModel.modelError?.toString() ?? l10n.unknownError,
           )
         : localizeDownloadPolicyReason(
             AppLocalizations.of(context),
@@ -221,7 +225,10 @@ class StartupView extends StackedView<StartupViewModel> {
               if (viewModel.statusMessage != null) ...[
                 const SizedBox(height: 8),
                 Text(
-                  viewModel.statusMessage!,
+                  viewModel.localizedStatusMessage(
+                        AppLocalizations.of(context),
+                      ) ??
+                      viewModel.statusMessage!,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colorScheme.onErrorContainer.withValues(alpha: 0.7),
                   ),
@@ -235,14 +242,14 @@ class StartupView extends StackedView<StartupViewModel> {
                   FilledButton.icon(
                     onPressed: viewModel.retry,
                     icon: const Icon(Icons.refresh),
-                    label: const Text('Retry'),
+                    label: Text(l10n.retryAction),
                   ),
                   if (viewModel.needsToken) ...[
                     // coverage:ignore-start
                     const SizedBox(width: 12),
                     FilledButton.tonal(
                       onPressed: viewModel.enterToken,
-                      child: const Text('Enter Token'),
+                      child: Text(l10n.enterTokenAction),
                     ),
                     if (viewModel.erroredModelRepoPage != null) ...[
                       const SizedBox(width: 12),
@@ -253,7 +260,7 @@ class StartupView extends StackedView<StartupViewModel> {
                           viewModel.erroredModelRepoPage!,
                         ),
                         icon: const Icon(Icons.copy, size: 16),
-                        label: const Text('Copy repo link'),
+                        label: Text(l10n.copyRepoLinkAction),
                       ),
                     ],
                     // coverage:ignore-end
@@ -278,6 +285,7 @@ class StartupView extends StackedView<StartupViewModel> {
   ) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
 
     String formatMemory(int mb) {
       if (mb >= 1024) {
@@ -305,7 +313,7 @@ class StartupView extends StackedView<StartupViewModel> {
               ),
               const SizedBox(width: 8),
               Text(
-                'Device Information',
+                l10n.deviceInformation,
                 style: theme.textTheme.labelLarge?.copyWith(
                   color: colorScheme.onSurfaceVariant,
                 ),
@@ -315,26 +323,28 @@ class StartupView extends StackedView<StartupViewModel> {
           const SizedBox(height: 12),
           _DeviceInfoRow(
             icon: Icons.memory,
-            label: 'RAM',
+            label: l10n.ramLabel,
             value: formatMemory(capabilities.totalRamMB),
           ),
           const SizedBox(height: 8),
           _DeviceInfoRow(
             icon: Icons.storage,
-            label: 'Storage',
+            label: l10n.storageLabel,
             value: formatMemory(capabilities.availableStorageMB),
           ),
           const SizedBox(height: 8),
           _DeviceInfoRow(
             icon: Icons.computer,
-            label: 'Platform',
+            label: l10n.platformLabel,
             value: capabilities.platform,
           ),
           const SizedBox(height: 8),
           _DeviceInfoRow(
             icon: Icons.developer_board,
-            label: 'GPU',
-            value: capabilities.hasGpu ? 'Available' : 'Not Available',
+            label: l10n.gpuLabel,
+            value: capabilities.hasGpu
+                ? l10n.availableLabel
+                : l10n.notAvailableLabel,
           ),
         ],
       ),

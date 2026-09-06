@@ -188,6 +188,30 @@ void main() {
     expect(find.text('LINUX'), findsOneWidget);
   });
 
+  testWidgets('renders a localized settings action error', (tester) async {
+    when(() => modelService.downloadModel('inference-a')).thenThrow(
+      StateError('download failed'),
+    );
+    final viewModel = SettingsViewModel(
+      modelService: modelService,
+      ragSettings: ragSettings,
+      navigationService: navigationService,
+      deviceService: FakeDeviceCapabilityService(
+        const DeviceCapabilities(
+          totalRamMB: 2048,
+          availableStorageMB: 2048,
+          hasGpu: false,
+          platform: 'android',
+        ),
+      ),
+    );
+
+    await viewModel.downloadModel('inference-a');
+    await pumpView(tester, viewModel: viewModel, callback: (_) {});
+
+    expect(find.text('Some settings could not be saved.'), findsOneWidget);
+  });
+
   testWidgets(
     'renders active embedding models and delegates embedding switch',
     (tester) async {

@@ -856,12 +856,6 @@ UPDATE vectors SET document_id = ?, metadata = json_set(
     }
   }
 
-  /// Optimize database size and performance
-  void optimizeDatabase() {
-    _db!.execute('VACUUM');
-    _schedulePersistenceFlush();
-  }
-
   // -----------------------------------------
 
   String _sanitizeFtsQuery(String query) {

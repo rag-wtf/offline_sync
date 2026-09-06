@@ -53,8 +53,12 @@ class FakeModelRecommendationService extends ModelRecommendationService {
       meetsRequirements;
 
   @override
-  String getUnsupportedDeviceMessage(DeviceCapabilities capabilities) =>
-      unsupportedMessage;
+  String getUnsupportedDeviceMessage(
+    DeviceCapabilities capabilities, {
+    required String intro,
+    required String Function(int actual, int minimum) ramMessage,
+    required String Function(int actual, int minimum) storageMessage,
+  }) => unsupportedMessage;
 }
 
 void main() {

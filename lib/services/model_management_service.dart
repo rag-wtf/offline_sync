@@ -242,10 +242,6 @@ class ModelManagementService {
     return _initFuture ??= _startInitialization();
   }
 
-  Future<void> refresh() {
-    return _startInitialization();
-  }
-
   Future<void> _startInitialization() {
     final future = _performInitialize();
     _initFuture = future;

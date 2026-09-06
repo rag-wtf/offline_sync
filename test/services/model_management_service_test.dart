@@ -563,7 +563,7 @@ void main() {
           );
           addTearDown(service.dispose);
 
-          final refresh = service.refresh();
+          final refresh = service.initialize();
           await Future<void>.delayed(Duration.zero);
           expect(activationStarted, isFalse);
 

@@ -18,6 +18,8 @@ class RecommendedModels {
   final DeviceTier tier;
 }
 
+enum UnsupportedDeviceResource { ram, storage }
+
 /// Service to recommend models based on device capabilities
 class ModelRecommendationService {
   // Minimum requirements (combined inference + embedding)
@@ -39,23 +41,24 @@ class ModelRecommendationService {
   }
 
   /// Get user-friendly message for unsupported devices
-  String getUnsupportedDeviceMessage(DeviceCapabilities capabilities) {
+  String getUnsupportedDeviceMessage(
+    DeviceCapabilities capabilities, {
+    required String intro,
+    required String Function(int actual, int minimum) ramMessage,
+    required String Function(int actual, int minimum) storageMessage,
+  }) {
     final ramIssue = capabilities.totalRamMB < minRamMB;
     final storageIssue = capabilities.availableStorageMB < minStorageMB;
 
-    final buffer = StringBuffer('Your device has limited resources:\n\n');
+    final buffer = StringBuffer(intro);
 
     if (ramIssue) {
-      buffer.write(
-        '• RAM: ${capabilities.totalRamMB}MB '
-        '(need ${minRamMB}MB minimum)\n',
-      );
+      buffer.write('\n\n${ramMessage(capabilities.totalRamMB, minRamMB)}');
     }
 
     if (storageIssue) {
       buffer.write(
-        '• Storage: ${capabilities.availableStorageMB}MB free '
-        '(need ${minStorageMB}MB minimum)\n',
+        '\n\n${storageMessage(capabilities.availableStorageMB, minStorageMB)}',
       );
     }
 
