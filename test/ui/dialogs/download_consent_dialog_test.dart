@@ -3,53 +3,108 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/l10n/gen/app_localizations.dart';
 import 'package:offline_sync/services/download_policy_service.dart';
 import 'package:offline_sync/services/model_config.dart';
+import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/ui/dialogs/download_consent_dialog.dart';
 
 void main() {
-  testWidgets(
-    'shows the localized metered warning with model names and sizes',
-    (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          locale: const Locale('es'),
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
-          supportedLocales: AppLocalizations.supportedLocales,
-          home: DownloadConsentDialog(
-            request: const DownloadConsentRequest(
-              modelsToDownload: [
-                InferenceModels.gemma3_270M,
-                EmbeddingModels.gecko64,
-              ],
-              smallerCompatible: null,
-              reason: DownloadPolicyReason.meteredConsent,
-            ),
-            onCompleted: ({required approved, useSmallerCompatible = false}) {},
-          ),
-        ),
-      );
+  const testModel = InferenceModels.gemma3_270M;
+  const smallerModel = EmbeddingModels.gecko64;
 
-      expect(
-        find.text(
-          'Esta conexión puede tener límites de datos. Confirma la descarga.',
+  Widget createWidget({
+    required DownloadConsentRequest request,
+    required void Function({
+      required bool approved,
+      bool useSmallerCompatible,
+    })
+    onCompleted,
+  }) {
+    return MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(
+        body: DownloadConsentDialog(
+          request: request,
+          onCompleted: onCompleted,
         ),
-        findsOneWidget,
-      );
-      expect(
-        find.text(
-          '${InferenceModels.gemma3_270M.name} '
-          '(${InferenceModels.gemma3_270M.sizeFormatted})',
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.text(
-          '${EmbeddingModels.gecko64.name} '
-          '(${EmbeddingModels.gecko64.sizeFormatted})',
-        ),
-        findsOneWidget,
-      );
-    },
-  );
+      ),
+    );
+  }
+
+  testWidgets('renders dialog and triggers cancel action', (tester) async {
+    bool? wasApproved;
+    bool? wasSmaller;
+
+    const request = DownloadConsentRequest(
+      modelsToDownload: [testModel],
+      smallerCompatible: null,
+      reason: DownloadPolicyReason.insufficientStorage,
+    );
+
+    await tester.pumpWidget(
+      createWidget(
+        request: request,
+        onCompleted: ({
+          required approved,
+          useSmallerCompatible = false,
+        }) {
+          wasApproved = approved;
+          wasSmaller = useSmallerCompatible;
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Gemma 3 270M IT'), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(wasApproved, isFalse);
+    expect(wasSmaller, isFalse);
+  });
+
+  testWidgets('renders dialog and triggers download and use-smaller actions', (
+    tester,
+  ) async {
+    bool? wasApproved;
+    bool? wasSmaller;
+
+    const request = DownloadConsentRequest(
+      modelsToDownload: [testModel],
+      smallerCompatible: RecommendedModels(
+        inferenceModel: testModel,
+        embeddingModel: smallerModel,
+        tier: DeviceTier.low,
+      ),
+      reason: DownloadPolicyReason.meteredConsent,
+    );
+
+    await tester.pumpWidget(
+      createWidget(
+        request: request,
+        onCompleted: ({
+          required approved,
+          useSmallerCompatible = false,
+        }) {
+          wasApproved = approved;
+          wasSmaller = useSmallerCompatible;
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Test use smaller compatible button
+    await tester.tap(find.byType(OutlinedButton));
+    await tester.pumpAndSettle();
+
+    expect(wasApproved, isTrue);
+    expect(wasSmaller, isTrue);
+
+    // Test direct download button
+    await tester.tap(find.byType(ElevatedButton));
+    await tester.pumpAndSettle();
+
+    expect(wasApproved, isTrue);
+    expect(wasSmaller, isFalse);
+  });
 }

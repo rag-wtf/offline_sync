@@ -433,8 +433,13 @@ jobs:
       - name: Create DMG
         run: |
           cd build/macos/Build/Products/${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}-${{ env.FLAVOR }}
+          APP_BUNDLE=$(find . -maxdepth 1 -name '*.app' -print -quit)
+          if [ -z "$APP_BUNDLE" ]; then
+            echo "::error::No macOS application bundle found to create DMG."
+            exit 1
+          fi
           # Four levels up is build/, which is where the upload step looks.
-          hdiutil create -volname "Offline Sync" -srcfolder "Offline Sync.app" -ov -format UDZO "../../../../offline_sync-macos-${{ github.event.inputs.build_type }}.dmg"
+          hdiutil create -volname "Offline Sync" -srcfolder "$APP_BUNDLE" -ov -format UDZO "../../../../offline_sync-macos-${{ github.event.inputs.build_type }}.dmg"
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

@@ -1,4 +1,4 @@
-﻿{
+{
   "version": "0.2",
   "language": "en",
   "words": [
@@ -112,6 +112,7 @@
     "linuxdeploy",
     "Metaspace",
     "worktrees",
+    "worktree",
     "androidx",
     "licence",
     "unreviewed"
