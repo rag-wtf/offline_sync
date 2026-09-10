@@ -107,26 +107,54 @@ class ChatMessageTile extends StatelessWidget {
                     spacing: 6,
                     runSpacing: 4,
                     children: () {
-                      final uniqueSourcesMap = <String, SearchResult>{};
+                      final uniqueChunks = <SearchResult>[];
+                      final seenIds = <String>{};
+                      final seenContents = <String>{};
+
                       for (final source in message.sources!) {
-                        final title =
-                            source.documentTitle ??
-                            (source.metadata['documentTitle'] as String?) ??
-                            (source.metadata['title'] as String?) ??
-                            'Source';
-                        final key =
-                            (source.metadata['documentId'] as String?) ?? title;
-                        uniqueSourcesMap.putIfAbsent(key, () => source);
+                        final idKey = source.id.trim();
+                        final contentKey = source.content.trim();
+
+                        if (idKey.isNotEmpty && seenIds.contains(idKey)) {
+                          continue;
+                        }
+                        if (contentKey.isNotEmpty &&
+                            seenContents.contains(contentKey)) {
+                          continue;
+                        }
+
+                        if (idKey.isNotEmpty) seenIds.add(idKey);
+                        if (contentKey.isNotEmpty) seenContents.add(contentKey);
+                        uniqueChunks.add(source);
                       }
 
-                      return uniqueSourcesMap.values.map((source) {
-                        final title =
-                            source.documentTitle ??
-                            (source.metadata['documentTitle'] as String?) ??
-                            (source.metadata['title'] as String?) ??
-                            'Source';
+                      final maxChipWidth =
+                          MediaQuery.of(context).size.width * 0.75;
+
+                      return uniqueChunks.map((source) {
+                        final normalizedContent = source.content
+                            .replaceAll(RegExp(r'\s+'), ' ')
+                            .trim();
+                        final displayText = normalizedContent.isNotEmpty
+                            ? normalizedContent
+                            : (source.documentTitle ??
+                                (source.metadata['documentTitle']
+                                    as String?) ??
+                                (source.metadata['title'] as String?) ??
+                                'Source');
+
                         return ActionChip(
-                          label: Text(title, style: theme.textTheme.labelSmall),
+                          label: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: maxChipWidth,
+                            ),
+                            child: Text(
+                              displayText,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.labelSmall,
+                            ),
+                          ),
                           avatar: Icon(
                             Icons.description_outlined,
                             size: 14,

@@ -176,7 +176,7 @@ void main() {
     await tester.pumpWidget(buildSubject(viewModel));
 
     expect(find.text('Answer'), findsOneWidget);
-    await tester.tap(find.widgetWithText(ActionChip, 'Manual.pdf'));
+    await tester.tap(find.widgetWithText(ActionChip, 'Source content'));
     await tester.pump();
     verify(
       () => dialogService.showDialog(

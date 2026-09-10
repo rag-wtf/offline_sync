@@ -220,24 +220,12 @@ void main() {
   });
 
   test(
-    'showSourceDetail falls back to metadata and groups related chunks',
+    'showSourceDetail displays document title in header and selected chunk content',
     () async {
       final viewModel = ChatViewModel();
-      final matchingSource = SearchResult(
-        id: 'src-2',
-        content: 'First related chunk',
-        score: 0.8,
-        metadata: {'title': 'Fallback title', 'documentId': 'doc-1'},
-      );
-      final duplicateSource = SearchResult(
-        id: 'src-3',
-        content: 'First related chunk',
-        score: 0.7,
-        metadata: {'documentId': 'doc-1'},
-      );
       final source = SearchResult(
         id: 'src-1',
-        content: 'Fallback content',
+        content: 'Selected chunk full content',
         score: 0.9,
         metadata: {'title': 'Fallback title', 'documentId': 'doc-1'},
       );
@@ -246,7 +234,7 @@ void main() {
           content: 'answer',
           isUser: false,
           timestamp: DateTime(2024),
-          sources: [matchingSource, duplicateSource],
+          sources: [source],
         ),
       );
 
@@ -255,7 +243,7 @@ void main() {
       verify(
         () => dialogService.showDialog(
           title: 'Fallback title',
-          description: 'First related chunk',
+          description: 'Selected chunk full content',
         ),
       ).called(1);
 

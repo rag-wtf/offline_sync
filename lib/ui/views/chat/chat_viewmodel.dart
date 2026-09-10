@@ -354,7 +354,7 @@ class ChatViewModel extends BaseViewModel {
     await _chatRepository.markMessageCompleted(userMessage);
   }
 
-  /// Shows a detailed view of a source document used for context
+  /// Shows a detailed view of a source chunk used for context
   Future<void> showSourceDetail(SearchResult source) async {
     final title =
         source.documentTitle ??
@@ -362,35 +362,9 @@ class ChatViewModel extends BaseViewModel {
         (source.metadata['title'] as String?) ??
         _localizations.sourceDetail;
 
-    final targetDocId = source.metadata['documentId'] as String?;
-
-    // Find all chunks related to this document across messages
-    final relatedChunks = <String>[];
-    for (final msg in messages) {
-      if (msg.sources != null) {
-        for (final s in msg.sources!) {
-          final sTitle =
-              s.documentTitle ??
-              (s.metadata['documentTitle'] as String?) ??
-              (s.metadata['title'] as String?);
-          final sDocId = s.metadata['documentId'] as String?;
-          if ((targetDocId != null && sDocId == targetDocId) ||
-              (sTitle != null && sTitle == title)) {
-            if (!relatedChunks.contains(s.content)) {
-              relatedChunks.add(s.content);
-            }
-          }
-        }
-      }
-    }
-
-    final content = relatedChunks.isNotEmpty
-        ? relatedChunks.join('\n\n---\n\n')
-        : source.content;
-
     await _dialogService.showDialog(
       title: title,
-      description: content,
+      description: source.content,
     );
   }
 
