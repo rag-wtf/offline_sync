@@ -71,8 +71,11 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
       await (widget.onSaveToken ?? AuthTokenService.saveToken)(token);
 
       if (mounted) {
-        widget.onCompleted?.call(success: true);
-        Navigator.of(context).pop(true); // Return true to indicate success
+        if (widget.onCompleted != null) {
+          widget.onCompleted!(success: true);
+        } else {
+          Navigator.of(context).pop(true); // Return true to indicate success
+        }
       }
     } on Object catch (e) {
       if (mounted) {
@@ -193,8 +196,11 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
         // coverage:ignore-start
         TextButton(
           onPressed: () {
-            widget.onCompleted?.call(success: false);
-            Navigator.of(context).pop(false);
+            if (widget.onCompleted != null) {
+              widget.onCompleted!(success: false);
+            } else {
+              Navigator.of(context).pop(false);
+            }
           },
           child: Text(l10n.cancelAction),
         ),

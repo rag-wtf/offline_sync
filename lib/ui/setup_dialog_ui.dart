@@ -51,7 +51,6 @@ void setupDialogUi() {
               data: useSmallerCompatible,
             ),
           );
-          Navigator.of(context).pop();
         },
       );
     },

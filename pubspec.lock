@@ -53,10 +53,10 @@ packages:
     dependency: "direct main"
     description:
       name: background_downloader
-      sha256: ae55e127f87397b372578fc9474568b879fa78326103c342e00160558d08e527
+      sha256: "42daf57fc33453f03c8c9c9af4d0f68cb203e3c20041678f005a4c528c8bed1f"
       url: "https://pub.dev"
     source: hosted
-    version: "9.5.9"
+    version: "9.6.1"
   boolean_selector:
     dependency: transitive
     description:
@@ -1307,5 +1307,5 @@ packages:
     source: hosted
     version: "3.1.4"
 sdks:
-  dart: ">=3.12.0 <4.0.0"
-  flutter: ">=3.44.0 <4.0.0"
+  dart: ">=3.13.0 <4.0.0"
+  flutter: ">=3.47.0 <4.0.0"
