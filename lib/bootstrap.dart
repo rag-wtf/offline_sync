@@ -13,6 +13,7 @@ import 'package:offline_sync/bootstrap_mobile.dart'
     as platform;
 import 'package:offline_sync/l10n/l10n.dart';
 import 'package:offline_sync/services/environment_service.dart';
+import 'package:offline_sync/services/fixed_litert_embedding_backend.dart';
 import 'package:offline_sync/services/logging_service.dart';
 import 'package:offline_sync/ui/setup_dialog_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -120,7 +121,7 @@ Future<void> bootstrap(
             MediaPipeEngine(),
           ],
           embeddingBackends: const [
-            LiteRtEmbeddingBackend(),
+            FixedLiteRtEmbeddingBackend(),
           ],
         ))();
 
