@@ -69,39 +69,41 @@ void main() {
   testWidgets(
     'renders source chips with chunk content and sends clicks to callback',
     (tester) async {
-    SearchResult? selectedSource;
-    final source = SearchResult(
-      id: 'source-1',
-      content: 'Relevant context',
-      score: 0.8,
-      metadata: {'documentTitle': 'Guide.pdf'},
-    );
+      SearchResult? selectedSource;
+      final source = SearchResult(
+        id: 'source-1',
+        content: 'Relevant context',
+        score: 0.8,
+        metadata: {'documentTitle': 'Guide.pdf'},
+      );
 
-    await tester.pumpWidget(
-      buildSubject(
-        ChatMessage(
-          content: 'Answer',
-          isUser: false,
-          timestamp: DateTime(2024, 1, 2, 3, 4),
-          sources: [source],
+      await tester.pumpWidget(
+        buildSubject(
+          ChatMessage(
+            content: 'Answer',
+            isUser: false,
+            timestamp: DateTime(2024, 1, 2, 3, 4),
+            sources: [source],
+          ),
+          onSourceClick: (value) => selectedSource = value,
         ),
-        onSourceClick: (value) => selectedSource = value,
-      ),
-    );
+      );
 
-    expect(find.text('Sources'), findsOneWidget);
-    expect(find.widgetWithText(ActionChip, 'Relevant context'), findsOneWidget);
+      expect(find.text('Sources'), findsOneWidget);
+      expect(
+        find.widgetWithText(ActionChip, 'Relevant context'),
+        findsOneWidget,
+      );
 
-    await tester.tap(find.widgetWithText(ActionChip, 'Relevant context'));
-    await tester.pump();
+      await tester.tap(find.widgetWithText(ActionChip, 'Relevant context'));
+      await tester.pump();
 
-    expect(selectedSource, same(source));
-  });
+      expect(selectedSource, same(source));
+    },
+  );
 
-  testWidgets(
-    'uses fallback source title when content is blank and tolerates '
-    'absent callback',
-    (tester) async {
+  testWidgets('uses fallback source title when content is blank and tolerates '
+      'absent callback', (tester) async {
     await tester.pumpWidget(
       buildSubject(
         ChatMessage(

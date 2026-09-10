@@ -22,7 +22,8 @@ void main() {
             if (secureStorageThrows) {
               throw PlatformException(
                 code: 'libsecret_error',
-                message: 'The name org.freedesktop.secrets was not provided '
+                message:
+                    'The name org.freedesktop.secrets was not provided '
                     'by any .service files',
               );
             }
@@ -141,67 +142,69 @@ void main() {
       }
     });
 
-    group('when secure storage is unavailable -', () {
-      setUp(() {
-        secureStorageThrows = true;
-      });
+    group(
+      'when secure storage is unavailable -',
+      () {
+        setUp(() {
+          secureStorageThrows = true;
+        });
 
-      test(
-        'loadToken falls back to SharedPreferences if available',
-        () async {
-          SharedPreferences.setMockInitialValues({
-            'auth_token': 'pref_token',
-          });
+        test(
+          'loadToken falls back to SharedPreferences if available',
+          () async {
+            SharedPreferences.setMockInitialValues({
+              'auth_token': 'pref_token',
+            });
 
-          final token = await AuthTokenService.loadToken();
-          expect(token, 'pref_token');
-        },
-      );
+            final token = await AuthTokenService.loadToken();
+            expect(token, 'pref_token');
+          },
+        );
 
-      test(
-        'loadToken returns null gracefully if SharedPreferences is empty',
-        () async {
-          SharedPreferences.setMockInitialValues({});
+        test(
+          'loadToken returns null gracefully if SharedPreferences is empty',
+          () async {
+            SharedPreferences.setMockInitialValues({});
 
-          final token = await AuthTokenService.loadToken();
-          expect(token, isNull);
-        },
-      );
+            final token = await AuthTokenService.loadToken();
+            expect(token, isNull);
+          },
+        );
 
-      test(
-        'saveToken falls back to SharedPreferences',
-        () async {
-          await AuthTokenService.saveToken('saved_fallback_token');
+        test(
+          'saveToken falls back to SharedPreferences',
+          () async {
+            await AuthTokenService.saveToken('saved_fallback_token');
 
-          final prefs = await SharedPreferences.getInstance();
-          expect(prefs.getString('auth_token'), 'saved_fallback_token');
-        },
-      );
+            final prefs = await SharedPreferences.getInstance();
+            expect(prefs.getString('auth_token'), 'saved_fallback_token');
+          },
+        );
 
-      test(
-        'clearToken removes token from SharedPreferences without throwing',
-        () async {
-          SharedPreferences.setMockInitialValues({
-            'auth_token': 'fallback_to_clear',
-          });
+        test(
+          'clearToken removes token from SharedPreferences without throwing',
+          () async {
+            SharedPreferences.setMockInitialValues({
+              'auth_token': 'fallback_to_clear',
+            });
 
-          await AuthTokenService.clearToken();
+            await AuthTokenService.clearToken();
 
-          final prefs = await SharedPreferences.getInstance();
-          expect(prefs.containsKey('auth_token'), isFalse);
-        },
-      );
+            final prefs = await SharedPreferences.getInstance();
+            expect(prefs.containsKey('auth_token'), isFalse);
+          },
+        );
 
-      test(
-        'hasToken returns true if token exists in SharedPreferences',
-        () async {
-          SharedPreferences.setMockInitialValues({
-            'auth_token': 'pref_token',
-          });
+        test(
+          'hasToken returns true if token exists in SharedPreferences',
+          () async {
+            SharedPreferences.setMockInitialValues({
+              'auth_token': 'pref_token',
+            });
 
-          expect(await AuthTokenService.hasToken(), isTrue);
-        },
-      );
+            expect(await AuthTokenService.hasToken(), isTrue);
+          },
+        );
 
         test(
           'hasToken returns false without throwing when SharedPreferences '

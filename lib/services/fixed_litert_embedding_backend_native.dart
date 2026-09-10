@@ -6,8 +6,7 @@ import 'package:flutter_gemma/core/model_management/model_specs.dart'
 import 'package:flutter_gemma/core/registry/embedding_backend_provider.dart';
 import 'package:flutter_gemma/core/registry/runtime_config.dart';
 import 'package:flutter_gemma/core/utils/gemma_log.dart';
-import 'package:flutter_gemma/flutter_gemma_interface.dart'
-    show EmbeddingModel;
+import 'package:flutter_gemma/flutter_gemma_interface.dart' show EmbeddingModel;
 import 'package:flutter_gemma_embeddings/embedding_tokenizer.dart'
     show loadGemmaSentencePieceEmbeddingTokenizer;
 import 'package:flutter_gemma_embeddings/flutter_gemma_embeddings.dart'

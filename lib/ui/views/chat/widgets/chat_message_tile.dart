@@ -138,10 +138,10 @@ class ChatMessageTile extends StatelessWidget {
                         final displayText = normalizedContent.isNotEmpty
                             ? normalizedContent
                             : (source.documentTitle ??
-                                (source.metadata['documentTitle']
-                                    as String?) ??
-                                (source.metadata['title'] as String?) ??
-                                'Source');
+                                  (source.metadata['documentTitle']
+                                      as String?) ??
+                                  (source.metadata['title'] as String?) ??
+                                  'Source');
 
                         return ActionChip(
                           label: ConstrainedBox(

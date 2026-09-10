@@ -51,29 +51,29 @@ void main() {
 
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('offline_sync/storage'),
-      (call) async {
-        calls.add(call);
-        if (throwMissingPlugin) {
-          throw MissingPluginException();
-        }
-        if (throwPlatformException) {
-          throw PlatformException(
-            code: 'TEST_ERROR',
-            message: 'Test platform error',
-          );
-        }
-        return null;
-      },
-    );
+          const MethodChannel('offline_sync/storage'),
+          (call) async {
+            calls.add(call);
+            if (throwMissingPlugin) {
+              throw MissingPluginException();
+            }
+            if (throwPlatformException) {
+              throw PlatformException(
+                code: 'TEST_ERROR',
+                message: 'Test platform error',
+              );
+            }
+            return null;
+          },
+        );
   });
 
   tearDown(() async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
-      const MethodChannel('offline_sync/storage'),
-      null,
-    );
+          const MethodChannel('offline_sync/storage'),
+          null,
+        );
     if (tempDir.existsSync()) {
       tempDir.deleteSync(recursive: true);
     }

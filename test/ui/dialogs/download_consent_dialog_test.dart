@@ -43,13 +43,14 @@ void main() {
     await tester.pumpWidget(
       createWidget(
         request: request,
-        onCompleted: ({
-          required approved,
-          useSmallerCompatible = false,
-        }) {
-          wasApproved = approved;
-          wasSmaller = useSmallerCompatible;
-        },
+        onCompleted:
+            ({
+              required approved,
+              useSmallerCompatible = false,
+            }) {
+              wasApproved = approved;
+              wasSmaller = useSmallerCompatible;
+            },
       ),
     );
     await tester.pumpAndSettle();
@@ -82,13 +83,14 @@ void main() {
     await tester.pumpWidget(
       createWidget(
         request: request,
-        onCompleted: ({
-          required approved,
-          useSmallerCompatible = false,
-        }) {
-          wasApproved = approved;
-          wasSmaller = useSmallerCompatible;
-        },
+        onCompleted:
+            ({
+              required approved,
+              useSmallerCompatible = false,
+            }) {
+              wasApproved = approved;
+              wasSmaller = useSmallerCompatible;
+            },
       ),
     );
     await tester.pumpAndSettle();

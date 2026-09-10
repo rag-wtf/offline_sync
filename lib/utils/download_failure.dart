@@ -51,7 +51,8 @@ bool _isGatedErrorMessage(String rawMessage) {
       message.contains('failed to fetch file: unauthorized') ||
       (message.contains('jsinteropexception') &&
           message.contains('unauthorized')) ||
-      // Actual Web error when no "Unauthorized" word — only numeric status code.
+      // Actual Web error when no "Unauthorized" word — 
+      // only numeric status code.
       // e.g. "JsInteropException: Failed to fetch file:  (Status: 401)"
       (message.contains('jsinteropexception') && message.contains('401'));
 
