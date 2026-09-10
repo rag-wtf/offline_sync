@@ -91,6 +91,7 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
   Widget build(BuildContext context) {
     final l10n = _localizations;
     return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       title: Text(l10n.authRequiredTitle),
       content: SingleChildScrollView(
         child: Column(
@@ -98,7 +99,7 @@ class _TokenInputDialogState extends State<TokenInputDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              widget.modelName != null
+              widget.modelName != null && widget.modelName!.trim().isNotEmpty
                   ? l10n.tokenRequiredForModel(widget.modelName!)
                   : l10n.tokenRequiredForSelectedModel,
             ),

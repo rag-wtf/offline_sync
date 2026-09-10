@@ -278,4 +278,58 @@ void main() {
     expect(find.text('Enter Token'), findsOneWidget);
     expect(find.byKey(const Key('copyRepoLinkButton')), findsNothing);
   });
+
+  testWidgets(
+    'renders error actions without overflow on mobile screen width',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final modelService = getAndRegisterMockModelManagementService();
+      final gatedModel =
+          ModelInfo(
+              id: InferenceModels.gemma3_270M.id,
+              name: InferenceModels.gemma3_270M.name,
+              url:
+                  'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/model.task',
+              type: AppModelType.inference,
+            )
+            ..status = ModelStatus.error
+            ..failureKind = ModelDownloadFailureKind.gatedAccess;
+
+      final embeddingModel = ModelInfo(
+        id: EmbeddingModels.gecko64.id,
+        name: EmbeddingModels.gecko64.name,
+        url: 'https://example.com/embedding',
+        type: AppModelType.embedding,
+      )..status = ModelStatus.downloaded;
+
+      when(() => modelService.models).thenReturn([gatedModel, embeddingModel]);
+
+      final viewModel = StartupViewModel(
+        navigationService: MockNavigationService(),
+        modelService: modelService,
+        deviceService: FakeDeviceCapabilityService(
+          const DeviceCapabilities(
+            totalRamMB: 2048,
+            availableStorageMB: 2048,
+            hasGpu: false,
+            platform: 'android',
+          ),
+        ),
+        recommendationService: FakeModelRecommendationService(),
+      );
+
+      await viewModel.runStartupLogic();
+      await tester.pumpWidget(buildSubject(viewModel));
+
+      expect(tester.takeException(), isNull);
+      expect(find.byKey(const Key('copyRepoLinkButton')), findsOneWidget);
+      expect(find.text('Enter Token'), findsOneWidget);
+      expect(find.text('Retry'), findsOneWidget);
+    },
+  );
 }
+

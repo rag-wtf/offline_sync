@@ -29,14 +29,11 @@ void setupDialogUi() {
   final builders = <dynamic, DialogBuilder>{
     DialogType.tokenInput: (context, request, completer) {
       final data = request.data as TokenInputDialogData?;
-      return Dialog(
-        backgroundColor: Colors.transparent,
-        child: TokenInputDialog(
-          repoPage: data?.repoPage,
-          modelName: data?.modelName,
-          onCompleted: ({required success}) =>
-              completer(DialogResponse(confirmed: success)),
-        ),
+      return TokenInputDialog(
+        repoPage: data?.repoPage,
+        modelName: data?.modelName,
+        onCompleted: ({required success}) =>
+            completer(DialogResponse(confirmed: success)),
       );
     },
     DialogType.downloadConsent: (context, request, completer) {

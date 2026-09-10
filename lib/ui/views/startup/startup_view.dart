@@ -236,8 +236,10 @@ class StartupView extends StackedView<StartupViewModel> {
                 ),
               ],
               const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 12,
+                runSpacing: 12,
                 children: [
                   FilledButton.icon(
                     onPressed: viewModel.retry,
@@ -246,13 +248,11 @@ class StartupView extends StackedView<StartupViewModel> {
                   ),
                   if (viewModel.needsToken) ...[
                     // coverage:ignore-start
-                    const SizedBox(width: 12),
                     FilledButton.tonal(
                       onPressed: viewModel.enterToken,
                       child: Text(l10n.enterTokenAction),
                     ),
-                    if (viewModel.erroredModelRepoPage != null) ...[
-                      const SizedBox(width: 12),
+                    if (viewModel.erroredModelRepoPage != null)
                       OutlinedButton.icon(
                         key: const Key('copyRepoLinkButton'),
                         onPressed: () => copyRepoLinkToClipboard(
@@ -262,7 +262,6 @@ class StartupView extends StackedView<StartupViewModel> {
                         icon: const Icon(Icons.copy, size: 16),
                         label: Text(l10n.copyRepoLinkAction),
                       ),
-                    ],
                     // coverage:ignore-end
                   ],
                 ],
