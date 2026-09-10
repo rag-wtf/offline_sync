@@ -26,7 +26,7 @@ import Foundation
         result(FlutterError(code: "BACKUP_EXCLUSION_FAILED", message: "Path is empty", details: nil))
         return
       }
-      let url = URL(fileURLWithPath: path)
+      var url = URL(fileURLWithPath: path)
       do {
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
