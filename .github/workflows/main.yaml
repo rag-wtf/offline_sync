@@ -14,7 +14,7 @@ on:
 
 jobs:
   semantic-pull-request:
-    uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/semantic_pull_request.yml@473652d54b9c5fe3b6ca663e6e5b2934f1326e7a # v1
+    uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/semantic_pull_request.yml@0d81600dd37bc87a473ee5b6e2293bef05751b04 # v1.20.1
 
   build:
     runs-on: ubuntu-latest
@@ -63,7 +63,7 @@ jobs:
           ' coverage/lcov.info
 
   spell-check:
-    uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/spell_check.yml@473652d54b9c5fe3b6ca663e6e5b2934f1326e7a # v1
+    uses: VeryGoodOpenSource/very_good_workflows/.github/workflows/spell_check.yml@0d81600dd37bc87a473ee5b6e2293bef05751b04 # v1.20.1
     with:
       config: .github/cspell.json
       includes: |
