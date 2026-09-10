@@ -220,7 +220,8 @@ void main() {
   });
 
   test(
-    'showSourceDetail displays document title in header and selected chunk content',
+    'showSourceDetail displays document title in header and selected '
+    'chunk content',
     () async {
       final viewModel = ChatViewModel();
       final source = SearchResult(

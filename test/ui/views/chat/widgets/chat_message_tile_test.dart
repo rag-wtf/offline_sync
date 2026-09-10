@@ -66,9 +66,9 @@ void main() {
     expect(find.text('03:04'), findsOneWidget);
   });
 
-  testWidgets('renders source chips with chunk content and sends clicks to callback', (
-    tester,
-  ) async {
+  testWidgets(
+    'renders source chips with chunk content and sends clicks to callback',
+    (tester) async {
     SearchResult? selectedSource;
     final source = SearchResult(
       id: 'source-1',
@@ -98,9 +98,10 @@ void main() {
     expect(selectedSource, same(source));
   });
 
-  testWidgets('uses fallback source title when content is blank and tolerates absent callback', (
-    tester,
-  ) async {
+  testWidgets(
+    'uses fallback source title when content is blank and tolerates '
+    'absent callback',
+    (tester) async {
     await tester.pumpWidget(
       buildSubject(
         ChatMessage(
@@ -151,8 +152,14 @@ void main() {
         ),
       );
 
-      expect(find.widgetWithText(ActionChip, 'First chunk content'), findsOneWidget);
-      expect(find.widgetWithText(ActionChip, 'Second chunk content'), findsOneWidget);
+      expect(
+        find.widgetWithText(ActionChip, 'First chunk content'),
+        findsOneWidget,
+      );
+      expect(
+        find.widgetWithText(ActionChip, 'Second chunk content'),
+        findsOneWidget,
+      );
     },
   );
 
@@ -185,11 +192,14 @@ void main() {
   });
 
   testWidgets(
-    'configures TextOverflow.ellipsis and collapses whitespace for chunk content',
+    'configures TextOverflow.ellipsis and collapses whitespace for '
+    'chunk content',
     (tester) async {
       final longChunk = SearchResult(
         id: 'chunk-long',
-        content: 'Line 1 of content\n\nLine 2 with extra   spaces\nand long text ' * 10,
+        content:
+            'Line 1 of content\n\nLine 2 with extra   spaces\nand long text ' *
+            10,
         score: 0.9,
         metadata: {'documentTitle': 'Large.pdf'},
       );
