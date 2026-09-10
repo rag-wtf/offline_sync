@@ -1,10 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:offline_sync/services/logging_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Centralized authentication token management service.
 /// Uses secure storage (Keychain on iOS, KeyStore on Android)
-/// for token encryption.
+/// for token encryption, with fallback to SharedPreferences if
+/// the platform secure storage service is unavailable.
 class AuthTokenService {
   // Private constructor to prevent instantiation
   AuthTokenService._(); // coverage:ignore-line
@@ -18,21 +20,34 @@ class AuthTokenService {
   ///
   /// Returns the token string if found, or null if no token is saved.
   /// Priority: 1) FlutterSecureStorage,
-  ///           2) SharedPreferences (legacy, will migrate),
+  ///           2) SharedPreferences (legacy/fallback),
   ///           3) Environment Variable (HUGGINGFACE_TOKEN)
   static Future<String?> loadToken() async {
     // Try secure storage first
-    var token = await _storage.read(key: _authTokenKey);
+    String? token;
+    try {
+      token = await _storage.read(key: _authTokenKey);
+    } on Object catch (e) {
+      LoggingService.warning(
+        'Failed to read auth token from secure storage: $e',
+      );
+    }
 
     if (token == null || token.isEmpty) {
-      // Check legacy SharedPreferences and migrate if found
+      // Check SharedPreferences and migrate if found
       final prefs = await SharedPreferences.getInstance();
       final legacyToken = prefs.getString(_authTokenKey);
 
       if (legacyToken != null && legacyToken.isNotEmpty) {
-        // Migrate to secure storage
-        await _storage.write(key: _authTokenKey, value: legacyToken);
-        await prefs.remove(_authTokenKey); // Remove from insecure storage
+        // Migrate to secure storage if available
+        try {
+          await _storage.write(key: _authTokenKey, value: legacyToken);
+          await prefs.remove(_authTokenKey); // Remove from insecure storage
+        } on Object catch (e) {
+          LoggingService.warning(
+            'Failed to migrate auth token to secure storage: $e',
+          );
+        }
         token = legacyToken;
       }
     }
@@ -43,7 +58,9 @@ class AuthTokenService {
       if (envToken.isNotEmpty) {
         // Auto-save environment token for persistence
         // coverage:ignore-start
-        await _storage.write(key: _authTokenKey, value: envToken);
+        try {
+          await _storage.write(key: _authTokenKey, value: envToken);
+        } on Object catch (_) {}
         return envToken;
         // coverage:ignore-end
       }
@@ -52,23 +69,51 @@ class AuthTokenService {
     return token;
   }
 
-  /// Save a HuggingFace authentication token securely.
+  /// Save a HuggingFace authentication token securely, or fall back to
+  /// SharedPreferences if secure storage is unavailable.
   static Future<void> saveToken(String token) async {
-    await _storage.write(key: _authTokenKey, value: token);
+    try {
+      await _storage.write(key: _authTokenKey, value: token);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_authTokenKey);
+    } on Object catch (e) {
+      LoggingService.warning(
+        'Failed to save auth token to secure storage, '
+        'falling back to SharedPreferences: $e',
+      );
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_authTokenKey, token);
+    }
   }
 
   /// Clear the stored authentication token.
   static Future<void> clearToken() async {
-    await _storage.delete(key: _authTokenKey);
+    try {
+      await _storage.delete(key: _authTokenKey);
+    } on Object catch (e) {
+      LoggingService.warning(
+        'Failed to delete auth token from secure storage: $e',
+      );
+    }
 
-    // Also clear from legacy SharedPreferences if present
+    // Also clear from SharedPreferences if present
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_authTokenKey);
   }
 
   /// Check if a token exists.
   static Future<bool> hasToken() async {
-    final token = await _storage.read(key: _authTokenKey);
-    return token != null && token.isNotEmpty;
+    try {
+      final token = await _storage.read(key: _authTokenKey);
+      if (token != null && token.isNotEmpty) return true;
+    } on Object catch (e) {
+      LoggingService.warning(
+        'Failed to check auth token in secure storage: $e',
+      );
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final fallbackToken = prefs.getString(_authTokenKey);
+    return fallbackToken != null && fallbackToken.isNotEmpty;
   }
 }

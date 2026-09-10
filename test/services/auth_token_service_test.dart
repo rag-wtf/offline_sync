@@ -9,14 +9,24 @@ void main() {
       'plugins.it_nomads.com/flutter_secure_storage',
     );
     final secureStorageValues = <String, String>{};
+    var secureStorageThrows = false;
 
     setUp(() {
       TestWidgetsFlutterBinding.ensureInitialized();
       secureStorageValues.clear();
+      secureStorageThrows = false;
 
       // Mock FlutterSecureStorage via MethodChannel
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (methodCall) async {
+            if (secureStorageThrows) {
+              throw PlatformException(
+                code: 'libsecret_error',
+                message: 'The name org.freedesktop.secrets was not provided '
+                    'by any .service files',
+              );
+            }
+
             final args = methodCall.arguments as Map<dynamic, dynamic>? ?? {};
             final key = args['key'] as String?;
             final value = args['value'] as String?;
@@ -130,5 +140,79 @@ void main() {
         expect(secureStorageValues['auth_token'], envToken);
       }
     });
+
+    group('when secure storage is unavailable -', () {
+      setUp(() {
+        secureStorageThrows = true;
+      });
+
+      test(
+        'loadToken falls back to SharedPreferences if available',
+        () async {
+          SharedPreferences.setMockInitialValues({
+            'auth_token': 'pref_token',
+          });
+
+          final token = await AuthTokenService.loadToken();
+          expect(token, 'pref_token');
+        },
+      );
+
+      test(
+        'loadToken returns null gracefully if SharedPreferences is empty',
+        () async {
+          SharedPreferences.setMockInitialValues({});
+
+          final token = await AuthTokenService.loadToken();
+          expect(token, isNull);
+        },
+      );
+
+      test(
+        'saveToken falls back to SharedPreferences',
+        () async {
+          await AuthTokenService.saveToken('saved_fallback_token');
+
+          final prefs = await SharedPreferences.getInstance();
+          expect(prefs.getString('auth_token'), 'saved_fallback_token');
+        },
+      );
+
+      test(
+        'clearToken removes token from SharedPreferences without throwing',
+        () async {
+          SharedPreferences.setMockInitialValues({
+            'auth_token': 'fallback_to_clear',
+          });
+
+          await AuthTokenService.clearToken();
+
+          final prefs = await SharedPreferences.getInstance();
+          expect(prefs.containsKey('auth_token'), isFalse);
+        },
+      );
+
+      test(
+        'hasToken returns true if token exists in SharedPreferences',
+        () async {
+          SharedPreferences.setMockInitialValues({
+            'auth_token': 'pref_token',
+          });
+
+          expect(await AuthTokenService.hasToken(), isTrue);
+        },
+      );
+
+        test(
+          'hasToken returns false without throwing when SharedPreferences '
+          'is empty',
+          () async {
+            SharedPreferences.setMockInitialValues({});
+
+            expect(await AuthTokenService.hasToken(), isFalse);
+          },
+        );
+      },
+    );
   });
 }
