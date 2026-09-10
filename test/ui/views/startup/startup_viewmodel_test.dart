@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.router.dart';
@@ -879,6 +880,63 @@ void main() {
           unawaited(viewModel.runStartupLogic());
           controller.addError(
             Exception('403 Forbidden: gated repo access denied'),
+          );
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+
+          expect(viewModel.needsToken, isTrue);
+          expect(viewModel.statusMessage, 'Authentication Required');
+          expect(viewModel.modelError, contains('Check all three:'));
+          expect(viewModel.modelError, contains('[redacted-url]'));
+          expect(viewModel.modelError, isNot(contains(testInference.repoPage)));
+
+          await controller.close();
+        },
+      );
+
+      test(
+        'formats web JsInterop download error into descriptive error '
+        'message in stream onError',
+        () async {
+          final controller = StreamController<List<ModelInfo>>.broadcast();
+          when(
+            () => mockModelService.modelStatusStream,
+          ).thenAnswer((_) => controller.stream);
+
+          final testInference =
+              ModelInfo(
+                  id: InferenceModels.gemma3_270M.id,
+                  name: InferenceModels.gemma3_270M.name,
+                  url:
+                      'https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/model.task',
+                  type: AppModelType.inference,
+                )
+                ..status = ModelStatus.error
+                ..failureKind = ModelDownloadFailureKind.authentication;
+
+          when(
+            () => mockModelService.models,
+          ).thenReturn([testInference, embeddingModel]);
+          when(
+            mockModelService.initialize,
+          ).thenAnswer((_) => Completer<void>().future);
+
+          final viewModel = StartupViewModel(
+            navigationService: mockNavigationService,
+            modelService: mockModelService,
+            deviceService: deviceService,
+            recommendationService: recommendationService,
+            ragSettingsService: ragSettings,
+          );
+
+          unawaited(viewModel.runStartupLogic());
+          controller.addError(
+            const DownloadException(
+              DownloadError.unknown(
+                'Failed to download public model: '
+                'JsInteropException: Failed to fetch file: '
+                'Unauthorized (Status: 401)',
+              ),
+            ),
           );
           await Future<void>.delayed(const Duration(milliseconds: 50));
 

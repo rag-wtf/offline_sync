@@ -5,25 +5,54 @@ import 'package:flutter_gemma/flutter_gemma.dart';
 /// has not accepted on the repo being downloaded.
 bool isGatedAccessError(Object error) {
   if (error is DownloadException) {
-    return switch (error.error) {
-      UnauthorizedError() || ForbiddenError() => true,
-      _ => false,
-    };
+    switch (error.error) {
+      case UnauthorizedError():
+      case ForbiddenError():
+        return true;
+      case UnknownError(:final message):
+        return _isGatedErrorMessage(message);
+      default:
+        return false;
+    }
   }
 
-  final message = error.toString().toLowerCase();
+  return _isGatedErrorMessage(error.toString());
+}
+
+bool _isGatedErrorMessage(String rawMessage) {
+  final message = rawMessage.toLowerCase();
+  if (message.contains('proxy')) {
+    return false;
+  }
+
+  if (message.contains('ensure you have access to the repository')) {
+    return true;
+  }
+
   final hasAuthStatus =
       message.contains('401') ||
       message.contains('403') ||
       message.contains('unauthorized') ||
       message.contains('forbidden');
+  if (!hasAuthStatus) {
+    return false;
+  }
+
   final looksGated =
       message.contains('gated') ||
       message.contains('restricted') ||
       message.contains('authentication required') ||
+      message.contains('authentication failed') ||
       message.contains('authenticated') ||
-      message.contains('access denied');
-  return hasAuthStatus && looksGated;
+      message.contains('access denied') ||
+      message.contains('invalid or expired token') ||
+      message.contains('token lacks required permissions') ||
+      message.contains('failed to download public model') ||
+      message.contains('failed to fetch file: unauthorized') ||
+      (message.contains('jsinteropexception') &&
+          message.contains('unauthorized'));
+
+  return looksGated;
 }
 
 /// A message the user can act on.

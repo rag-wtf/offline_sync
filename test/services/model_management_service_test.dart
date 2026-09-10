@@ -1322,6 +1322,60 @@ void main() {
       );
 
       test(
+        'downloadModel surfaces actionable gated error when web download '
+        'fails with web JsInteropException 401',
+        () async {
+          const downloadError = DownloadException(
+            DownloadError.unknown(
+              'Failed to download public model: '
+              'JsInteropException: Failed to fetch file: '
+              'Unauthorized (Status: 401)',
+            ),
+          );
+          final service = ModelManagementService(
+            authTokenLoader: () async => 'hf_token',
+            inferenceModelDownloader: (model, token, onProgress) async {
+              throw downloadError;
+            },
+          );
+          addTearDown(service.dispose);
+
+          final errors = <Object>[];
+          final subscription = service.modelStatusStream.listen(
+            (_) {},
+            onError: errors.add,
+          );
+          addTearDown(subscription.cancel);
+
+          final inference = service.models.firstWhere(
+            (m) => m.type == AppModelType.inference,
+          );
+
+          await service.downloadModel(inference.id);
+          await Future<void>.delayed(Duration.zero);
+
+          expect(inference.status, ModelStatus.error);
+          expect(inference.isAuthError, isTrue);
+          expect(inference.hasGatedAccessError, isTrue);
+          final expectedAdvice = describeDownloadFailure(
+            downloadError,
+            repoPage: inference.repoPage,
+          );
+          expect(inference.errorMessage, expectedAdvice);
+          expect(inference.errorMessage, contains(inference.repoPage));
+          expect(
+            errors.any(
+              (e) =>
+                  e is AuthenticationRequiredException &&
+                  e.message == expectedAdvice &&
+                  e.message.contains(inference.repoPage),
+            ),
+            isTrue,
+          );
+        },
+      );
+
+      test(
         'downloadModel surfaces actionable gated error when embedding '
         'download fails with gated access error',
         () async {

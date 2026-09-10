@@ -48,6 +48,101 @@ void main() {
       );
     });
 
+    test('classifies web flutter_gemma JsInterop download errors', () {
+      // Web unauthenticated fetch failure for gated model
+      expect(
+        isGatedAccessError(
+          const DownloadException(
+            DownloadError.unknown(
+              'Failed to download public model: '
+              'JsInteropException: Failed to fetch file: '
+              'Unauthorized (Status: 401)',
+            ),
+          ),
+        ),
+        isTrue,
+      );
+
+      // Web authenticated fetch failure with invalid or expired token
+      expect(
+        isGatedAccessError(
+          const DownloadException(
+            DownloadError.unknown(
+              'Failed to download authenticated model: '
+              'JsInteropException: Authentication failed: '
+              'Invalid or expired token (Status: 401)',
+            ),
+          ),
+        ),
+        isTrue,
+      );
+
+      // Web authenticated fetch failure lacking repo permissions
+      expect(
+        isGatedAccessError(
+          const DownloadException(
+            DownloadError.unknown(
+              'Failed to download authenticated model: '
+              'JsInteropException: Access denied: '
+              'Token lacks required permissions (Status: 403)',
+            ),
+          ),
+        ),
+        isTrue,
+      );
+
+      // Web CORS error pointing to repo access requirement
+      expect(
+        isGatedAccessError(
+          const DownloadException(
+            DownloadError.unknown(
+              'Failed to download authenticated model: '
+              'JsInteropException: CORS error: Server does not allow '
+              'requests from this origin. For HuggingFace models, ensure '
+              'you have access to the repository.',
+            ),
+          ),
+        ),
+        isTrue,
+      );
+
+      // Direct string JsInteropException
+      expect(
+        isGatedAccessError(
+          'JsInteropException: Failed to fetch file: '
+          'Unauthorized (Status: 401)',
+        ),
+        isTrue,
+      );
+
+      // Non-auth web errors should remain false
+      expect(
+        isGatedAccessError(
+          const DownloadException(
+            DownloadError.unknown(
+              'Failed to download public model: '
+              'JsInteropException: Network error: '
+              'Check your internet connection and try again.',
+            ),
+          ),
+        ),
+        isFalse,
+      );
+
+      // Web proxy error should not be treated as gated access
+      expect(
+        isGatedAccessError(
+          const DownloadException(
+            DownloadError.unknown(
+              'Failed to download public model: '
+              'HTTP 401 from an upstream proxy',
+            ),
+          ),
+        ),
+        isFalse,
+      );
+    });
+
     test('describeDownloadFailure provides 3-step advice for gated error', () {
       final message = describeDownloadFailure(
         const DownloadException(DownloadError.forbidden()),
