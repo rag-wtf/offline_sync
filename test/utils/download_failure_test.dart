@@ -106,11 +106,19 @@ void main() {
         isTrue,
       );
 
-      // Direct string JsInteropException
+      // Direct string JsInteropException — with "Unauthorized" word
       expect(
         isGatedAccessError(
           'JsInteropException: Failed to fetch file: '
           'Unauthorized (Status: 401)',
+        ),
+        isTrue,
+      );
+
+      // Actual Web error seen in production: no "Unauthorized" word, only status code
+      expect(
+        isGatedAccessError(
+          'JsInteropException: Failed to fetch file:  (Status: 401)',
         ),
         isTrue,
       );
