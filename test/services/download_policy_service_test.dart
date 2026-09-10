@@ -163,5 +163,72 @@ void main() {
       expect(decision.allowed, isFalse);
       expect(decision.reason, DownloadPolicyReason.connectivityUnknown);
     });
+
+    test(
+      'falls back to reachability on linux when reachable',
+      () async {
+        final decision =
+            await DownloadPolicyService(
+              connectivityProvider: () async => DownloadConnectivity.unknown,
+              reachabilityProvider: () async => true,
+            ).evaluate(
+              selected,
+              const DeviceCapabilities(
+                totalRamMB: 4096,
+                availableStorageMB: 1024,
+                hasGpu: true,
+                platform: 'linux',
+              ),
+            );
+
+        expect(decision.allowed, isTrue);
+        expect(decision.reason, DownloadPolicyReason.unmeteredConsent);
+        expect(decision.requiresConsent, isTrue);
+      },
+    );
+
+    test(
+      'fails closed when connectivity is unknown on linux and unreachable',
+      () async {
+        final decision =
+            await DownloadPolicyService(
+              connectivityProvider: () async => DownloadConnectivity.unknown,
+              reachabilityProvider: () async => false,
+            ).evaluate(
+              selected,
+              const DeviceCapabilities(
+                totalRamMB: 4096,
+                availableStorageMB: 1024,
+                hasGpu: true,
+                platform: 'linux',
+              ),
+            );
+
+        expect(decision.allowed, isFalse);
+        expect(decision.reason, DownloadPolicyReason.connectivityUnknown);
+      },
+    );
+
+    test(
+      'does not fall back to reachability on non-linux platforms',
+      () async {
+        final decision =
+            await DownloadPolicyService(
+              connectivityProvider: () async => DownloadConnectivity.unknown,
+              reachabilityProvider: () async => true,
+            ).evaluate(
+              selected,
+              const DeviceCapabilities(
+                totalRamMB: 4096,
+                availableStorageMB: 1024,
+                hasGpu: true,
+                platform: 'android',
+              ),
+            );
+
+        expect(decision.allowed, isFalse);
+        expect(decision.reason, DownloadPolicyReason.connectivityUnknown);
+      },
+    );
   });
 }

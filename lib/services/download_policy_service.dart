@@ -2,6 +2,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
+import 'package:offline_sync/services/network_reachability.dart';
 
 /// The known cost of the active connection. Unknown is deliberately unsafe
 /// for automatic model downloads.
@@ -71,11 +72,14 @@ class DownloadPolicyService {
   DownloadPolicyService({
     Future<DownloadConnectivity> Function()? connectivityProvider,
     Future<List<ConnectivityResult>> Function()? connectivityResultsProvider,
+    Future<bool> Function()? reachabilityProvider,
   }) : _connectivityProvider =
            connectivityProvider ??
-           _pluginConnectivityProvider(connectivityResultsProvider);
+           _pluginConnectivityProvider(connectivityResultsProvider),
+       _reachabilityProvider = reachabilityProvider ?? checkNetworkReachability;
 
   final Future<DownloadConnectivity> Function() _connectivityProvider;
+  final Future<bool> Function() _reachabilityProvider;
 
   static Future<DownloadConnectivity> Function() _pluginConnectivityProvider(
     Future<List<ConnectivityResult>> Function()? resultsProvider,
@@ -127,6 +131,12 @@ class DownloadPolicyService {
 
     final connectivity = await _connectivityProvider();
     if (connectivity == DownloadConnectivity.unknown) {
+      if (capabilities.platform == 'linux' && await _reachabilityProvider()) {
+        return const DownloadPolicyDecision.allowed(
+          reason: DownloadPolicyReason.unmeteredConsent,
+          requiresConsent: true,
+        );
+      }
       return const DownloadPolicyDecision.denied(
         DownloadPolicyReason.connectivityUnknown,
       );
