@@ -33,6 +33,18 @@ void main() {
 
         expect(count, 17);
       });
+
+      test(
+        'falls back to estimation when the session tokenizer fails',
+        () async {
+          final managerWithTokenizer = RagTokenManager(
+            tokenCounter: (_) async =>
+                throw StateError('tokenizer unavailable'),
+          );
+
+          expect(await managerWithTokenizer.countTokens('abcd'), 2);
+        },
+      );
     });
 
     group('buildHistoryWithBudget -', () {
@@ -75,6 +87,17 @@ void main() {
 
       test('should handle empty history gracefully', () {
         expect(manager.buildHistoryWithBudget([], 100), isEmpty);
+      });
+
+      test('returns no history for a non-positive budget', () {
+        expect(manager.selectHistoryWithBudget(['message'], 0), isEmpty);
+      });
+
+      test('skips empty and oversized messages while selecting history', () {
+        expect(
+          manager.selectHistoryWithBudget(['', 'old', 'newer'], 1),
+          ['old'],
+        );
       });
 
       test('drops the newest message when it alone exceeds budget', () {
@@ -126,6 +149,37 @@ void main() {
         expect(returnedLines, isNot(contains('Message 1')));
         expect(returnedLines.first, 'Message 2');
         expect(returnedLines.last, 'Message 11');
+      });
+
+      test(
+        'rejects a context limit smaller than the prompt instructions',
+        () async {
+          await expectLater(
+            manager.buildPromptWithinBudget(
+              query: 'question',
+              history: const [],
+              context: const [],
+              maxTokens: 10,
+              countTokens: (_) async => 100,
+            ),
+            throwsStateError,
+          );
+        },
+      );
+
+      test('truncates a query when only part fits the context limit', () async {
+        const query = 'a very long question that must be shortened';
+        final prompt = await manager.buildPromptWithinBudget(
+          query: query,
+          history: const [],
+          context: const [],
+          maxTokens: 360,
+          countTokens: (text) async => text.runes.length,
+        );
+
+        expect(prompt.runes.length, lessThanOrEqualTo(360));
+        expect(prompt, contains('Question:'));
+        expect(prompt, isNot(contains(query)));
       });
     });
 

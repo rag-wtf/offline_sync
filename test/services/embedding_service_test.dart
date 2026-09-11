@@ -1,10 +1,14 @@
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/services/embedding_service.dart';
+import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _MockEmbeddingModel extends Mock implements EmbeddingModel {}
+
+class _MockRagSettingsService extends Mock implements RagSettingsService {}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -45,6 +49,37 @@ void main() {
       );
 
       expect(await service.generateEmbedding('hello world'), equals(embedding));
+    });
+
+    test('pins the active model identity for a supplied embedder', () async {
+      final embedder = _MockEmbeddingModel();
+      final settings = _MockRagSettingsService();
+      when(() => settings.activeEmbeddingModelId).thenReturn('embedding-a');
+      locator.registerSingleton<RagSettingsService>(settings);
+      addTearDown(locator.reset);
+      final service = EmbeddingService(
+        activeEmbedderLoader: () async => embedder,
+      );
+
+      final pinned = await service.pinActiveModel();
+
+      expect(pinned.id, 'embedding-a');
+      expect(pinned.model, same(embedder));
+    });
+
+    test('rejects an empty active embedding identity', () async {
+      final settings = _MockRagSettingsService();
+      when(() => settings.activeEmbeddingModelId).thenReturn('');
+      locator.registerSingleton<RagSettingsService>(settings);
+      addTearDown(locator.reset);
+      final service = EmbeddingService(
+        activeEmbedderLoader: () async => _MockEmbeddingModel(),
+      );
+
+      await expectLater(
+        service.pinActiveModel(),
+        throwsA(isA<StateError>()),
+      );
     });
   });
 }

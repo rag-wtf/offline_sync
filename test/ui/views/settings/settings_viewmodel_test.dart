@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:offline_sync/app/app.locator.dart';
 import 'package:offline_sync/app/app.router.dart';
 import 'package:offline_sync/models/document.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
@@ -9,6 +10,7 @@ import 'package:offline_sync/services/document_management_service.dart';
 import 'package:offline_sync/services/document_parser_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_management_service.dart';
+import 'package:offline_sync/ui/setup_dialog_ui.dart';
 import 'package:offline_sync/ui/views/settings/settings_viewmodel.dart';
 import 'package:stacked_services/stacked_services.dart';
 
@@ -286,6 +288,69 @@ void main() {
     viewModel.onMaxTokensChanged(viewModel.modelDefaultMaxTokens.toDouble());
 
     expect(viewModel.isMaxTokensCustomDisplay, isFalse);
+  });
+
+  test('loads optional dialog and document services from the locator', () {
+    getAndRegisterMockDialogService();
+    locator.registerSingleton<DocumentManagementService>(
+      MockDocumentManagementService(),
+    );
+
+    final viewModel = SettingsViewModel(
+      modelService: modelService,
+      ragSettings: ragSettings,
+      navigationService: navigationService,
+      deviceService: FakeDeviceCapabilityService(
+        const DeviceCapabilities(
+          totalRamMB: 2048,
+          availableStorageMB: 2048,
+          hasGpu: false,
+          platform: 'android',
+        ),
+      ),
+    );
+
+    expect(viewModel, isNotNull);
+  });
+
+  test('reports a failed model deletion and token dialog error', () async {
+    final dialogService = getAndRegisterMockDialogService();
+    when(
+      () => dialogService.showCustomDialog<dynamic, dynamic>(
+        variant: any<DialogType>(named: 'variant'),
+        data: any<dynamic>(named: 'data'),
+      ),
+    ).thenThrow(StateError('dialog failed'));
+    when(
+      () => dialogService.showConfirmationDialog(
+        title: any(named: 'title'),
+        description: any(named: 'description'),
+        confirmationTitle: any(named: 'confirmationTitle'),
+      ),
+    ).thenAnswer((_) async => DialogResponse(confirmed: true));
+    when(() => modelService.deleteModel('inference-a')).thenAnswer(
+      (_) async => false,
+    );
+
+    final viewModel = SettingsViewModel(
+      modelService: modelService,
+      ragSettings: ragSettings,
+      navigationService: navigationService,
+      deviceService: FakeDeviceCapabilityService(
+        const DeviceCapabilities(
+          totalRamMB: 2048,
+          availableStorageMB: 2048,
+          hasGpu: false,
+          platform: 'android',
+        ),
+      ),
+      dialogService: dialogService,
+    );
+
+    expect(await viewModel.deleteModel('inference-a'), isFalse);
+    expect(viewModel.actionError, isNotNull);
+    await viewModel.enterToken();
+    expect(viewModel.actionError, isNotNull);
   });
 
   test('model actions and navigation delegate to services', () async {

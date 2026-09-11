@@ -23,9 +23,15 @@ import '../helpers/test_helpers.dart';
 
 class _MockModelFileManager extends Mock implements ModelFileManager {}
 
+class _FakeModelSpec extends Fake implements ModelSpec {}
+
 class _RaceInferenceModel extends Mock implements InferenceModel {}
 
 void main() {
+  setUpAll(() {
+    registerFallbackValue(_FakeModelSpec());
+  });
+
   group('ModelManagementService Tests -', () {
     late ModelManagementService service;
 
@@ -383,6 +389,75 @@ void main() {
         expect(model.status, ModelStatus.error);
         expect(model.errorMessage, contains('Unable to delete'));
       });
+
+      test(
+        'deletes an active embedding model through the file manager',
+        () async {
+          final manager = _MockModelFileManager();
+          when(manager.clearActiveEmbeddingIdentity).thenAnswer((_) async {});
+          when(() => manager.deleteModel(any())).thenAnswer((_) async {});
+          when(
+            () =>
+                locator<RagSettingsService>().setActiveEmbeddingModelId(any()),
+          ).thenAnswer((_) async {});
+          when(
+            locator<RagSettingsService>().clearActiveEmbeddingModelId,
+          ).thenAnswer((_) async {});
+
+          final service = ModelManagementService(
+            modelManager: manager,
+            embeddingModelActivator: (_) async {},
+          );
+          addTearDown(service.dispose);
+          final model = service.models.firstWhere(
+            (candidate) => candidate.type == AppModelType.embedding,
+          )..status = ModelStatus.downloaded;
+
+          await service.switchEmbeddingModel(model.id);
+          expect(await service.deleteModel(model.id), isTrue);
+
+          verify(manager.clearActiveEmbeddingIdentity).called(1);
+          verify(() => manager.deleteModel(any())).called(1);
+          verify(
+            locator<RagSettingsService>().clearActiveEmbeddingModelId,
+          ).called(1);
+          expect(model.status, ModelStatus.notDownloaded);
+        },
+      );
+
+      test(
+        'reports a failed inference rollback separately from the switch error',
+        () async {
+          final manager = _MockModelFileManager();
+          when(manager.clearActiveInferenceIdentity).thenThrow(
+            StateError('identity clear failed'),
+          );
+          when(
+            () =>
+                locator<RagSettingsService>().setActiveInferenceModelId(any()),
+          ).thenThrow(StateError('settings write failed'));
+
+          final service = ModelManagementService(
+            modelManager: manager,
+            inferenceModelActivator: (_) async {},
+          );
+          addTearDown(service.dispose);
+          final model = service.models.firstWhere(
+            (candidate) => candidate.type == AppModelType.inference,
+          )..status = ModelStatus.downloaded;
+
+          await expectLater(
+            service.switchInferenceModel(model.id),
+            throwsA(
+              isA<StateError>().having(
+                (error) => error.toString(),
+                'message',
+                contains('rollback failed'),
+              ),
+            ),
+          );
+        },
+      );
 
       test(
         'waits for an active inference operation to release before deleting',

@@ -69,6 +69,18 @@ void main() {
 
       expect(doc.lastRefreshed, DateTime.fromMillisecondsSinceEpoch(2000));
     });
+
+    test('restores durable source bytes from list and base64 encodings', () {
+      final fromList = Document.fromJson(<String, dynamic>{
+        'source_bytes': [1, 2, 3],
+      });
+      final fromBase64 = Document.fromJson(<String, dynamic>{
+        'source_bytes': 'BAUG',
+      });
+
+      expect(fromList.sourceBytes, [1, 2, 3]);
+      expect(fromBase64.sourceBytes, [4, 5, 6]);
+    });
   });
 
   group('Document.toJson -', () {

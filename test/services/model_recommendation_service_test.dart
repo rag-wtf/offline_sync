@@ -164,6 +164,49 @@ void main() {
       );
     });
 
+    test('offers the nearest smaller compatible tier for a premium device', () {
+      const capabilities = DeviceCapabilities(
+        totalRamMB: 13000,
+        availableStorageMB: 9000,
+        hasGpu: true,
+        platform: 'linux',
+      );
+      final current = service.getRecommendedModels(capabilities);
+
+      final smaller = service.getSmallerCompatibleModels(capabilities, current);
+
+      expect(smaller, isNotNull);
+      expect(smaller!.tier, DeviceTier.high);
+      expect(smaller.inferenceModel.id, 'gemma3-1b');
+      expect(smaller.embeddingModel.id, 'embedding-gemma-512');
+    });
+
+    test('does not offer a smaller tier for a low-tier device', () {
+      const capabilities = DeviceCapabilities(
+        totalRamMB: 3072,
+        availableStorageMB: 1536,
+        hasGpu: false,
+        platform: 'android',
+      );
+      final current = service.getRecommendedModels(capabilities);
+
+      expect(service.getSmallerCompatibleModels(capabilities, current), isNull);
+    });
+
+    test('fails clearly when the platform has no compatible models', () {
+      expect(
+        () => service.getRecommendedModels(
+          const DeviceCapabilities(
+            totalRamMB: 1024,
+            availableStorageMB: 1024,
+            hasGpu: false,
+            platform: 'unsupported',
+          ),
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
     group('platform-compatible recommendations', () {
       final tierCases =
           <

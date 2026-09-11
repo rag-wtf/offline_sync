@@ -5,6 +5,7 @@ import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:offline_sync/app/app.router.dart';
+import 'package:offline_sync/l10n/gen/app_localizations_en.dart';
 import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/download_policy_service.dart';
 import 'package:offline_sync/services/exceptions.dart';
@@ -39,11 +40,13 @@ class FakeModelRecommendationService extends ModelRecommendationService {
     required this.recommendedModels,
     this.meetsRequirements = true,
     this.unsupportedMessage = 'Unsupported device',
+    this.smallerCompatible,
   });
 
   final RecommendedModels recommendedModels;
   final bool meetsRequirements;
   final String unsupportedMessage;
+  final RecommendedModels? smallerCompatible;
 
   @override
   RecommendedModels getRecommendedModels(DeviceCapabilities capabilities) =>
@@ -60,6 +63,12 @@ class FakeModelRecommendationService extends ModelRecommendationService {
     required String Function(int actual, int minimum) ramMessage,
     required String Function(int actual, int minimum) storageMessage,
   }) => unsupportedMessage;
+
+  @override
+  RecommendedModels? getSmallerCompatibleModels(
+    DeviceCapabilities capabilities,
+    RecommendedModels current,
+  ) => smallerCompatible;
 }
 
 void main() {
@@ -94,6 +103,7 @@ void main() {
         final viewModel = StartupViewModel();
         expect(viewModel, isNotNull);
         expect(viewModel.statusMessage, isNull);
+        expect(viewModel.localizedStatusMessage(AppLocalizationsEn()), isNull);
         expect(viewModel.needsToken, isFalse);
         expect(viewModel.capabilities, isNull);
       });
@@ -577,6 +587,74 @@ void main() {
         ).called(1);
       });
 
+      test(
+        'localizes every status reported by startup progress streams',
+        () async {
+          final controller = StreamController<List<ModelInfo>>.broadcast();
+          when(
+            () => mockModelService.modelStatusStream,
+          ).thenAnswer((_) => controller.stream);
+          final viewModel = StartupViewModel(
+            navigationService: mockNavigationService,
+            modelService: mockModelService,
+            deviceService: deviceService,
+            recommendationService: recommendationService,
+            ragSettingsService: ragSettings,
+          );
+          final l10n = AppLocalizationsEn();
+          final localizedMessages = <String?>[];
+          viewModel.addListener(() {
+            localizedMessages.add(viewModel.localizedStatusMessage(l10n));
+          });
+
+          await viewModel.runStartupLogic();
+          expect(localizedMessages, contains(l10n.detectingCapabilities));
+          expect(localizedMessages, contains(l10n.selectingModels));
+          expect(viewModel.localizedStatusMessage(l10n), l10n.selectingModels);
+          controller.add([inferenceModel, embeddingModel]);
+          await Future<void>.delayed(Duration.zero);
+          expect(
+            viewModel.localizedStatusMessage(l10n),
+            l10n.finalizingInitialization,
+          );
+
+          final downloading =
+              ModelInfo(
+                  id: 'downloading',
+                  name: 'Downloading model',
+                  url: 'https://example.com/model',
+                  type: AppModelType.inference,
+                )
+                ..status = ModelStatus.downloading
+                ..progress = 0.42;
+          controller.add([downloading]);
+          await Future<void>.delayed(Duration.zero);
+          expect(
+            viewModel.localizedStatusMessage(l10n),
+            l10n.downloadingModel('Downloading model', 42),
+          );
+
+          downloading
+            ..status = ModelStatus.error
+            ..errorMessage = 'network failure';
+          controller.add([downloading]);
+          await Future<void>.delayed(Duration.zero);
+          expect(
+            viewModel.localizedStatusMessage(l10n),
+            l10n.downloadErrorStatus,
+          );
+
+          controller.addError(AuthenticationRequiredException());
+          await Future<void>.delayed(Duration.zero);
+          expect(
+            viewModel.localizedStatusMessage(l10n),
+            l10n.authenticationRequiredStatus,
+          );
+
+          await controller.close();
+        },
+      );
+
       test('navigates to settings when required'
           ' models are still missing', () async {
         embeddingModel.status = ModelStatus.notDownloaded;
@@ -634,6 +712,104 @@ void main() {
           );
         },
       );
+
+      test('stops before downloading when storage is insufficient', () async {
+        inferenceModel.status = ModelStatus.notDownloaded;
+        embeddingModel.status = ModelStatus.notDownloaded;
+        final viewModel = StartupViewModel(
+          navigationService: mockNavigationService,
+          modelService: mockModelService,
+          deviceService: FakeDeviceCapabilityService(
+            const DeviceCapabilities(
+              totalRamMB: 4096,
+              availableStorageMB: 1,
+              hasGpu: false,
+              platform: 'android',
+            ),
+          ),
+          recommendationService: recommendationService,
+          ragSettingsService: ragSettings,
+          downloadPolicyService: DownloadPolicyService(
+            connectivityProvider: () async => DownloadConnectivity.unmetered,
+          ),
+        );
+
+        await viewModel.runStartupLogic();
+
+        expect(
+          viewModel.downloadPolicyReason,
+          DownloadPolicyReason.insufficientStorage,
+        );
+        verifyNever(() => mockModelService.downloadModel(any()));
+      });
+
+      test('uses the smaller compatible pair after consent', () async {
+        inferenceModel.status = ModelStatus.notDownloaded;
+        embeddingModel.status = ModelStatus.notDownloaded;
+        final highInference = ModelInfo(
+          id: InferenceModels.gemma3_1B.id,
+          name: InferenceModels.gemma3_1B.name,
+          url: 'https://example.com/high-inference',
+          type: AppModelType.inference,
+        );
+        final highEmbedding = ModelInfo(
+          id: EmbeddingModels.embeddingGemma512.id,
+          name: EmbeddingModels.embeddingGemma512.name,
+          url: 'https://example.com/high-embedding',
+          type: AppModelType.embedding,
+        );
+        const smaller = RecommendedModels(
+          inferenceModel: InferenceModels.gemma3_270M,
+          embeddingModel: EmbeddingModels.gecko64,
+          tier: DeviceTier.low,
+        );
+        final allModels = [
+          highInference,
+          highEmbedding,
+          inferenceModel,
+          embeddingModel,
+        ];
+        when(() => mockModelService.models).thenReturn(allModels);
+        when(() => mockModelService.downloadModel(any())).thenAnswer((
+          call,
+        ) async {
+          final id = call.positionalArguments.single as String;
+          allModels.firstWhere((model) => model.id == id).status =
+              ModelStatus.downloaded;
+        });
+        final viewModel = StartupViewModel(
+          navigationService: mockNavigationService,
+          modelService: mockModelService,
+          deviceService: deviceService,
+          recommendationService: FakeModelRecommendationService(
+            recommendedModels: const RecommendedModels(
+              inferenceModel: InferenceModels.gemma3_1B,
+              embeddingModel: EmbeddingModels.embeddingGemma512,
+              tier: DeviceTier.high,
+            ),
+            smallerCompatible: smaller,
+          ),
+          ragSettingsService: ragSettings,
+          downloadPolicyService: DownloadPolicyService(
+            connectivityProvider: () async => DownloadConnectivity.metered,
+          ),
+          downloadConsentPrompter: (_) async => const DownloadConsentResult(
+            approved: true,
+            useSmallerCompatible: true,
+          ),
+        );
+
+        await viewModel.runStartupLogic();
+
+        expect(inferenceModel.status, ModelStatus.downloaded);
+        expect(embeddingModel.status, ModelStatus.downloaded);
+        verify(
+          () => mockModelService.downloadModel(inferenceModel.id),
+        ).called(1);
+        verify(
+          () => mockModelService.downloadModel(embeddingModel.id),
+        ).called(1);
+      });
 
       test(
         'checks storage only for models that still need downloading',

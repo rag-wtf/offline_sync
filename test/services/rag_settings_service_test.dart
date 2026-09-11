@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -110,6 +112,61 @@ void main() {
         service.setActiveEmbeddingModelId('gemma3-1b'),
         throwsArgumentError,
       );
+    });
+
+    test(
+      'serializes embedding work and rejects a stale model identity',
+      () async {
+        final service = RagSettingsService();
+        await service.setActiveEmbeddingModelId('embedding-gemma-256');
+
+        final firstStarted = Completer<void>();
+        final releaseFirst = Completer<void>();
+        var secondRan = false;
+        final first = service.runWithEmbeddingModel(
+          'embedding-gemma-256',
+          () async {
+            firstStarted.complete();
+            await releaseFirst.future;
+          },
+        );
+        await firstStarted.future;
+
+        final second = service.runWithEmbeddingModel(
+          'embedding-gemma-256',
+          () async {
+            secondRan = true;
+          },
+        );
+        await Future<void>.delayed(Duration.zero);
+        expect(secondRan, isFalse);
+
+        releaseFirst.complete();
+        await Future.wait([first, second]);
+        expect(secondRan, isTrue);
+
+        await expectLater(
+          service.runWithEmbeddingModel('different-model', () async {}),
+          throwsStateError,
+        );
+      },
+    );
+
+    test('releases the embedding operation tail when a switch fails', () async {
+      final service = RagSettingsService();
+      var ran = false;
+
+      await expectLater(
+        service.runEmbeddingModelSwitch(() async {
+          throw StateError('switch failed');
+        }),
+        throwsStateError,
+      );
+      await service.runEmbeddingModelSwitch(() async {
+        ran = true;
+      });
+
+      expect(ran, isTrue);
     });
   });
 }

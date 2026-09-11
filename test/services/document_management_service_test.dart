@@ -188,6 +188,137 @@ void main() {
     });
 
     test(
+      'cleans tracking state when the active embedder cannot be pinned',
+      () async {
+        when(() => mockVectorStore.findByHash(any<String>())).thenReturn(null);
+        when(() => mockEmbeddingService.pinActiveModel()).thenThrow(
+          StateError('active embedder unavailable'),
+        );
+
+        await expectLater(
+          service.addDocumentFromPlatformFile(
+            FakePlatformFile(
+              name: 'pin-failure.txt',
+              size: 4,
+              bytes: Uint8List.fromList('data'.codeUnits),
+            ),
+          ),
+          throwsA(isA<StateError>()),
+        );
+      },
+    );
+
+    test(
+      'rejects ingestion when the active model changes before starting',
+      () async {
+        when(() => mockVectorStore.findByHash(any<String>())).thenReturn(null);
+        when(
+          () => mockSettingsService.activeEmbeddingModelId,
+        ).thenReturn('other');
+
+        await expectLater(
+          service.addDocumentFromPlatformFile(
+            FakePlatformFile(
+              name: 'model-change.txt',
+              size: 4,
+              bytes: Uint8List.fromList('data'.codeUnits),
+            ),
+          ),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              contains('changed before ingestion started'),
+            ),
+          ),
+        );
+      },
+    );
+
+    test(
+      'rejects ingestion when the model changes after embedding a batch',
+      () async {
+        var activeModelId = 'gecko-64';
+        when(() => mockSettingsService.activeEmbeddingModelId).thenAnswer(
+          (_) => activeModelId,
+        );
+        when(() => mockVectorStore.findByHash(any<String>())).thenReturn(null);
+        when(() => mockParserService.detectFormat(any<String>())).thenReturn(
+          DocumentFormat.plainText,
+        );
+        when(
+          () => mockVectorStore.insertDocument(any<Document>()),
+        ).thenReturn(null);
+        when(
+          () => mockVectorStore.insertEmbeddingsBatch(any()),
+        ).thenReturn(null);
+        when(
+          () => mockVectorStore.deleteVectorsForDocument(any()),
+        ).thenReturn(null);
+        when(
+          () => mockEmbeddingService.generateEmbedding(
+            any<String>(),
+            model: any<EmbeddingModel>(named: 'model'),
+          ),
+        ).thenAnswer((_) async {
+          activeModelId = 'other';
+          return [0.1];
+        });
+
+        await expectLater(
+          service.addDocumentFromPlatformFile(
+            FakePlatformFile(
+              name: 'model-change-after-batch.txt',
+              size: 4,
+              bytes: Uint8List.fromList('short text'.codeUnits),
+            ),
+          ),
+          throwsA(isA<StateError>()),
+        );
+      },
+    );
+
+    test(
+      'rejects ingestion when the model changes between chunks',
+      () async {
+        var activeModelId = 'gecko-64';
+        when(() => mockSettingsService.activeEmbeddingModelId).thenAnswer(
+          (_) => activeModelId,
+        );
+        when(() => mockVectorStore.findByHash(any<String>())).thenReturn(null);
+        when(() => mockParserService.detectFormat(any<String>())).thenReturn(
+          DocumentFormat.plainText,
+        );
+        when(
+          () => mockVectorStore.insertDocument(any<Document>()),
+        ).thenReturn(null);
+        when(
+          () => mockVectorStore.deleteVectorsForDocument(any()),
+        ).thenReturn(null);
+        when(
+          () => mockEmbeddingService.generateEmbedding(
+            any<String>(),
+            model: any<EmbeddingModel>(named: 'model'),
+          ),
+        ).thenAnswer((_) async {
+          activeModelId = 'other';
+          return [0.1];
+        });
+
+        await expectLater(
+          service.addDocumentFromPlatformFile(
+            FakePlatformFile(
+              name: 'model-change-between-chunks.txt',
+              size: 5000,
+              bytes: Uint8List.fromList(('chunk ' * 1000).codeUnits),
+            ),
+          ),
+          throwsA(isA<StateError>()),
+        );
+      },
+    );
+
+    test(
       'addMultipleDocuments reports successes and failures per file',
       () async {
         final file = File(
@@ -261,6 +392,41 @@ void main() {
       expect(await service.getDocumentChunks('doc'), chunks);
       await service.deleteDocument('doc');
       verify(() => mockVectorStore.deleteDocument('doc')).called(1);
+    });
+
+    test('uses the registered coordinator and reports source availability', () {
+      locator.registerSingleton<EmbeddingModelCoordinator>(
+        EmbeddingModelCoordinator(),
+      );
+      final registeredService = DocumentManagementService();
+      final byteBacked = Document(
+        id: 'bytes',
+        title: 'Bytes',
+        filePath: 'missing.txt',
+        format: DocumentFormat.plainText,
+        chunkCount: 1,
+        totalCharacters: 4,
+        contentHash: 'hash',
+        ingestedAt: DateTime.now(),
+        sourceBytes: Uint8List.fromList([1, 2, 3]),
+      );
+
+      expect(registeredService.hasSourceForReindex(byteBacked), isTrue);
+      expect(
+        registeredService.hasSourceForReindex(
+          Document(
+            id: byteBacked.id,
+            title: byteBacked.title,
+            filePath: byteBacked.filePath,
+            format: byteBacked.format,
+            chunkCount: byteBacked.chunkCount,
+            totalCharacters: byteBacked.totalCharacters,
+            contentHash: byteBacked.contentHash,
+            ingestedAt: byteBacked.ingestedAt,
+          ),
+        ),
+        isFalse,
+      );
     });
 
     test('addDocument success flow', () async {
@@ -399,6 +565,18 @@ void main() {
       expect(
         DocumentManagementService.formatFileSizeMB(12.3456789),
         '12.3 MB',
+      );
+    });
+
+    test('validates document titles before renaming', () async {
+      await expectLater(
+        service.renameDocument('doc', '   '),
+        throwsA(isA<ArgumentError>()),
+      );
+      when(() => mockVectorStore.getDocument('missing')).thenReturn(null);
+      await expectLater(
+        service.renameDocument('missing', 'Title'),
+        throwsA(isA<StateError>()),
       );
     });
 

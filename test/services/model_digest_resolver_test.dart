@@ -50,4 +50,78 @@ void main() {
       throwsA(isA<StateError>()),
     );
   });
+
+  test('rejects a non-successful metadata response', () async {
+    final resolver = HuggingFaceDigestResolver(
+      get: (_) async => http.Response('unauthorized', 401),
+    );
+
+    await expectLater(
+      resolver.resolve(InferenceModels.gemma3n_2B),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.toString(),
+          'message',
+          contains('HTTP 401'),
+        ),
+      ),
+    );
+  });
+
+  test('rejects metadata that is not a file list', () async {
+    final resolver = HuggingFaceDigestResolver(
+      get: (_) async => http.Response('{}', 200),
+    );
+
+    await expectLater(
+      resolver.resolve(InferenceModels.gemma3n_2B),
+      throwsA(isA<FormatException>()),
+    );
+  });
+
+  test('rejects a requested file without a valid SHA-256 LFS digest', () async {
+    final resolver = HuggingFaceDigestResolver(
+      get: (_) async => http.Response(
+        jsonEncode([
+          {
+            'path': InferenceModels.gemma3n_2B.fileName,
+            'lfs': {'oid': 'sha256:not-a-digest'},
+          },
+        ]),
+        200,
+      ),
+    );
+
+    await expectLater(
+      resolver.resolve(InferenceModels.gemma3n_2B),
+      throwsA(isA<StateError>()),
+    );
+  });
+
+  test(
+    'rejects model URLs that do not contain a repository resolve path',
+    () async {
+      final resolver = HuggingFaceDigestResolver(
+        get: (_) async => http.Response('[]', 200),
+      );
+
+      await expectLater(
+        resolver.resolve(
+          const ModelDefinition(
+            id: 'invalid',
+            name: 'Invalid',
+            modelUrl: 'https://example.com/model.task',
+            type: AppModelType.inference,
+            sizeBytes: 1,
+            minRamMB: 1,
+            requiresGpu: false,
+            tier: DeviceTier.low,
+            maxTokens: 1,
+            fileType: ModelFileType.task,
+          ),
+        ),
+        throwsA(isA<FormatException>()),
+      );
+    },
+  );
 }

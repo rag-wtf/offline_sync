@@ -101,6 +101,21 @@ void main() {
       },
     );
 
+    test('marks a pending assistant turn as completed', () async {
+      final message = ChatMessage(
+        content: 'Complete me',
+        isUser: false,
+        isPending: true,
+        timestamp: DateTime.now(),
+      );
+      await chatRepository.saveMessage(message);
+
+      await chatRepository.markMessageCompleted(message);
+
+      final stored = await chatRepository.loadMessages();
+      expect(stored.single.isPending, isFalse);
+    });
+
     test(
       'marks the saved row by stable id when duplicate turns exist',
       () async {

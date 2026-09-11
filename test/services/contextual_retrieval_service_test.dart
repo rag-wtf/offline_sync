@@ -8,6 +8,8 @@ import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/model_recommendation_service.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 
+import '../helpers/test_helpers.dart';
+
 class MockDeviceCapabilityService extends Mock
     implements DeviceCapabilityService {}
 
@@ -224,6 +226,14 @@ void main() {
         const boundaryChars = 4000; // ~1000 tokens
         expect(service.canProcessFullDocument(boundaryChars), isTrue);
       });
+
+      test('uses the active inference model context limit when configured', () {
+        when(() => mockSettingsService.activeInferenceModelId).thenReturn(
+          InferenceModels.gemma3_1B.id,
+        );
+
+        expect(service.canProcessFullDocument(10000), isTrue);
+      });
     });
 
     group('contextualizeDocument -', () {
@@ -233,6 +243,7 @@ void main() {
         final chat = MockInferenceChat();
         Message? capturedPrompt;
 
+        getAndRegisterMockInferenceModelProvider();
         ContextualRetrievalService.getActiveModel = () async => model;
         when(
           () => model.createChat(temperature: any(named: 'temperature')),

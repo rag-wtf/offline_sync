@@ -409,7 +409,7 @@ void main() {
           ),
         ),
         RAGTokenEvent('Hello'),
-        RAGTokenEvent(' world'),
+        RAGTokenEvent(" I don't have enough information."),
         RAGCompleteEvent(),
       ]),
     );
@@ -419,11 +419,17 @@ void main() {
     await viewModel.sendMessage('question');
 
     expect(viewModel.messages, hasLength(2));
-    expect(viewModel.messages.last.content, 'Hello world');
+    expect(
+      viewModel.messages.last.content,
+      "Hello I don't have enough information.",
+    );
     expect(viewModel.messages.last.sources!.single.id, 'source-1');
     expect(viewModel.messages.last.metrics!.chunksRetrieved, 1);
     expect(savedMessages, hasLength(2));
-    expect(savedMessages.last.content, 'Hello world');
+    expect(
+      savedMessages.last.content,
+      "Hello I don't have enough information.",
+    );
 
     final documentIds =
         verify(
@@ -437,6 +443,45 @@ void main() {
             as List<String>;
     expect(documentIds, ['doc-7']);
   });
+
+  test(
+    'clears completed and errored ingestion progress after their delays',
+    () async {
+      final progressController =
+          StreamController<IngestionProgress>.broadcast();
+      when(ragService.initialize).thenAnswer((_) async {});
+      when(() => chatRepository.loadMessages()).thenAnswer((_) async => []);
+      when(
+        () => documentService.ingestionProgressStream,
+      ).thenAnswer((_) => progressController.stream);
+      when(() => documentService.getAllDocuments()).thenAnswer((_) async => []);
+
+      final viewModel = ChatViewModel();
+      await viewModel.initialize();
+
+      progressController.add(
+        const IngestionProgress(
+          documentId: 'complete-doc',
+          documentTitle: 'Complete',
+          stage: 'complete',
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 1600));
+      expect(viewModel.currentIngestionProgress, isNull);
+
+      progressController.add(
+        const IngestionProgress(
+          documentId: 'error-doc',
+          documentTitle: 'Error',
+          stage: 'error',
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 2100));
+      expect(viewModel.currentIngestionProgress, isNull);
+
+      await progressController.close();
+    },
+  );
 
   test('sendMessage removes placeholder and shows generic error', () async {
     when(() => chatRepository.saveMessage(any())).thenAnswer((_) async {});

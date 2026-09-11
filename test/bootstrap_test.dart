@@ -278,14 +278,36 @@ void main() {
       },
     );
 
-    FlutterError.onError = previousOnError;
-    PlatformDispatcher.instance.onError = previousPlatformError;
     expect(handlersInstalledBeforeFailure, isTrue);
     expect(renderedApp, isNotNull);
     await tester.pumpWidget(renderedApp!);
     expect(find.text('Offline Sync could not start'), findsOneWidget);
     expect(find.text('Retry'), findsOneWidget);
     expect(find.text('Show diagnostics'), findsOneWidget);
+
+    await tester.tap(find.text('Show diagnostics'));
+    await tester.pumpAndSettle();
+    expect(find.text('Startup diagnostics'), findsOneWidget);
+    expect(find.textContaining('sqlite unavailable'), findsOneWidget);
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+
+    FlutterError.onError!(
+      FlutterErrorDetails(
+        exception: StateError('framework failure'),
+        stack: StackTrace.current,
+      ),
+    );
+    expect(
+      PlatformDispatcher.instance.onError!(
+        StateError('platform failure'),
+        StackTrace.current,
+      ),
+      isTrue,
+    );
+    await tester.pump();
+    FlutterError.onError = previousOnError;
+    PlatformDispatcher.instance.onError = previousPlatformError;
   });
 
   testWidgets(

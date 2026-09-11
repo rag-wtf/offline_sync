@@ -11,6 +11,15 @@ import '../helpers/test_helpers.dart';
 class MockInferenceChat extends Mock implements InferenceChat {}
 
 void main() {
+  test('removes a trailing disclaimer from a meaningful response', () {
+    expect(
+      RagService.cleanResponse(
+        "The answer is in the context. I don't have enough information.",
+      ),
+      'The answer is in the context.',
+    );
+  });
+
   group('RagServiceTest -', () {
     late RagService service;
     late MockVectorStore mockVectorStore;
