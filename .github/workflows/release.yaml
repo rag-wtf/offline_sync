@@ -469,6 +469,12 @@ jobs:
       - name: Build Windows
         run: flutter build windows --${{ github.event.inputs.build_type }} --target ${{ env.TARGET }} --build-number=${{ env.BUILD_NUMBER }} --build-name=${{ env.BUILD_NAME }}
 
+      - name: Verify Windows native assets
+        shell: pwsh
+        run: |
+          $bundle = "build\windows\x64\runner\${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}"
+          ./tool/verify_windows_bundle.ps1 -BundlePath $bundle
+
       - name: Create ZIP archive
         run: |
           Compress-Archive -Path "build\windows\x64\runner\${{ github.event.inputs.build_type == 'release' && 'Release' || 'Debug' }}\*" -DestinationPath "build\offline_sync-windows-${{ github.event.inputs.build_type }}.zip"
