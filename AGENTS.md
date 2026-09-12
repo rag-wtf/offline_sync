@@ -16,3 +16,4 @@ Reduce LLM coding mistakes.
 
 ## Lessons Learned
 - Commit existing worktree changes before beginning new implementation work.
+- Use `gh` to retrieve GitHub Actions job logs when diagnosing a linked workflow failure.
