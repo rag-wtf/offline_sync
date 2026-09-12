@@ -526,10 +526,11 @@ void main() {
           });
           when(replacementModel.close).thenAnswer((_) async {});
           final provider = InferenceModelProvider(
-            activeModelLoader: ({required maxTokens}) async {
-              loadCalls++;
-              return loadCalls == 1 ? oldModel : replacementModel;
-            },
+            activeModelLoader:
+                ({required maxTokens, required preferredBackend}) async {
+                  loadCalls++;
+                  return loadCalls == 1 ? oldModel : replacementModel;
+                },
           );
           locator.registerSingleton<InferenceModelProvider>(provider);
 

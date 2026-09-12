@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:offline_sync/app/app.locator.dart';
+import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/model_config.dart';
 import 'package:offline_sync/services/rag_settings_service.dart';
 
@@ -10,14 +11,22 @@ import 'package:offline_sync/services/rag_settings_service.dart';
 /// This service ensures consistent model initialization across
 /// RagService, QueryExpansionService, and RerankingService.
 class InferenceModelProvider {
-  InferenceModelProvider({this._settingsService, this._activeModelLoader});
+  InferenceModelProvider({
+    this._settingsService,
+    this._deviceCapabilityService,
+    this._activeModelLoader,
+  });
 
   InferenceModel? _model;
   Future<InferenceModel>? _inFlightFuture;
   static Future<void> _operationLane = Future<void>.value();
   var _modelGeneration = 0;
   final RagSettingsService? _settingsService;
-  final Future<InferenceModel?> Function({required int maxTokens})?
+  final DeviceCapabilityService? _deviceCapabilityService;
+  final Future<InferenceModel?> Function({
+    required int maxTokens,
+    required PreferredBackend preferredBackend,
+  })?
   _activeModelLoader;
 
   /// Gets the active inference model, initializing it if necessary
@@ -73,9 +82,23 @@ class InferenceModelProvider {
           modelDefinition.contextLimit ??
           modelDefinition.maxTokens;
 
-      final activeModelLoader =
-          _activeModelLoader ?? FlutterGemma.getActiveModel;
-      loadedModel = await activeModelLoader(maxTokens: maxTokens);
+      final capabilities =
+          await (_deviceCapabilityService ?? locator<DeviceCapabilityService>())
+              .getCapabilities();
+      final preferredBackend = capabilities.hasGpu
+          ? PreferredBackend.gpu
+          : PreferredBackend.cpu;
+
+      final activeModelLoader = _activeModelLoader;
+      loadedModel = activeModelLoader != null
+          ? await activeModelLoader(
+              maxTokens: maxTokens,
+              preferredBackend: preferredBackend,
+            )
+          : await FlutterGemma.getActiveModel(
+              maxTokens: maxTokens,
+              preferredBackend: preferredBackend,
+            );
     } catch (e) {
       throw Exception(
         'Failed to get active inference model: $e. '

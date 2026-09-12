@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_gemma/flutter_gemma.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:offline_sync/services/device_capability_service.dart';
 import 'package:offline_sync/services/inference_model_provider.dart';
 import 'package:offline_sync/services/model_config.dart';
 
@@ -28,11 +29,12 @@ void main() {
 
     var loadCalls = 0;
     final provider = InferenceModelProvider(
-      activeModelLoader: ({required maxTokens}) async {
-        loadCalls += 1;
-        expect(maxTokens, 1536);
-        return model;
-      },
+      activeModelLoader:
+          ({required maxTokens, required preferredBackend}) async {
+            loadCalls += 1;
+            expect(maxTokens, 1536);
+            return model;
+          },
     );
 
     final first = await provider.getModel();
@@ -41,6 +43,62 @@ void main() {
     expect(first, same(model));
     expect(second, same(model));
     expect(loadCalls, 1);
+  });
+
+  test('requests the CPU backend when GPU is unavailable', () async {
+    final model = _MockInferenceModel();
+    final capabilities = DeviceCapabilityService(
+      isLinuxOverride: true,
+      linuxPrettyNameProvider: () async => 'Linux Test',
+      gpuAvailabilityProvider: () async => false,
+    );
+    PreferredBackend? requestedBackend;
+    when(() => settings.maxTokens).thenReturn(1024);
+    when(() => settings.activeInferenceModelId).thenReturn(null);
+
+    final provider = InferenceModelProvider(
+      deviceCapabilityService: capabilities,
+      activeModelLoader:
+          ({
+            required maxTokens,
+            required preferredBackend,
+          }) async {
+            requestedBackend = preferredBackend;
+            return model;
+          },
+    );
+
+    await provider.getModel();
+
+    expect(requestedBackend, PreferredBackend.cpu);
+  });
+
+  test('requests the GPU backend when GPU is available', () async {
+    final model = _MockInferenceModel();
+    final capabilities = DeviceCapabilityService(
+      isLinuxOverride: true,
+      linuxPrettyNameProvider: () async => 'Linux Test',
+      gpuAvailabilityProvider: () async => true,
+    );
+    PreferredBackend? requestedBackend;
+    when(() => settings.maxTokens).thenReturn(1024);
+    when(() => settings.activeInferenceModelId).thenReturn(null);
+
+    final provider = InferenceModelProvider(
+      deviceCapabilityService: capabilities,
+      activeModelLoader:
+          ({
+            required maxTokens,
+            required preferredBackend,
+          }) async {
+            requestedBackend = preferredBackend;
+            return model;
+          },
+    );
+
+    await provider.getModel();
+
+    expect(requestedBackend, PreferredBackend.gpu);
   });
 
   test(
@@ -52,13 +110,16 @@ void main() {
       when(() => settings.activeInferenceModelId).thenReturn(activeModelId);
 
       final provider = InferenceModelProvider(
-        activeModelLoader: ({required maxTokens}) async {
-          expect(
-            maxTokens,
-            ModelConfig.activeInferenceModelOrDefault(activeModelId).maxTokens,
-          );
-          return model;
-        },
+        activeModelLoader:
+            ({required maxTokens, required preferredBackend}) async {
+              expect(
+                maxTokens,
+                ModelConfig.activeInferenceModelOrDefault(
+                  activeModelId,
+                ).maxTokens,
+              );
+              return model;
+            },
       );
 
       expect(await provider.getModel(), same(model));
@@ -70,9 +131,10 @@ void main() {
     when(() => settings.activeInferenceModelId).thenReturn(null);
 
     final provider = InferenceModelProvider(
-      activeModelLoader: ({required maxTokens}) async {
-        throw StateError('plugin offline');
-      },
+      activeModelLoader:
+          ({required maxTokens, required preferredBackend}) async {
+            throw StateError('plugin offline');
+          },
     );
 
     await expectLater(
@@ -93,7 +155,8 @@ void main() {
     when(() => settings.activeInferenceModelId).thenReturn(null);
 
     final provider = InferenceModelProvider(
-      activeModelLoader: ({required maxTokens}) async => null,
+      activeModelLoader:
+          ({required maxTokens, required preferredBackend}) async => null,
     );
 
     await expectLater(
@@ -116,10 +179,11 @@ void main() {
 
     var loadCalls = 0;
     final provider = InferenceModelProvider(
-      activeModelLoader: ({required maxTokens}) async {
-        loadCalls += 1;
-        return loadCalls == 1 ? firstModel : secondModel;
-      },
+      activeModelLoader:
+          ({required maxTokens, required preferredBackend}) async {
+            loadCalls += 1;
+            return loadCalls == 1 ? firstModel : secondModel;
+          },
     );
 
     expect(await provider.getModel(), same(firstModel));
@@ -165,7 +229,8 @@ void main() {
     when(() => settings.activeInferenceModelId).thenReturn(null);
     when(model.close).thenAnswer((_) async {});
     final provider = InferenceModelProvider(
-      activeModelLoader: ({required maxTokens}) async => model,
+      activeModelLoader:
+          ({required maxTokens, required preferredBackend}) async => model,
     );
 
     await provider.getModel();
@@ -193,10 +258,11 @@ void main() {
       when(chat.close).thenAnswer((_) async {});
 
       final provider = InferenceModelProvider(
-        activeModelLoader: ({required maxTokens}) async {
-          loads++;
-          return loads == 1 ? firstModel : replacementModel;
-        },
+        activeModelLoader:
+            ({required maxTokens, required preferredBackend}) async {
+              loads++;
+              return loads == 1 ? firstModel : replacementModel;
+            },
       );
       final requestedModel = await provider.getModel();
 
@@ -234,7 +300,8 @@ void main() {
       when(chat.close).thenAnswer((_) async {});
 
       final provider = InferenceModelProvider(
-        activeModelLoader: ({required maxTokens}) async => model,
+        activeModelLoader:
+            ({required maxTokens, required preferredBackend}) async => model,
       );
       await provider.getModel();
 
@@ -268,7 +335,8 @@ void main() {
       when(model.close).thenAnswer((_) async {});
 
       final provider = InferenceModelProvider(
-        activeModelLoader: ({required maxTokens}) => loadFinished.future,
+        activeModelLoader: ({required maxTokens, required preferredBackend}) =>
+            loadFinished.future,
       );
       final load = provider.getModel();
       await Future<void>.delayed(Duration.zero);

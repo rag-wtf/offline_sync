@@ -16,4 +16,5 @@ Reduce LLM coding mistakes.
 
 ## Lessons Learned
 - Commit existing worktree changes before beginning new implementation work.
+- Use live UI state alongside console logs when assessing ingestion activity.
 - Use `gh` to retrieve GitHub Actions job logs when diagnosing a linked workflow failure.

@@ -66,6 +66,7 @@ class DeviceCapabilityService {
     this._windowsComputerNameProvider,
     this._totalRamProvider,
     this._freeStorageProvider,
+    this._gpuAvailabilityProvider,
   }) : _deviceInfo = deviceInfo ?? DeviceInfoPlugin();
 
   final DeviceInfoPlugin _deviceInfo;
@@ -82,6 +83,7 @@ class DeviceCapabilityService {
   final Future<String> Function()? _windowsComputerNameProvider;
   final int Function()? _totalRamProvider;
   final Future<int?> Function()? _freeStorageProvider;
+  final Future<bool> Function()? _gpuAvailabilityProvider;
   Future<DeviceCapabilities>? _capabilitiesFuture;
 
   // Minimum thresholds for fallback validation
@@ -184,9 +186,38 @@ class DeviceCapabilityService {
     return DeviceCapabilities(
       totalRamMB: ramMB,
       availableStorageMB: storageMB,
-      hasGpu: false,
+      hasGpu: await _detectLinuxGpu(),
       platform: 'linux',
     );
+  }
+
+  /// Confirms that Linux has a usable Vulkan GPU for LiteRT-LM.
+  ///
+  /// A render device alone is not sufficient: remote desktop and software
+  /// Mesa drivers can expose one while LiteRT-LM's GPU backend is unusable.
+  /// `vulkaninfo` is therefore used as a conservative capability probe. When
+  /// it is unavailable or reports a software renderer, inference uses CPU.
+  Future<bool> _detectLinuxGpu() async {
+    final detector = _gpuAvailabilityProvider;
+    if (detector != null) return detector();
+
+    try {
+      final result = await Process.run('vulkaninfo', ['--summary']);
+      if (result.exitCode != 0) return false;
+
+      final output = '${result.stdout}\n${result.stderr}'.toLowerCase();
+      const softwareRenderers = [
+        'llvmpipe',
+        'lavapipe',
+        'swiftshader',
+        'software rasterizer',
+      ];
+      if (softwareRenderers.any(output.contains)) return false;
+      return output.contains('gpu') || output.contains('device name');
+    } on Object catch (error) {
+      log('Linux GPU capability probe unavailable: ${error.runtimeType}');
+      return false;
+    }
   }
 
   Future<DeviceCapabilities> _getMacOsCapabilities() async {

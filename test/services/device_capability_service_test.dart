@@ -87,6 +87,7 @@ void main() {
         linuxPrettyNameProvider: () async => 'Ubuntu Test',
         totalRamProvider: () => throw StateError('ram'),
         freeStorageProvider: () async => null,
+        gpuAvailabilityProvider: () async => false,
       );
       final macService = DeviceCapabilityService(
         isAndroidOverride: false,
@@ -122,6 +123,22 @@ void main() {
       expect((await linuxService.getCapabilities()).hasGpu, isFalse);
       expect((await macService.getCapabilities()).hasGpu, isFalse);
       expect((await windowsService.getCapabilities()).hasGpu, isFalse);
+    });
+
+    test('reports Linux GPU availability from the injected detector', () async {
+      final gpuService = DeviceCapabilityService(
+        isLinuxOverride: true,
+        linuxPrettyNameProvider: () async => 'Linux Test',
+        gpuAvailabilityProvider: () async => true,
+      );
+      final cpuService = DeviceCapabilityService(
+        isLinuxOverride: true,
+        linuxPrettyNameProvider: () async => 'Linux Test',
+        gpuAvailabilityProvider: () async => false,
+      );
+
+      expect((await gpuService.getCapabilities()).hasGpu, isTrue);
+      expect((await cpuService.getCapabilities()).hasGpu, isFalse);
     });
 
     test('caches capability detection for every consumer', () async {
